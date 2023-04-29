@@ -1,5 +1,5 @@
 function(
-  myproject_enable_sanitizers
+  cons_expr_enable_sanitizers
   project_name
   ENABLE_SANITIZER_ADDRESS
   ENABLE_SANITIZER_LEAK

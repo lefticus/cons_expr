@@ -2,8 +2,8 @@ add_executable(intro main.cpp)
 
 target_link_libraries(
   intro
-  PRIVATE myproject::myproject_options
-          myproject::myproject_warnings)
+  PRIVATE cons_expr::cons_expr_options
+          cons_expr::cons_expr_warnings)
 
 target_link_system_libraries(
   intro

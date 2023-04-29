@@ -1,7 +1,7 @@
 #
 # This function will prevent in-source builds
 #
-function(myproject_assure_out_of_source_builds)
+function(cons_expr_assure_out_of_source_builds)
   # make sure the user doesn't play dirty with symlinks
   get_filename_component(srcdir "${CMAKE_SOURCE_DIR}" REALPATH)
   get_filename_component(bindir "${CMAKE_BINARY_DIR}" REALPATH)
@@ -16,4 +16,4 @@ function(myproject_assure_out_of_source_builds)
   endif()
 endfunction()
 
-myproject_assure_out_of_source_builds()
+cons_expr_assure_out_of_source_builds()
