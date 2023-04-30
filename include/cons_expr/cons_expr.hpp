@@ -12,7 +12,7 @@
 #include <variant>
 #include <vector>
 
-namespace schmxpr {
+namespace lefticus {
 template<typename T>
 concept not_bool_or_ptr = !
 std::same_as<std::remove_cvref_t<T>, bool> && !std::is_pointer_v<std::remove_cvref_t<T>>;
@@ -146,7 +146,7 @@ constexpr Token next_token(std::string_view input)
 
   if (input.starts_with('"')) {
     bool in_escape = false;
-    auto location = std::next(input.begin());
+    auto *location = std::next(input.begin());
     while (location != input.end()) {
       if (*location == '\\') {
         in_escape = true;
@@ -167,7 +167,7 @@ constexpr Token next_token(std::string_view input)
   return make_token(input, static_cast<std::size_t>(std::distance(input.begin(), value.begin())));
 }
 
-template<typename... UserTypes> struct Schmxpr
+template<typename... UserTypes> struct cons_expr
 {
   struct SExpr;
 
@@ -181,9 +181,9 @@ template<typename... UserTypes> struct Schmxpr
     std::vector<std::pair<std::string_view, SExpr>> objects;
   };
 
-  using evaluator = SExpr (*)(Schmxpr &, Context &, std::span<const SExpr>);
+  using evaluator = SExpr (*)(cons_expr &, Context &, std::span<const SExpr>);
 
-  static constexpr SExpr for_each(Schmxpr &engine, Context &context, std::span<const SExpr> params)
+  static constexpr SExpr for_each(cons_expr &engine, Context &context, std::span<const SExpr> params)
   {
     if (params.size() != 2) { throw std::runtime_error("Wrong number of parameters to for-each expression"); }
 
@@ -283,7 +283,7 @@ template<typename... UserTypes> struct Schmxpr
   }
 
   // should be `consteval` capable, but not in GCC 12.2 yet
-  Schmxpr() : built_ins(make_built_ins()) {}
+  cons_expr() : built_ins(make_built_ins()) {}
 
   constexpr SExpr invoke_function(Context &context, const SExpr &function, std::span<const SExpr> parameters)
   {
@@ -322,7 +322,7 @@ template<typename... UserTypes> struct Schmxpr
 
   template<auto Func, typename Ret, typename... Param> constexpr static evaluator make_evaluator(Ret (*)(Param...))
   {
-    return evaluator{ [](Schmxpr &engine, Context &context, std::span<const SExpr> params) -> SExpr {
+    return evaluator{ [](cons_expr &engine, Context &context, std::span<const SExpr> params) -> SExpr {
       if (params.size() != sizeof...(Param)) { throw std::runtime_error("wrong param count"); }
 
       auto impl = [&]<std::size_t... Idx>(std::index_sequence<Idx...>)
@@ -414,7 +414,7 @@ template<typename... UserTypes> struct Schmxpr
     }
   }
 
-  static constexpr SExpr list(Schmxpr &engine, Context &context, std::span<const SExpr> params)
+  static constexpr SExpr list(cons_expr &engine, Context &context, std::span<const SExpr> params)
   {
     LiteralList result;
 
@@ -423,7 +423,7 @@ template<typename... UserTypes> struct Schmxpr
     return SExpr{ result };
   }
 
-  static constexpr SExpr lambda(Schmxpr &, Context &context, std::span<const SExpr> params)
+  static constexpr SExpr lambda(cons_expr &, Context &context, std::span<const SExpr> params)
   {
     if (params.size() < 2) { throw std::runtime_error("Wrong number of parameters to lambda expression"); }
 
@@ -436,7 +436,7 @@ template<typename... UserTypes> struct Schmxpr
     return SExpr{ Lambda{ context, parameter_names, { std::next(params.begin()), params.end() } } };
   }
 
-  static constexpr SExpr ifer(Schmxpr &engine, Context &context, std::span<const SExpr> params)
+  static constexpr SExpr ifer(cons_expr &engine, Context &context, std::span<const SExpr> params)
   {
     if (params.size() != 3) { throw std::runtime_error("Wrong number of parameters to if expression"); }
 
@@ -448,7 +448,7 @@ template<typename... UserTypes> struct Schmxpr
   }
 
   template<auto Op>
-  static constexpr SExpr binary_left_fold(Schmxpr &engine, Context &context, std::span<const SExpr> params)
+  static constexpr SExpr binary_left_fold(cons_expr &engine, Context &context, std::span<const SExpr> params)
   {
     auto sum = [&engine, &context, params]<typename Param>(Param first) -> SExpr {
       if constexpr (requires(Param p1, Param p2) { Op(p1, p2); }) {
@@ -466,7 +466,7 @@ template<typename... UserTypes> struct Schmxpr
   }
 
   template<auto Op>
-  static constexpr SExpr binary_boolean_left_fold(Schmxpr &engine, Context &context, std::span<const SExpr> params)
+  static constexpr SExpr binary_boolean_left_fold(cons_expr &engine, Context &context, std::span<const SExpr> params)
   {
     auto sum = [&engine, &context, params]<typename Param>(Param first) -> SExpr {
       if constexpr (requires(Param p1, Param p2) { Op(p1, p2); }) {
@@ -495,7 +495,7 @@ template<typename... UserTypes> struct Schmxpr
   }
 };
 
-}// namespace schmxpr
+}// namespace lefticus
 
 /// Goals
 // https://en.wikipedia.org/wiki/Greenspun%27s_tenth_rule

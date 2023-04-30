@@ -5,21 +5,21 @@
 
 auto evaluate(std::string_view input)
 {
-  schmxpr::Schmxpr<> evaluator;
-  schmxpr::Schmxpr<>::Context context;
+  lefticus::cons_expr<> evaluator;
+  lefticus::cons_expr<>::Context context;
 
   auto parsed = evaluator.parse(input);
-  const auto &items = std::get<schmxpr::Schmxpr<>::List>(parsed.first.value);
+  const auto &items = std::get<lefticus::cons_expr<>::List>(parsed.first.value);
 
   if (!items.empty()) {
     for (std::size_t idx = 0; idx < items.size() - 1; ++idx) { evaluator.eval(context, items[idx]); }
   }
-  return evaluator.eval(context, std::get<schmxpr::Schmxpr<>::List>(parsed.first.value).back());
+  return evaluator.eval(context, std::get<lefticus::cons_expr<>::List>(parsed.first.value).back());
 }
 
 template<typename Result> Result evaluate_to(std::string_view input)
 {
-  return std::get<Result>(std::get<schmxpr::Schmxpr<>::Atom>(evaluate(input).value));
+  return std::get<Result>(std::get<lefticus::cons_expr<>::Atom>(evaluate(input).value));
 }
 
 
@@ -71,15 +71,15 @@ struct UDT
 
 template<typename Result> Result evaluate_to_with_UDT(std::string_view input)
 {
-  schmxpr::Schmxpr<UDT> evaluator;
-  schmxpr::Schmxpr<UDT>::Context context;
+  lefticus::cons_expr<UDT> evaluator;
+  lefticus::cons_expr<UDT>::Context context;
 
   auto parsed = evaluator.parse(input);
-  const auto &items = std::get<schmxpr::Schmxpr<UDT>::List>(parsed.first.value);
+  const auto &items = std::get<lefticus::cons_expr<UDT>::List>(parsed.first.value);
 
   if (!items.empty()) {
     for (std::size_t idx = 0; idx < items.size() - 1; ++idx) { evaluator.eval(context, items[idx]); }
   }
-  return evaluator.eval(context, std::get<schmxpr::Schmxpr<UDT>::List>(parsed.first.value).front());
-  return std::get<Result>(std::get<schmxpr::Schmxpr<>::Atom>(evaluate(input).value));
+  return evaluator.eval(context, std::get<lefticus::cons_expr<UDT>::List>(parsed.first.value).front());
+  return std::get<Result>(std::get<lefticus::cons_expr<>::Atom>(evaluate(input).value));
 }
