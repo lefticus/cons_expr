@@ -12,6 +12,27 @@
 #include <variant>
 #include <vector>
 
+
+/*
+┌─────────────────────────┐┌─────────────────────────┐┌──────────────────────────┐
+│ LISP is over half a     ││ I wonder if the cycles  ││   /  These are your    \ │
+│ century old and it      ││ will continue forever.  ││   |father's parentheses| │
+│ still has this perfect  ││\________________  _____/││  / ____________________/ │
+│ timeless air about it.  ││              /-\|/      ││  |/                      │
+│\_______________  ______/││              | |        ││ /-\ ((()            /-\  │
+│                \|       ││              \-/        ││ | | ((()            | |  │
+│  ╔══            /-\     ││          \   /|         ││ \-/ ((()            \-/  │
+│  ║ |            | |     ││          |\ / |         ││  |---- )            /|\  │
+│  ║-/       \    \-/     ││       ------  |         ││  |    (            / | \ │
+│  /|\       |\   /|      ││ ________________|\____  ││  |         _______   |   │
+│  || \   ------ - |*     ││/                       \││ / \       /elegant\ / \  │
+│   |      |   |/--|*     ││ A few coders from each  ││/   \      |weapons|/   \ │
+│  / \     |   ||****     ││ new generation will re- ││ _____|\___\       /______│
+│ /   \    |   ||*  *     ││ discover the LISP arts. ││for a more...civilized age│
+└─────────────────────────┘└─────────────────────────┘└──────────────────────────┘
+ */
+
+
 namespace lefticus {
 template<typename T>
 concept not_bool_or_ptr = !std::same_as<std::remove_cvref_t<T>, bool> && !std::is_pointer_v<std::remove_cvref_t<T>>;
@@ -100,7 +121,6 @@ static constexpr auto not_equal = [](const auto &lhs, const auto &rhs) -> auto
 
 static constexpr auto logical_and = []<std::same_as<bool> Param>(Param lhs, Param rhs) -> bool { return lhs && rhs; };
 static constexpr auto logical_or = []<std::same_as<bool> Param>(Param lhs, Param rhs) -> bool { return lhs || rhs; };
-static constexpr auto logical_xor = []<std::same_as<bool> Param>(Param lhs, Param rhs) -> bool { return lhs ^ rhs; };
 
 static constexpr bool logical_not(bool lhs) { return !lhs; }
 
@@ -120,6 +140,78 @@ inline std::pair<bool, int> parse_int(std::string_view input)
     return { false, parsed };
   }
 }
+
+template<typename T> constexpr std::pair<bool, T> parse_float(std::string_view input)
+{
+  auto integer = 0LL;
+  T sign = 1;
+  auto fraction = 0LL;
+  auto exponent = 0LL;
+  auto fraction_exponent = 0LL;
+  auto exp_sign = 1LL;
+  enum class State { Start, IntegerPart, FractionPart, ExponentPart } state = State::Start;
+
+  for (const char c : input) {
+    switch (state) {
+    case State::Start:
+      if (c == '-') {
+        sign = -1;
+      } else if (c >= '0' && c <= '9') {
+        integer = c - '0';
+      } else {
+        return { false, 0 };
+      }
+      state = State::IntegerPart;
+      break;
+    case State::IntegerPart:
+      if (c >= '0' && c <= '9') {
+        integer = integer * 10 + (c - '0');
+      } else if (c == '.') {
+        state = State::FractionPart;
+      } else if (c == 'e' || c == 'E') {
+        state = State::ExponentPart;
+      } else {
+        return { false, 0 };
+      }
+      break;
+    case State::FractionPart:
+      if (c >= '0' && c <= '9') {
+        fraction = fraction * 10 + (c - '0');
+        fraction_exponent--;
+      } else if (c == 'e' || c == 'E') {
+        state = State::ExponentPart;
+      } else {
+        return { false, 0 };
+      }
+      break;
+    case State::ExponentPart:
+      if (c == '-') {
+        exp_sign = -1;
+      } else if (c >= '0' && c <= '9') {
+        exponent = exponent * 10 + (c - '0') * exp_sign;
+      } else {
+        return { false, 0 };
+      }
+      break;
+    }
+  }
+
+  auto pow = [](const auto base, auto power) {
+    auto result  = decltype(base)(1);
+      if (power > 0) {
+        for (int iteration = 0; iteration < power; ++iteration) { result *= base; }
+      } else if (power < 1) {
+        for (int iteration = 0; iteration > power; --iteration) { result /= base; }
+      }
+    return result;
+};
+
+  return { true,
+    (static_cast<T>(sign) * (static_cast<T>(integer)
+                          + static_cast<T>(fraction) * pow(static_cast<T>(10), fraction_exponent))
+     * pow(static_cast<T>(10), exponent)) };
+}
+
 
 constexpr Token next_token(std::string_view input)
 {
@@ -244,8 +336,10 @@ template<typename... UserTypes> struct cons_expr
           if (!token.parsed.ends_with('"')) { throw std::runtime_error("Unterminated string"); }
           // note that this doesn't remove escaped characters like it should yet
           retval.push_back(SExpr{ Atom(std::string(token.parsed.substr(1, token.parsed.size() - 2))) });
-        } else if (auto [did_parse, value] = parse_int(token.parsed); did_parse) {
-          retval.push_back(SExpr{ Atom(value) });
+        } else if (auto [int_did_parse, int_value] = parse_int(token.parsed); int_did_parse) {
+          retval.push_back(SExpr{ Atom(int_value) });
+        } else if (auto [float_did_parse, float_value] = parse_float<double>(token.parsed); float_did_parse) {
+          retval.push_back(SExpr{ Atom(float_value) });
         } else {
           // to-do, parse float
           // for now just assume identifier
@@ -270,7 +364,6 @@ template<typename... UserTypes> struct cons_expr
     retval[7] = { ">=", SExpr{ binary_boolean_apply_pairwise<greater_than_equal> } };
     retval[8] = { "and", SExpr{ binary_boolean_apply_pairwise<logical_and> } };
     retval[9] = { "or", SExpr{ binary_boolean_apply_pairwise<logical_or> } };
-    retval[10] = { "xor", SExpr{ binary_boolean_apply_pairwise<logical_xor> } };
     retval[11] = { "if", SExpr{ ifer } };
     retval[12] = { "not", SExpr{ make_evaluator<logical_not>() } };
     retval[13] = { "==", SExpr{ binary_boolean_apply_pairwise<equal> } };
@@ -284,6 +377,16 @@ template<typename... UserTypes> struct cons_expr
   // should be `consteval` capable, but not in GCC 12.2 yet
   cons_expr() : built_ins(make_built_ins()) {}
 
+  constexpr SExpr sequence(Context &context, std::span<const SExpr> statements)
+  {
+    if (!statements.empty()) {
+      for (const auto &statement : statements.subspan(0, statements.size() - 1)) { eval(context, statement); }
+      return eval(context, statements.back());
+    } else {
+      return SExpr{ Atom{ std::monostate{} } };
+    }
+  }
+
   constexpr SExpr invoke_function(Context &context, const SExpr &function, std::span<const SExpr> parameters)
   {
     SExpr resolved_function = eval(context, function);
@@ -296,16 +399,7 @@ template<typename... UserTypes> struct cons_expr
       for (std::size_t index = 0; index < parameters.size(); ++index) {
         new_context.objects.emplace_back(lambda->parameter_names[index], eval(context, parameters[index]));
       }
-
-      if (!lambda->statements.empty()) {
-        for (std::size_t index = 0; index < lambda->statements.size() - 1; ++index) {
-          eval(new_context, lambda->statements[index]);
-        }
-        return eval(new_context, lambda->statements.back());
-      } else {
-        return SExpr{ Atom{ std::monostate{} } };
-      }
-
+      return sequence(new_context, lambda->statements);
     } else {
       return get_function(resolved_function)(*this, context, parameters);
     }
@@ -347,69 +441,47 @@ template<typename... UserTypes> struct cons_expr
     symbols.emplace_back(std::string{ name }, Atom{ std::forward<Value>(value) });
   }
 
-  constexpr SExpr eval_impl(Context &context, const Atom &atom)
-  {
-    const auto *id = std::get_if<Identifier>(&atom);
-    if (id != nullptr) {
-      for (const auto &object : context.objects) {
-        if (object.first == id->value) { return object.second; }
-      }
-
-      for (const auto &object : symbols) {
-        if (object.first == id->value) { return object.second; }
-      }
-
-      for (const auto &object : built_ins) {
-        if (object.first == id->value) { return object.second; }
-      }
-
-      throw std::runtime_error("id not found");
-    }
-
-    return SExpr{ atom };
-  }
-
-  constexpr SExpr eval_impl(Context &, const function_ptr &e) { return SExpr{ e }; }
-
-  constexpr SExpr eval_impl(Context &, const LiteralList &list) { return SExpr{ list }; }
-
-  constexpr SExpr eval_impl(Context &, const Lambda &lambda) { return SExpr{ lambda }; }
-
-  constexpr SExpr eval_impl(Context &context, const List &list)
-  {
-    if (!list.empty()) {
-      return invoke_function(context, list[0], { std::next(list.begin()), list.end() });
-    } else {
-      return SExpr{ list };
-    }
-  }
-
   constexpr SExpr eval(Context &context, const SExpr &expr)
   {
-    return std::visit([this, &context](const auto &val) { return eval_impl(context, val); }, expr.value);
+    if (const auto *list = std::get_if<List>(&expr.value); list != nullptr) {
+      // if it's a non-empty list, then I need to evaluate it as a function
+      if (!list->empty()) { return invoke_function(context, (*list)[0], { std::next(list->begin()), list->end() }); }
+    } else if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
+      // if it's an identifier, we need to be able to find it
+      if (const auto *id = std::get_if<Identifier>(atom); id != nullptr) {
+        for (const auto &object : context.objects) {
+          if (object.first == id->value) { return object.second; }
+        }
+
+        for (const auto &object : symbols) {
+          if (object.first == id->value) { return object.second; }
+        }
+
+        for (const auto &object : built_ins) {
+          if (object.first == id->value) { return object.second; }
+        }
+
+        throw std::runtime_error("id not found");
+      }
+    }
+    return expr;
   }
 
   template<typename Type> constexpr Type eval_to(Context &context, const SExpr &expr)
   {
-    if constexpr (std::is_same_v<Type, LiteralList>) {
-      if (const auto *obj = std::get_if<Type>(&expr.value); obj != nullptr) {
-        return *obj;
-      } else {
-        return eval_to<LiteralList>(context, eval(context, expr));
-      }
+    if constexpr (std::is_same_v<Type, LiteralList> || std::is_same_v<Type, List> || std::is_same_v<Type, Lambda>
+                  || std::is_same_v<Type, function_ptr>) {
+      if (const auto *obj = std::get_if<Type>(&expr.value); obj != nullptr) { return *obj; }
     } else {
       if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
         if (const auto *value = std::get_if<Type>(atom); value != nullptr) {
           return *value;
-        } else if (std::get_if<Identifier>(atom) != nullptr) {
-          return eval_to<Type>(context, eval(context, expr));
-        } else {
+        } else if (!std::holds_alternative<Identifier>(*atom)) {
           throw std::runtime_error("wrong type");
         }
-      } else {
-        return eval_to<Type>(context, eval_impl(context, *std::get_if<List>(&expr.value)));
       }
     }
+    return eval_to<Type>(context, eval(context, expr));
   }
 
   static constexpr SExpr list(cons_expr &engine, Context &context, std::span<const SExpr> params)
@@ -455,7 +527,7 @@ template<typename... UserTypes> struct cons_expr
 
       return [callable = eval(temp_ctx, std::get<List>(parse(function).first.value)[0]), this](Params... params) {
         Context ctx;
-        std::array<SExpr, sizeof...(Params)> args{ SExpr{ Atom{ params } }...};
+        std::array<SExpr, sizeof...(Params)> args{ SExpr{ Atom{ params } }... };
         return eval_to<Ret>(ctx, invoke_function(ctx, callable, args));
       };
     };
@@ -512,7 +584,6 @@ template<typename... UserTypes> struct cons_expr
     throw std::runtime_error("Not enough params");
   }
 };
-
 }// namespace lefticus
 
 /// Goals
@@ -536,7 +607,7 @@ template<typename... UserTypes> struct cons_expr
 // * C++23 as a minimum
 
 /// TODO
-// * add the ability to define things
+// * add the ability to define / let things
 // * replace function identifiers with function pointers while parsing
 // * "compile" identifiers to be exact indexes into appropriate maps
 // * add cons car cdr
