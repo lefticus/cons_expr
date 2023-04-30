@@ -42,6 +42,7 @@ TEST_CASE("basic integer comparisons", "[operators]")
   REQUIRE(evaluate_to<bool>("(> 12 3 1)") == true);
   REQUIRE(evaluate_to<bool>("(>= 12 3 12)") == false);
   REQUIRE(evaluate_to<bool>("(>= 12 12 1)") == true);
+  REQUIRE(evaluate_to<bool>("(>= 12 12 1 12)") == false);
 }
 
 TEST_CASE("basic logical boolean operations", "[operators]")
@@ -58,6 +59,17 @@ TEST_CASE("basic lambda usage", "[lambdas]")
   REQUIRE(evaluate_to<bool>("((lambda () false))") == false);
   REQUIRE(evaluate_to<bool>("((lambda (x) x) true)") == true);
 }
+
+TEST_CASE("basic callable usage", "[c++ api]")
+{
+  lefticus::cons_expr<> evaluator;
+  auto func = evaluator.make_callable<int (int, int, int)>("+");
+  REQUIRE(func(1, 2, 3) == 6);
+
+  auto func2 = evaluator.make_callable<int(int)>("(lambda (x) (* x x))");
+  REQUIRE(func2(10) == 100);
+}
+
 
 TEST_CASE("basic for-each usage", "[builtins]")
 {

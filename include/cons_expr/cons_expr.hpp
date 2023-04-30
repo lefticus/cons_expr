@@ -14,75 +14,74 @@
 
 namespace lefticus {
 template<typename T>
-concept not_bool_or_ptr = !
-std::same_as<std::remove_cvref_t<T>, bool> && !std::is_pointer_v<std::remove_cvref_t<T>>;
+concept not_bool_or_ptr = !std::same_as<std::remove_cvref_t<T>, bool> && !std::is_pointer_v<std::remove_cvref_t<T>>;
 
 static constexpr auto plus_equal = [](auto &lhs, const auto &rhs) -> auto &
   requires requires {
-             requires not_bool_or_ptr<decltype(lhs)>;
-             lhs += rhs;
-           }
+    requires not_bool_or_ptr<decltype(lhs)>;
+    lhs += rhs;
+  }
 {
   return lhs += rhs;
 };
 
 static constexpr auto multiply_equal = [](auto &lhs, const auto &rhs) -> auto &
   requires requires {
-             requires not_bool_or_ptr<decltype(lhs)>;
-             lhs *= rhs;
-           }
+    requires not_bool_or_ptr<decltype(lhs)>;
+    lhs *= rhs;
+  }
 {
   return lhs *= rhs;
 };
 
 static constexpr auto division_equal = [](auto &lhs, const auto &rhs) -> auto &
   requires requires {
-             requires not_bool_or_ptr<decltype(lhs)>;
-             lhs /= rhs;
-           }
+    requires not_bool_or_ptr<decltype(lhs)>;
+    lhs /= rhs;
+  }
 {
   return lhs /= rhs;
 };
 
 static constexpr auto minus_equal = [](auto &lhs, const auto &rhs) -> auto &
   requires requires {
-             requires not_bool_or_ptr<decltype(lhs)>;
-             lhs -= rhs;
-           }
+    requires not_bool_or_ptr<decltype(lhs)>;
+    lhs -= rhs;
+  }
 {
   return lhs -= rhs;
 };
 
 static constexpr auto less_than = [](const auto &lhs, const auto &rhs) -> auto
   requires requires {
-             requires not_bool_or_ptr<decltype(lhs)>;
-             lhs < rhs;
-           }
+    requires not_bool_or_ptr<decltype(lhs)>;
+    lhs < rhs;
+  }
 {
   return lhs < rhs;
 };
 static constexpr auto greater_than = [](const auto &lhs, const auto &rhs) -> auto
   requires requires {
-             requires not_bool_or_ptr<decltype(lhs)>;
-             lhs > rhs;
-           }
+    requires not_bool_or_ptr<decltype(lhs)>;
+    lhs > rhs;
+  }
 {
   return lhs > rhs;
 };
 
 static constexpr auto less_than_equal = [](const auto &lhs, const auto &rhs) -> auto
   requires requires {
-             requires not_bool_or_ptr<decltype(lhs)>;
-             lhs <= rhs;
-           }
+    requires not_bool_or_ptr<decltype(lhs)>;
+    lhs <= rhs;
+  }
 {
   return lhs <= rhs;
 };
 static constexpr auto greater_than_equal = [](const auto &lhs, const auto &rhs) -> auto
   requires requires {
-             requires not_bool_or_ptr<decltype(lhs)>;
-             lhs >= rhs;
-           }
+    requires not_bool_or_ptr<decltype(lhs)>;
+    lhs >= rhs;
+  }
 {
   return lhs >= rhs;
 };
@@ -146,7 +145,7 @@ constexpr Token next_token(std::string_view input)
 
   if (input.starts_with('"')) {
     bool in_escape = false;
-    auto *location = std::next(input.begin());
+    auto location = std::next(input.begin());
     while (location != input.end()) {
       if (*location == '\\') {
         in_escape = true;
@@ -265,17 +264,17 @@ template<typename... UserTypes> struct cons_expr
     retval[1] = { "*", SExpr{ binary_left_fold<multiply_equal> } };
     retval[2] = { "-", SExpr{ binary_left_fold<minus_equal> } };
     retval[3] = { "/", SExpr{ binary_left_fold<division_equal> } };
-    retval[4] = { "<", SExpr{ binary_boolean_left_fold<less_than> } };
-    retval[5] = { ">", SExpr{ binary_boolean_left_fold<greater_than> } };
-    retval[6] = { "<=", SExpr{ binary_boolean_left_fold<less_than_equal> } };
-    retval[7] = { ">=", SExpr{ binary_boolean_left_fold<greater_than_equal> } };
-    retval[8] = { "and", SExpr{ binary_boolean_left_fold<logical_and> } };
-    retval[9] = { "or", SExpr{ binary_boolean_left_fold<logical_or> } };
-    retval[10] = { "xor", SExpr{ binary_boolean_left_fold<logical_xor> } };
+    retval[4] = { "<", SExpr{ binary_boolean_apply_pairwise<less_than> } };
+    retval[5] = { ">", SExpr{ binary_boolean_apply_pairwise<greater_than> } };
+    retval[6] = { "<=", SExpr{ binary_boolean_apply_pairwise<less_than_equal> } };
+    retval[7] = { ">=", SExpr{ binary_boolean_apply_pairwise<greater_than_equal> } };
+    retval[8] = { "and", SExpr{ binary_boolean_apply_pairwise<logical_and> } };
+    retval[9] = { "or", SExpr{ binary_boolean_apply_pairwise<logical_or> } };
+    retval[10] = { "xor", SExpr{ binary_boolean_apply_pairwise<logical_xor> } };
     retval[11] = { "if", SExpr{ ifer } };
     retval[12] = { "not", SExpr{ make_evaluator<logical_not>() } };
-    retval[13] = { "==", SExpr{ binary_boolean_left_fold<equal> } };
-    retval[14] = { "!=", SExpr{ binary_boolean_left_fold<not_equal> } };
+    retval[13] = { "==", SExpr{ binary_boolean_apply_pairwise<equal> } };
+    retval[14] = { "!=", SExpr{ binary_boolean_apply_pairwise<not_equal> } };
     retval[15] = { "for-each", SExpr{ for_each } };
     retval[16] = { "list", SExpr{ list } };
     retval[17] = { "lambda", SExpr{ lambda } };
@@ -323,8 +322,7 @@ template<typename... UserTypes> struct cons_expr
     return function_ptr{ [](cons_expr &engine, Context &context, std::span<const SExpr> params) -> SExpr {
       if (params.size() != sizeof...(Param)) { throw std::runtime_error("wrong param count"); }
 
-      auto impl = [&]<std::size_t... Idx>(std::index_sequence<Idx...>)
-      {
+      auto impl = [&]<std::size_t... Idx>(std::index_sequence<Idx...>) {
         if constexpr (std::is_same_v<void, Ret>) {
           Func(engine.eval_to<std::remove_cvref_t<Param>>(context, params[Idx])...);
           return SExpr{ Atom{ std::monostate{} } };
@@ -447,6 +445,24 @@ template<typename... UserTypes> struct cons_expr
     }
   }
 
+  template<typename Signature>
+  auto make_callable(auto function)
+    requires std::is_function_v<Signature>
+  {
+    auto impl = [this, function]<typename Ret, typename... Params>(Ret (*)(Params...)) {
+      // this is fragile, we need to check parsing better
+      Context temp_ctx;
+
+      return [callable = eval(temp_ctx, std::get<List>(parse(function).first.value)[0]), this](Params... params) {
+        Context ctx;
+        std::array<SExpr, sizeof...(Params)> args{ SExpr{ Atom{ params } }...};
+        return eval_to<Ret>(ctx, invoke_function(ctx, callable, args));
+      };
+    };
+
+    return impl(std::add_pointer_t<Signature>{ nullptr });
+  }
+
   template<auto Op>
   static constexpr SExpr binary_left_fold(cons_expr &engine, Context &context, std::span<const SExpr> params)
   {
@@ -466,7 +482,8 @@ template<typename... UserTypes> struct cons_expr
   }
 
   template<auto Op>
-  static constexpr SExpr binary_boolean_left_fold(cons_expr &engine, Context &context, std::span<const SExpr> params)
+  static constexpr SExpr
+    binary_boolean_apply_pairwise(cons_expr &engine, Context &context, std::span<const SExpr> params)
   {
     auto sum = [&engine, &context, params]<typename Param>(Param first) -> SExpr {
       if constexpr (requires(Param p1, Param p2) { Op(p1, p2); }) {
@@ -481,6 +498,7 @@ template<typename... UserTypes> struct cons_expr
             second = engine.eval_to<Param>(context, next);
             result = result && Op(first, second);
           }
+          odd = !odd;
         }
 
         return SExpr{ result };
@@ -504,7 +522,7 @@ template<typename... UserTypes> struct cons_expr
 // informally-specified, bug-ridden, slow implementation of half of Common Lisp.
 //
 // * always stay small and hackable. At most 1,000 lines, total, ever.
-// Preferrably
+// Preferably
 //   more like 500 lines
 // * s-expression based, Scheme-inspired embedded language for C++
 // * constexpr evaluation of script possible
@@ -519,11 +537,14 @@ template<typename... UserTypes> struct cons_expr
 
 /// TODO
 // * add the ability to define things
-// * "compile" identifiers to be exact indexes into global map
+// * replace function identifiers with function pointers while parsing
+// * "compile" identifiers to be exact indexes into appropriate maps
 // * add cons car cdr
-// * add tests
-// * sort out copying on return of objects
-// * allow use of functions from C++ land
+// * parse / test doubles
+// * reenable constexpr stuff
+// * sort out copying on return of objects when possible
+// * convert constexpr `defined` objects into static string views and static spans
 // * remove exceptions I guess
+// * `fold_left` things are really not correctly named
 
 #endif
