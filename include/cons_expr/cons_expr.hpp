@@ -181,7 +181,7 @@ template<typename... UserTypes> struct cons_expr
     std::vector<std::pair<std::string_view, SExpr>> objects;
   };
 
-  using evaluator = SExpr (*)(cons_expr &, Context &, std::span<const SExpr>);
+  using function_ptr = SExpr (*)(cons_expr &, Context &, std::span<const SExpr>);
 
   static constexpr SExpr for_each(cons_expr &engine, Context &context, std::span<const SExpr> params)
   {
@@ -196,11 +196,11 @@ template<typename... UserTypes> struct cons_expr
     return SExpr{ Atom{ std::monostate{} } };
   }
 
-  using Atom = std::variant<std::monostate, bool, int, double, Identifier, std::string, evaluator, UserTypes...>;
+  using Atom = std::variant<std::monostate, bool, int, double, Identifier, std::string, UserTypes...>;
   using List = std::vector<SExpr>;
 
-  std::array<std::pair<std::string_view, Atom>, 20> built_ins;
-  std::vector<std::pair<std::string, Atom>> symbols;
+  std::array<std::pair<std::string_view, SExpr>, 20> built_ins;
+  std::vector<std::pair<std::string, SExpr>> symbols;
 
   struct LiteralList
   {
@@ -215,7 +215,7 @@ template<typename... UserTypes> struct cons_expr
 
   struct SExpr
   {
-    std::variant<Atom, List, LiteralList, Lambda> value;
+    std::variant<Atom, List, LiteralList, Lambda, function_ptr> value;
   };
 
   static constexpr std::pair<SExpr, Token> parse(std::string_view input)
@@ -261,24 +261,24 @@ template<typename... UserTypes> struct cons_expr
   static constexpr auto make_built_ins()
   {
     decltype(built_ins) retval;
-    retval[0] = { "+", binary_left_fold<plus_equal> };
-    retval[1] = { "*", binary_left_fold<multiply_equal> };
-    retval[2] = { "-", binary_left_fold<minus_equal> };
-    retval[3] = { "/", binary_left_fold<division_equal> };
-    retval[4] = { "<", binary_boolean_left_fold<less_than> };
-    retval[5] = { ">", binary_boolean_left_fold<greater_than> };
-    retval[6] = { "<=", binary_boolean_left_fold<less_than_equal> };
-    retval[7] = { ">=", binary_boolean_left_fold<greater_than_equal> };
-    retval[8] = { "and", binary_boolean_left_fold<logical_and> };
-    retval[9] = { "or", binary_boolean_left_fold<logical_or> };
-    retval[10] = { "xor", binary_boolean_left_fold<logical_xor> };
-    retval[11] = { "if", ifer };
-    retval[12] = { "not", make_evaluator<logical_not>() };
-    retval[13] = { "==", binary_boolean_left_fold<equal> };
-    retval[14] = { "!=", binary_boolean_left_fold<not_equal> };
-    retval[15] = { "for-each", for_each };
-    retval[16] = { "list", list };
-    retval[17] = { "lambda", lambda };
+    retval[0] = { "+", SExpr{ binary_left_fold<plus_equal> } };
+    retval[1] = { "*", SExpr{ binary_left_fold<multiply_equal> } };
+    retval[2] = { "-", SExpr{ binary_left_fold<minus_equal> } };
+    retval[3] = { "/", SExpr{ binary_left_fold<division_equal> } };
+    retval[4] = { "<", SExpr{ binary_boolean_left_fold<less_than> } };
+    retval[5] = { ">", SExpr{ binary_boolean_left_fold<greater_than> } };
+    retval[6] = { "<=", SExpr{ binary_boolean_left_fold<less_than_equal> } };
+    retval[7] = { ">=", SExpr{ binary_boolean_left_fold<greater_than_equal> } };
+    retval[8] = { "and", SExpr{ binary_boolean_left_fold<logical_and> } };
+    retval[9] = { "or", SExpr{ binary_boolean_left_fold<logical_or> } };
+    retval[10] = { "xor", SExpr{ binary_boolean_left_fold<logical_xor> } };
+    retval[11] = { "if", SExpr{ ifer } };
+    retval[12] = { "not", SExpr{ make_evaluator<logical_not>() } };
+    retval[13] = { "==", SExpr{ binary_boolean_left_fold<equal> } };
+    retval[14] = { "!=", SExpr{ binary_boolean_left_fold<not_equal> } };
+    retval[15] = { "for-each", SExpr{ for_each } };
+    retval[16] = { "list", SExpr{ list } };
+    retval[17] = { "lambda", SExpr{ lambda } };
     return retval;
   }
 
@@ -312,17 +312,15 @@ template<typename... UserTypes> struct cons_expr
     }
   }
 
-  constexpr evaluator get_function(const SExpr &expr)
+  constexpr function_ptr get_function(const SExpr &expr)
   {
-    if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
-      if (const auto *func = std::get_if<evaluator>(atom); func != nullptr) { return *func; }
-    }
+    if (const auto *func = std::get_if<function_ptr>(&expr.value); func != nullptr) { return *func; }
     throw std::runtime_error("Does not evaluate to a function");
   }
 
-  template<auto Func, typename Ret, typename... Param> constexpr static evaluator make_evaluator(Ret (*)(Param...))
+  template<auto Func, typename Ret, typename... Param> constexpr static function_ptr make_evaluator(Ret (*)(Param...))
   {
-    return evaluator{ [](cons_expr &engine, Context &context, std::span<const SExpr> params) -> SExpr {
+    return function_ptr{ [](cons_expr &engine, Context &context, std::span<const SExpr> params) -> SExpr {
       if (params.size() != sizeof...(Param)) { throw std::runtime_error("wrong param count"); }
 
       auto impl = [&]<std::size_t... Idx>(std::index_sequence<Idx...>)
@@ -339,7 +337,7 @@ template<typename... UserTypes> struct cons_expr
     } };
   }
 
-  template<auto Func> constexpr static evaluator make_evaluator() { return make_evaluator<Func>(Func); }
+  template<auto Func> constexpr static function_ptr make_evaluator() { return make_evaluator<Func>(Func); }
 
   template<auto Func> constexpr void add(std::string_view name)
   {
@@ -360,11 +358,11 @@ template<typename... UserTypes> struct cons_expr
       }
 
       for (const auto &object : symbols) {
-        if (object.first == id->value) { return SExpr{ object.second }; }
+        if (object.first == id->value) { return object.second; }
       }
 
       for (const auto &object : built_ins) {
-        if (object.first == id->value) { return SExpr{ object.second }; }
+        if (object.first == id->value) { return object.second; }
       }
 
       throw std::runtime_error("id not found");
@@ -372,6 +370,8 @@ template<typename... UserTypes> struct cons_expr
 
     return SExpr{ atom };
   }
+
+  constexpr SExpr eval_impl(Context &, const function_ptr &e) { return SExpr{ e }; }
 
   constexpr SExpr eval_impl(Context &, const LiteralList &list) { return SExpr{ list }; }
 
