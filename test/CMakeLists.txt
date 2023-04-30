@@ -34,8 +34,11 @@ target_link_libraries(
   tests
   PRIVATE cons_expr::cons_expr_warnings
           cons_expr::cons_expr_options
-          cons_expr::sample_library
-          Catch2::Catch2WithMain)
+          cons_expr::sample_library)
+
+target_link_system_libraries(
+  tests
+  PRIVATE Catch2::Catch2WithMain)
 
 if(WIN32 AND BUILD_SHARED_LIBS)
   add_custom_command(
@@ -66,8 +69,11 @@ target_link_libraries(
   constexpr_tests
   PRIVATE cons_expr::cons_expr_warnings
           cons_expr::cons_expr_options
-          cons_expr::sample_library
-          Catch2::Catch2WithMain)
+          cons_expr::sample_library)
+
+target_link_system_libraries(
+  constexpr_tests
+  PRIVATE Catch2::Catch2WithMain)
 
 catch_discover_tests(
   constexpr_tests
