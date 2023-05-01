@@ -132,7 +132,7 @@ struct Token
   std::string_view remaining;
 };
 
-inline std::pair<bool, int> parse_int(std::string_view input)
+[[nodiscard]] constexpr std::pair<bool, int> parse_int(std::string_view input)
 {
   int parsed = 0;
   auto result = std::from_chars(input.data(), input.data() + input.size(), parsed);
@@ -143,11 +143,9 @@ inline std::pair<bool, int> parse_int(std::string_view input)
   }
 }
 
-template<typename T> constexpr std::pair<bool, T> parse_float(std::string_view input)
+template<typename T> [[nodiscard]] constexpr std::pair<bool, T> parse_float(std::string_view input)
 {
-  if (input == "-") {
-    return {false, 0};
-  }
+  if (input == "-") { return { false, 0 }; }
 
   enum class State { Start, IntegerPart, FractionPart, ExponentPart, ExponentStart, Fail };
   struct ParseState
@@ -160,7 +158,8 @@ template<typename T> constexpr std::pair<bool, T> parse_float(std::string_view i
     long long exp_sign = 1LL;
     long long exp = 0LL;
 
-    [[nodiscard]] static constexpr auto pow(const T base, long long power) {
+    [[nodiscard]] static constexpr auto pow(const T base, long long power) noexcept
+    {
       auto result = decltype(base)(1);
       if (power > 0) {
         for (int iteration = 0; iteration < power; ++iteration) { result *= base; }
@@ -170,21 +169,19 @@ template<typename T> constexpr std::pair<bool, T> parse_float(std::string_view i
       return result;
     };
 
-    [[nodiscard]] constexpr auto next_state(State new_state) const
+    [[nodiscard]] constexpr auto next_state(State new_state) const noexcept
     {
       auto retval = *this;
       retval.state = new_state;
       return retval;
     }
 
-    [[nodiscard]] constexpr auto float_value() const -> std::pair<bool, T> {
-      if (state == State::Fail || state==State::Start || state == State::ExponentStart) {
-        return {false, 0};
-      }
+    [[nodiscard]] constexpr auto float_value() const noexcept -> std::pair<bool, T>
+    {
+      if (state == State::Fail || state == State::Start || state == State::ExponentStart) { return { false, 0 }; }
 
       return { true,
-        (static_cast<T>(value_sign)
-          * (static_cast<T>(value) + static_cast<T>(frac) * pow(static_cast<T>(10), frac_exp))
+        (static_cast<T>(value_sign) * (static_cast<T>(value) + static_cast<T>(frac) * pow(static_cast<T>(10), frac_exp))
           * pow(static_cast<T>(10), exp_sign * exp)) };
     }
   };
@@ -249,7 +246,7 @@ template<typename T> constexpr std::pair<bool, T> parse_float(std::string_view i
 }
 
 
-constexpr Token next_token(std::string_view input)
+[[nodiscard]] constexpr Token next_token(std::string_view input)
 {
   constexpr auto is_whitespace = [](auto character) {
     return character == ' ' || character == '\t' || character == '\n';
@@ -310,14 +307,15 @@ template<typename... UserTypes> struct cons_expr
 
   using function_ptr = SExpr (*)(cons_expr &, Context &, std::span<const SExpr>);
 
-  static constexpr SExpr for_each(cons_expr &engine, Context &context, std::span<const SExpr> params)
+  [[nodiscard]] static constexpr SExpr for_each(cons_expr &engine, Context &context, std::span<const SExpr> params)
   {
     if (params.size() != 2) { throw std::runtime_error("Wrong number of parameters to for-each expression"); }
 
     const auto &list = engine.eval_to<LiteralList>(context, params[1]);
 
     for (auto itr = list.items.begin(); itr != list.items.end(); ++itr) {
-      engine.invoke_function(context, params[0], std::span<const SExpr>{ itr, std::next(itr) });
+      [[maybe_unused]] const auto result =
+        engine.invoke_function(context, params[0], std::span<const SExpr>{ itr, std::next(itr) });
     }
 
     return SExpr{ Atom{ std::monostate{} } };
@@ -345,7 +343,7 @@ template<typename... UserTypes> struct cons_expr
     std::variant<Atom, List, LiteralList, Lambda, function_ptr> value;
   };
 
-  static constexpr std::pair<SExpr, Token> parse(std::string_view input)
+  [[nodiscard]] static constexpr std::pair<SExpr, Token> parse(std::string_view input)
   {
     List retval;
 
@@ -387,7 +385,7 @@ template<typename... UserTypes> struct cons_expr
     return std::pair<SExpr, Token>(SExpr{ retval }, token);
   }
 
-  static constexpr auto make_built_ins()
+  [[nodiscard]] static constexpr auto make_built_ins()
   {
     decltype(built_ins) retval;
     retval[0] = { "+", SExpr{ binary_left_fold<plus_equal> } };
@@ -410,20 +408,22 @@ template<typename... UserTypes> struct cons_expr
     return retval;
   }
 
-  // should be `consteval` capable, but not in GCC 12.2 yet
-  cons_expr() : built_ins(make_built_ins()) {}
+  consteval cons_expr() : built_ins(make_built_ins()) {}
 
-  constexpr SExpr sequence(Context &context, std::span<const SExpr> statements)
+  [[nodiscard]] constexpr SExpr sequence(Context &context, std::span<const SExpr> statements)
   {
     if (!statements.empty()) {
-      for (const auto &statement : statements.subspan(0, statements.size() - 1)) { eval(context, statement); }
+      for (const auto &statement : statements.subspan(0, statements.size() - 1)) {
+        [[maybe_unused]] const auto result = eval(context, statement);
+      }
       return eval(context, statements.back());
     } else {
       return SExpr{ Atom{ std::monostate{} } };
     }
   }
 
-  constexpr SExpr invoke_function(Context &context, const SExpr &function, std::span<const SExpr> parameters)
+  [[nodiscard]] constexpr SExpr
+    invoke_function(Context &context, const SExpr &function, std::span<const SExpr> parameters)
   {
     SExpr resolved_function = eval(context, function);
 
@@ -441,13 +441,14 @@ template<typename... UserTypes> struct cons_expr
     }
   }
 
-  constexpr function_ptr get_function(const SExpr &expr)
+  [[nodiscard]] constexpr function_ptr get_function(const SExpr &expr)
   {
     if (const auto *func = std::get_if<function_ptr>(&expr.value); func != nullptr) { return *func; }
     throw std::runtime_error("Does not evaluate to a function");
   }
 
-  template<auto Func, typename Ret, typename... Param> constexpr static function_ptr make_evaluator(Ret (*)(Param...))
+  template<auto Func, typename Ret, typename... Param>
+  [[nodiscard]] constexpr static function_ptr make_evaluator(Ret (*)(Param...))
   {
     return function_ptr{ [](cons_expr &engine, Context &context, std::span<const SExpr> params) -> SExpr {
       if (params.size() != sizeof...(Param)) { throw std::runtime_error("wrong param count"); }
@@ -465,7 +466,10 @@ template<typename... UserTypes> struct cons_expr
     } };
   }
 
-  template<auto Func> constexpr static function_ptr make_evaluator() { return make_evaluator<Func>(Func); }
+  template<auto Func> [[nodiscard]] constexpr static function_ptr make_evaluator()
+  {
+    return make_evaluator<Func>(Func);
+  }
 
   template<auto Func> constexpr void add(std::string_view name)
   {
@@ -477,7 +481,7 @@ template<typename... UserTypes> struct cons_expr
     symbols.emplace_back(std::string{ name }, Atom{ std::forward<Value>(value) });
   }
 
-  constexpr SExpr eval(Context &context, const SExpr &expr)
+  [[nodiscard]] constexpr SExpr eval(Context &context, const SExpr &expr)
   {
     if (const auto *list = std::get_if<List>(&expr.value); list != nullptr) {
       // if it's a non-empty list, then I need to evaluate it as a function
@@ -503,7 +507,7 @@ template<typename... UserTypes> struct cons_expr
     return expr;
   }
 
-  template<typename Type> constexpr Type eval_to(Context &context, const SExpr &expr)
+  template<typename Type> [[nodiscard]] constexpr Type eval_to(Context &context, const SExpr &expr)
   {
     if constexpr (std::is_same_v<Type, LiteralList> || std::is_same_v<Type, List> || std::is_same_v<Type, Lambda>
                   || std::is_same_v<Type, function_ptr>) {
@@ -520,7 +524,7 @@ template<typename... UserTypes> struct cons_expr
     return eval_to<Type>(context, eval(context, expr));
   }
 
-  static constexpr SExpr list(cons_expr &engine, Context &context, std::span<const SExpr> params)
+  [[nodiscard]] static constexpr SExpr list(cons_expr &engine, Context &context, std::span<const SExpr> params)
   {
     LiteralList result;
 
@@ -529,7 +533,7 @@ template<typename... UserTypes> struct cons_expr
     return SExpr{ result };
   }
 
-  static constexpr SExpr lambda(cons_expr &, Context &context, std::span<const SExpr> params)
+  [[nodiscard]] static constexpr SExpr lambda(cons_expr &, Context &context, std::span<const SExpr> params)
   {
     if (params.size() < 2) { throw std::runtime_error("Wrong number of parameters to lambda expression"); }
 
@@ -542,7 +546,7 @@ template<typename... UserTypes> struct cons_expr
     return SExpr{ Lambda{ context, parameter_names, { std::next(params.begin()), params.end() } } };
   }
 
-  static constexpr SExpr ifer(cons_expr &engine, Context &context, std::span<const SExpr> params)
+  [[nodiscard]] static constexpr SExpr ifer(cons_expr &engine, Context &context, std::span<const SExpr> params)
   {
     if (params.size() != 3) { throw std::runtime_error("Wrong number of parameters to if expression"); }
 
@@ -554,7 +558,7 @@ template<typename... UserTypes> struct cons_expr
   }
 
   template<typename Signature>
-  auto make_callable(auto function)
+  [[nodiscard]] auto make_callable(auto function)
     requires std::is_function_v<Signature>
   {
     auto impl = [this, function]<typename Ret, typename... Params>(Ret (*)(Params...)) {
@@ -572,7 +576,8 @@ template<typename... UserTypes> struct cons_expr
   }
 
   template<auto Op>
-  static constexpr SExpr binary_left_fold(cons_expr &engine, Context &context, std::span<const SExpr> params)
+  [[nodiscard]] static constexpr SExpr
+    binary_left_fold(cons_expr &engine, Context &context, std::span<const SExpr> params)
   {
     auto sum = [&engine, &context, params]<typename Param>(Param first) -> SExpr {
       if constexpr (requires(Param p1, Param p2) { Op(p1, p2); }) {
@@ -590,7 +595,7 @@ template<typename... UserTypes> struct cons_expr
   }
 
   template<auto Op>
-  static constexpr SExpr
+  [[nodiscard]] static constexpr SExpr
     binary_boolean_apply_pairwise(cons_expr &engine, Context &context, std::span<const SExpr> params)
   {
     auto sum = [&engine, &context, params]<typename Param>(Param first) -> SExpr {
@@ -647,10 +652,8 @@ template<typename... UserTypes> struct cons_expr
 // * replace function identifiers with function pointers while parsing
 // * "compile" identifiers to be exact indexes into appropriate maps
 // * add cons car cdr
-// * reenable constexpr stuff
 // * sort out copying on return of objects when possible
 // * convert constexpr `defined` objects into static string views and static spans
 // * remove exceptions I guess
-// * `fold_left` things are really not correctly named
 
 #endif
