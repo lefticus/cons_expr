@@ -13,6 +13,11 @@
 #include <vector>
 
 
+// https://en.wikipedia.org/wiki/Greenspun%27s_tenth_rule
+//
+// Any sufficiently complicated C or Fortran program contains an ad hoc,
+// informally-specified, bug-ridden, slow implementation of half of Common Lisp.
+
 /*
 ┌─────────────────────────┐┌─────────────────────────┐┌──────────────────────────┐
 │ LISP is over half a     ││ I wonder if the cycles  ││   /  These are your    \ │
@@ -40,71 +45,47 @@ template<typename T>
 concept not_bool_or_ptr = !std::same_as<std::remove_cvref_t<T>, bool> && !std::is_pointer_v<std::remove_cvref_t<T>>;
 
 static constexpr auto plus_equal = [](auto &lhs, const auto &rhs) -> auto &
-  requires requires {
-    requires not_bool_or_ptr<decltype(lhs)>;
-    lhs += rhs;
-  }
+  requires not_bool_or_ptr<decltype(lhs)> && requires { lhs += rhs; }
 {
   return lhs += rhs;
 };
 
 static constexpr auto multiply_equal = [](auto &lhs, const auto &rhs) -> auto &
-  requires requires {
-    requires not_bool_or_ptr<decltype(lhs)>;
-    lhs *= rhs;
-  }
+  requires not_bool_or_ptr<decltype(lhs)> && requires { lhs *= rhs; }
 {
   return lhs *= rhs;
 };
 
 static constexpr auto division_equal = [](auto &lhs, const auto &rhs) -> auto &
-  requires requires {
-    requires not_bool_or_ptr<decltype(lhs)>;
-    lhs /= rhs;
-  }
+  requires not_bool_or_ptr<decltype(lhs)> && requires { lhs /= rhs; }
 {
   return lhs /= rhs;
 };
 
 static constexpr auto minus_equal = [](auto &lhs, const auto &rhs) -> auto &
-  requires requires {
-    requires not_bool_or_ptr<decltype(lhs)>;
-    lhs -= rhs;
-  }
+  requires not_bool_or_ptr<decltype(lhs)> && requires { lhs -= rhs; }
 {
   return lhs -= rhs;
 };
 
 static constexpr auto less_than = [](const auto &lhs, const auto &rhs) -> auto
-  requires requires {
-    requires not_bool_or_ptr<decltype(lhs)>;
-    lhs < rhs;
-  }
+  requires not_bool_or_ptr<decltype(lhs)> && requires { lhs < rhs; }
 {
   return lhs < rhs;
 };
 static constexpr auto greater_than = [](const auto &lhs, const auto &rhs) -> auto
-  requires requires {
-    requires not_bool_or_ptr<decltype(lhs)>;
-    lhs > rhs;
-  }
+  requires not_bool_or_ptr<decltype(lhs)> && requires { lhs > rhs; }
 {
   return lhs > rhs;
 };
 
 static constexpr auto less_than_equal = [](const auto &lhs, const auto &rhs) -> auto
-  requires requires {
-    requires not_bool_or_ptr<decltype(lhs)>;
-    lhs <= rhs;
-  }
+  requires not_bool_or_ptr<decltype(lhs)> && requires { lhs <= rhs; }
 {
   return lhs <= rhs;
 };
 static constexpr auto greater_than_equal = [](const auto &lhs, const auto &rhs) -> auto
-  requires requires {
-    requires not_bool_or_ptr<decltype(lhs)>;
-    lhs >= rhs;
-  }
+  requires not_bool_or_ptr<decltype(lhs)> && requires { lhs >= rhs; }
 {
   return lhs >= rhs;
 };
@@ -628,10 +609,6 @@ template<typename... UserTypes> struct cons_expr
 }// namespace lefticus
 
 /// Goals
-// https://en.wikipedia.org/wiki/Greenspun%27s_tenth_rule
-//
-// Any sufficiently complicated C or Fortran program contains an ad hoc,
-// informally-specified, bug-ridden, slow implementation of half of Common Lisp.
 //
 // * always stay small and hackable. At most 1,000 lines, total, ever.
 // Preferably
