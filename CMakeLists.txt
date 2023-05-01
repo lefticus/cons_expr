@@ -102,14 +102,14 @@ include(cmake/PackageProject.cmake)
 
 # Add other targets that you want installed here, by default we just package the one executable
 # we know we want to ship
-cons_expr_package_project(
-  TARGETS
-  intro
-  cons_expr_options
-  cons_expr_warnings
+#cons_expr_package_project(
+#  TARGETS
+#  intro
+#  cons_expr_options
+#  cons_expr_warnings
   # FIXME: this does not work! CK
   # PRIVATE_DEPENDENCIES_CONFIGURED project_options project_warnings
-)
+#)
 
 # Experience shows that explicit package naming can help make it easier to sort
 # out potential ABI related issues before they start, while helping you

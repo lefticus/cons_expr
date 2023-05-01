@@ -145,6 +145,10 @@ inline std::pair<bool, int> parse_int(std::string_view input)
 
 template<typename T> constexpr std::pair<bool, T> parse_float(std::string_view input)
 {
+  if (input == "-") {
+    return {false, 0};
+  }
+
   enum class State { Start, IntegerPart, FractionPart, ExponentPart, ExponentStart, Fail };
   struct ParseState
   {
@@ -174,7 +178,7 @@ template<typename T> constexpr std::pair<bool, T> parse_float(std::string_view i
     }
 
     [[nodiscard]] constexpr auto float_value() const -> std::pair<bool, T> {
-      if (state == State::Fail) {
+      if (state == State::Fail || state==State::Start || state == State::ExponentStart) {
         return {false, 0};
       }
 
