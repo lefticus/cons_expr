@@ -30,6 +30,8 @@
 │  / \     |   ||****     ││ new generation will re- ││ _____|\___\       /______│
 │ /   \    |   ||*  *     ││ discover the LISP arts. ││for a more...civilized age│
 └─────────────────────────┘└─────────────────────────┘└──────────────────────────┘
+
+ originally from: https://xkcd.com/297/  https://xkcd.com/license.html
  */
 
 
