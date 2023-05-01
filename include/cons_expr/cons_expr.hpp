@@ -143,73 +143,103 @@ inline std::pair<bool, int> parse_int(std::string_view input)
 
 template<typename T> constexpr std::pair<bool, T> parse_float(std::string_view input)
 {
-  auto integer = 0LL;
-  T sign = 1;
-  auto fraction = 0LL;
-  auto exponent = 0LL;
-  auto fraction_exponent = 0LL;
-  auto exp_sign = 1LL;
-  enum class State { Start, IntegerPart, FractionPart, ExponentPart } state = State::Start;
+  enum class State { Start, IntegerPart, FractionPart, ExponentPart, ExponentStart, Fail };
+  struct ParseState
+  {
+    State state = State::Start;
+    T value_sign = 1;
+    long long value = 0LL;
+    long long frac = 0LL;
+    long long frac_exp = 0LL;
+    long long exp_sign = 1LL;
+    long long exp = 0LL;
 
-  for (const char c : input) {
-    switch (state) {
-    case State::Start:
-      if (c == '-') {
-        sign = -1;
-      } else if (c >= '0' && c <= '9') {
-        integer = c - '0';
-      } else {
-        return { false, 0 };
-      }
-      state = State::IntegerPart;
-      break;
-    case State::IntegerPart:
-      if (c >= '0' && c <= '9') {
-        integer = integer * 10 + (c - '0');
-      } else if (c == '.') {
-        state = State::FractionPart;
-      } else if (c == 'e' || c == 'E') {
-        state = State::ExponentPart;
-      } else {
-        return { false, 0 };
-      }
-      break;
-    case State::FractionPart:
-      if (c >= '0' && c <= '9') {
-        fraction = fraction * 10 + (c - '0');
-        fraction_exponent--;
-      } else if (c == 'e' || c == 'E') {
-        state = State::ExponentPart;
-      } else {
-        return { false, 0 };
-      }
-      break;
-    case State::ExponentPart:
-      if (c == '-') {
-        exp_sign = -1;
-      } else if (c >= '0' && c <= '9') {
-        exponent = exponent * 10 + (c - '0') * exp_sign;
-      } else {
-        return { false, 0 };
-      }
-      break;
-    }
-  }
-
-  auto pow = [](const auto base, auto power) {
-    auto result  = decltype(base)(1);
+    [[nodiscard]] static constexpr auto pow(const T base, long long power) {
+      auto result = decltype(base)(1);
       if (power > 0) {
         for (int iteration = 0; iteration < power; ++iteration) { result *= base; }
-      } else if (power < 1) {
+      } else if (power < 0) {
         for (int iteration = 0; iteration > power; --iteration) { result /= base; }
       }
-    return result;
-};
+      return result;
+    };
 
-  return { true,
-    (static_cast<T>(sign) * (static_cast<T>(integer)
-                          + static_cast<T>(fraction) * pow(static_cast<T>(10), fraction_exponent))
-     * pow(static_cast<T>(10), exponent)) };
+    [[nodiscard]] constexpr auto next_state(State new_state) const
+    {
+      auto retval = *this;
+      retval.state = new_state;
+      return retval;
+    }
+
+    [[nodiscard]] constexpr auto float_value() const -> std::pair<bool, T> {
+      if (state == State::Fail) {
+        return {false, 0};
+      }
+
+      return { true,
+        (static_cast<T>(value_sign)
+          * (static_cast<T>(value) + static_cast<T>(frac) * pow(static_cast<T>(10), frac_exp))
+          * pow(static_cast<T>(10), exp_sign * exp)) };
+    }
+  };
+
+  ParseState current_state;
+
+  auto parse_digit = [](auto &value, char ch) {
+    if (ch >= '0' && ch <= '9') {
+      value = value * 10 + ch - '0';
+      return true;
+    } else {
+      return false;
+    }
+  };
+
+  auto parse_char = [parse_digit](ParseState state, char c) -> ParseState {
+    switch (state.state) {
+    case State::Start:
+      if (c == '-') {
+        state.value_sign = -1;
+      } else if (!parse_digit(state.value, c)) {
+        return state.next_state(State::Fail);
+      }
+      return state.next_state(State::IntegerPart);
+    case State::IntegerPart:
+      if (parse_digit(state.value, c)) {
+        return state;
+      } else if (c == '.') {
+        return state.next_state(State::FractionPart);
+      } else if (c == 'e' || c == 'E') {
+        return state.next_state(State::ExponentPart);
+      }
+      return state.next_state(State::Fail);
+    case State::FractionPart:
+      if (parse_digit(state.frac, c)) {
+        state.frac_exp--;
+        return state;
+      } else if (c == 'e' || c == 'E') {
+        return state.next_state(State::ExponentStart);
+      }
+      return state.next_state(State::Fail);
+    case State::ExponentStart:
+      if (c == '-') {
+        state.exp_sign = -1;
+      } else if (!parse_digit(state.exp, c)) {
+        return state.next_state(State::Fail);
+      }
+      return state.next_state(State::ExponentPart);
+    case State::ExponentPart:
+      if (parse_digit(state.exp, c)) { return state; }
+      return state.next_state(State::Fail);
+    case State::Fail:
+      return state;
+    }
+
+    return state.next_state(State::Fail);
+  };
+
+  for (const char current_c : input) { current_state = parse_char(current_state, current_c); }
+
+  return current_state.float_value();
 }
 
 
@@ -611,7 +641,6 @@ template<typename... UserTypes> struct cons_expr
 // * replace function identifiers with function pointers while parsing
 // * "compile" identifiers to be exact indexes into appropriate maps
 // * add cons car cdr
-// * parse / test doubles
 // * reenable constexpr stuff
 // * sort out copying on return of objects when possible
 // * convert constexpr `defined` objects into static string views and static spans

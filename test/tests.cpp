@@ -16,13 +16,14 @@ template<typename Result> Result evaluate_to(std::string_view input)
   return std::get<Result>(std::get<lefticus::cons_expr<>::Atom>(evaluate(input).value));
 }
 
-TEST_CASE("basic float operators", "[operators]") {
+TEST_CASE("basic float operators", "[operators]")
+{
   CHECK(evaluate_to<double>("(+ 1.0 0.1)") == 1.1);
   CHECK(evaluate_to<double>("(+ 0.0 1.0e-1)") == 1.0e-1);
   CHECK(evaluate_to<double>("(+ 0.0 0.1e1)") == 0.1e1);
 }
 
-  TEST_CASE("basic integer operators", "[operators]")
+TEST_CASE("basic integer operators", "[operators]")
 {
   CHECK(evaluate_to<int>("(+ 1 2)") == 3);
   CHECK(evaluate_to<int>("(/ 2 2)") == 1);
@@ -60,7 +61,7 @@ TEST_CASE("basic lambda usage", "[lambdas]")
 TEST_CASE("basic callable usage", "[c++ api]")
 {
   lefticus::cons_expr<> evaluator;
-  auto func = evaluator.make_callable<int (int, int, int)>("+");
+  auto func = evaluator.make_callable<int(int, int, int)>("+");
   CHECK(func(1, 2, 3) == 6);
 
   auto func2 = evaluator.make_callable<int(int)>("(lambda (x) (* x x))");
@@ -70,12 +71,11 @@ TEST_CASE("basic callable usage", "[c++ api]")
 
 TEST_CASE("basic for-each usage", "[builtins]")
 {
-  //CHECK_NOTHROW(evaluate_to<std::monostate>("(for-each display '(1 2 3 4))"));
+  // CHECK_NOTHROW(evaluate_to<std::monostate>("(for-each display '(1 2 3 4))"));
 }
 
 struct UDT
 {
-
 };
 
 template<typename Result> Result evaluate_to_with_UDT(std::string_view input)
