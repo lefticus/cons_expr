@@ -24,6 +24,10 @@ TEST_CASE("basic float operators", "[operators]")
   STATIC_CHECK(evaluate_to<double>("(+ 0.0 0.1e1)") == 0.1e1);
 }
 
+TEST_CASE("basic string_view operators", "[operators]") {
+  STATIC_CHECK(evaluate_to<bool>(R"((== "hello" "hello"))") == true);
+}
+
 TEST_CASE("basic integer operators", "[operators]")
 {
   STATIC_CHECK(evaluate_to<int>("(+ 1 2)") == 3);
@@ -39,6 +43,9 @@ TEST_CASE("basic integer operators", "[operators]")
 
 TEST_CASE("basic integer comparisons", "[operators]")
 {
+  STATIC_CHECK(evaluate_to<bool>("(== 12 12)") == true);
+  STATIC_CHECK(evaluate_to<bool>("(== 12 12 12)") == true);
+
   STATIC_CHECK(evaluate_to<bool>("(< 12 3 1)") == false);
   STATIC_CHECK(evaluate_to<bool>("(> 12 3 1)") == true);
   STATIC_CHECK(evaluate_to<bool>("(>= 12 3 12)") == false);

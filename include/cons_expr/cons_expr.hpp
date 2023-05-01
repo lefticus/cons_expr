@@ -68,35 +68,36 @@ static constexpr auto minus_equal = [](auto &lhs, const auto &rhs) -> auto &
   return lhs -= rhs;
 };
 
-static constexpr auto less_than = [](const auto &lhs, const auto &rhs) -> auto
+static constexpr auto less_than = [](const auto &lhs, const auto &rhs) -> bool
   requires not_bool_or_ptr<decltype(lhs)> && requires { lhs < rhs; }
 {
   return lhs < rhs;
 };
-static constexpr auto greater_than = [](const auto &lhs, const auto &rhs) -> auto
+static constexpr auto greater_than = [](const auto &lhs, const auto &rhs) -> bool
   requires not_bool_or_ptr<decltype(lhs)> && requires { lhs > rhs; }
 {
   return lhs > rhs;
 };
 
-static constexpr auto less_than_equal = [](const auto &lhs, const auto &rhs) -> auto
+static constexpr auto less_than_equal = [](const auto &lhs, const auto &rhs) -> bool
   requires not_bool_or_ptr<decltype(lhs)> && requires { lhs <= rhs; }
 {
   return lhs <= rhs;
 };
-static constexpr auto greater_than_equal = [](const auto &lhs, const auto &rhs) -> auto
+
+static constexpr auto greater_than_equal = [](const auto &lhs, const auto &rhs) -> bool
   requires not_bool_or_ptr<decltype(lhs)> && requires { lhs >= rhs; }
 {
   return lhs >= rhs;
 };
 
-static constexpr auto equal = [](const auto &lhs, const auto &rhs) -> auto
+static constexpr auto equal = [](const auto &lhs, const auto &rhs) -> bool
   requires requires { lhs == rhs; }
 {
   return lhs == rhs;
 };
 
-static constexpr auto not_equal = [](const auto &lhs, const auto &rhs) -> auto
+static constexpr auto not_equal = [](const auto &lhs, const auto &rhs) -> bool
   requires requires { lhs != rhs; }
 {
   return lhs != rhs;
@@ -302,7 +303,7 @@ template<typename... UserTypes> struct cons_expr
     return SExpr{ Atom{ std::monostate{} } };
   }
 
-  using Atom = std::variant<std::monostate, bool, int, double, Identifier, std::string, UserTypes...>;
+  using Atom = std::variant<std::monostate, bool, int, double, std::string_view, Identifier, UserTypes...>;
   using List = std::vector<SExpr>;
 
   std::array<std::pair<std::string_view, SExpr>, 20> built_ins;
@@ -350,7 +351,7 @@ template<typename... UserTypes> struct cons_expr
           // quoted string
           if (!token.parsed.ends_with('"')) { throw std::runtime_error("Unterminated string"); }
           // note that this doesn't remove escaped characters like it should yet
-          retval.push_back(SExpr{ Atom(std::string(token.parsed.substr(1, token.parsed.size() - 2))) });
+          retval.push_back(SExpr{ Atom(token.parsed.substr(1, token.parsed.size() - 2)) });
         } else if (auto [int_did_parse, int_value] = parse_int(token.parsed); int_did_parse) {
           retval.push_back(SExpr{ Atom(int_value) });
         } else if (auto [float_did_parse, float_value] = parse_float<double>(token.parsed); float_did_parse) {
@@ -379,13 +380,13 @@ template<typename... UserTypes> struct cons_expr
     retval[7] = { ">=", SExpr{ binary_boolean_apply_pairwise<greater_than_equal> } };
     retval[8] = { "and", SExpr{ binary_boolean_apply_pairwise<logical_and> } };
     retval[9] = { "or", SExpr{ binary_boolean_apply_pairwise<logical_or> } };
-    retval[11] = { "if", SExpr{ ifer } };
-    retval[12] = { "not", SExpr{ make_evaluator<logical_not>() } };
-    retval[13] = { "==", SExpr{ binary_boolean_apply_pairwise<equal> } };
-    retval[14] = { "!=", SExpr{ binary_boolean_apply_pairwise<not_equal> } };
-    retval[15] = { "for-each", SExpr{ for_each } };
-    retval[16] = { "list", SExpr{ list } };
-    retval[17] = { "lambda", SExpr{ lambda } };
+    retval[10] = { "if", SExpr{ ifer } };
+    retval[11] = { "not", SExpr{ make_evaluator<logical_not>() } };
+    retval[12] = { "==", SExpr{ binary_boolean_apply_pairwise<equal> } };
+    retval[13] = { "!=", SExpr{ binary_boolean_apply_pairwise<not_equal> } };
+    retval[14] = { "for-each", SExpr{ for_each } };
+    retval[15] = { "list", SExpr{ list } };
+    retval[16] = { "lambda", SExpr{ lambda } };
     return retval;
   }
 
@@ -592,10 +593,10 @@ template<typename... UserTypes> struct cons_expr
             second = engine.eval_to<Param>(context, next);
             result = result && Op(first, second);
           }
-          odd = !odd;
+          odd = !odd;               
         }
 
-        return SExpr{ result };
+        return SExpr{ Atom{result} };
       } else {
         throw std::runtime_error("Operator not supported for types");
       }
