@@ -66,6 +66,16 @@ TEST_CASE("basic lambda usage", "[lambdas]")
   STATIC_CHECK(evaluate_to<bool>("((lambda (x) x) true)") == true);
 }
 
+TEST_CASE("simple do expression", "[builtins]")
+{
+  STATIC_CHECK(evaluate_to<int>(R"(
+(do ((i 1 (+ i 1))
+     (sum 0 (+ sum i)))
+    ((> i 10) sum)
+)
+)") == 55);
+}
+
 
 TEST_CASE("basic for-each usage", "[builtins]")
 {

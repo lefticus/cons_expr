@@ -5,6 +5,7 @@
 
 #include <charconv>
 #include <iostream>
+#include <optional>
 #include <span>
 #include <stacktrace>
 #include <string_view>
@@ -279,7 +280,14 @@ template<typename... UserTypes> struct cons_expr
 
   struct Identifier
   {
+    enum struct Map { builtin, global, local };
+    struct Location
+    {
+      Map map;
+      std::size_t index;
+    };
     std::string_view value;
+    mutable std::optional<Location> found;
   };
 
   struct Context
@@ -323,6 +331,11 @@ template<typename... UserTypes> struct cons_expr
   struct SExpr
   {
     std::variant<Atom, List, LiteralList, Lambda, function_ptr> value;
+    constexpr std::span<const SExpr> to_list() const
+    {
+      if (const auto *list = std::get_if<List>(&value); list != nullptr) { return std::span<const SExpr>(*list); }
+      throw std::runtime_error("SExpr is not a list");
+    }
   };
 
   [[nodiscard]] static constexpr std::pair<SExpr, Token> parse(std::string_view input)
@@ -387,6 +400,7 @@ template<typename... UserTypes> struct cons_expr
     retval[14] = { "for-each", SExpr{ for_each } };
     retval[15] = { "list", SExpr{ list } };
     retval[16] = { "lambda", SExpr{ lambda } };
+    retval[17] = { "do", SExpr{ doer } };
     return retval;
   }
 
@@ -455,13 +469,14 @@ template<typename... UserTypes> struct cons_expr
 
   template<auto Func> constexpr void add(std::string_view name)
   {
-    symbols.emplace_back(std::string(name), Atom{ make_evaluator<Func>(Func) });
+    symbols.emplace_back(std::string(name), SExpr{ make_evaluator<Func>(Func) });
   }
 
   template<typename Value> constexpr void add(std::string_view name, Value &&value)
   {
     symbols.emplace_back(std::string{ name }, Atom{ std::forward<Value>(value) });
   }
+
 
   [[nodiscard]] constexpr SExpr eval(Context &context, const SExpr &expr)
   {
@@ -471,16 +486,39 @@ template<typename... UserTypes> struct cons_expr
     } else if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
       // if it's an identifier, we need to be able to find it
       if (const auto *id = std::get_if<Identifier>(atom); id != nullptr) {
-        for (const auto &object : context.objects) {
-          if (object.first == id->value) { return object.second; }
+        if (id->found.has_value()) {
+          switch (const auto &[map, index] = *id->found; map) {
+          case Identifier::Map::global:
+            return symbols[index].second;
+          case Identifier::Map::local:
+            return context.objects[index].second;
+          case Identifier::Map::builtin:
+            return built_ins[index].second;
+          }
         }
 
-        for (const auto &object : symbols) {
-          if (object.first == id->value) { return object.second; }
+        for (std::size_t index = 0; const auto &object : context.objects) {
+          if (object.first == id->value) {
+            id->found = typename Identifier::Location{ Identifier::Map::local, index };
+            return object.second;
+          }
+          ++index;
         }
 
-        for (const auto &object : built_ins) {
-          if (object.first == id->value) { return object.second; }
+        for (std::size_t index = 0; const auto &object : symbols) {
+          if (object.first == id->value) {
+            id->found = typename Identifier::Location{ Identifier::Map::global, index };
+            return object.second;
+          }
+          ++index;
+        }
+
+        for (std::size_t index = 0; const auto &object : built_ins) {
+          if (object.first == id->value) {
+            id->found = typename Identifier::Location{ Identifier::Map::builtin, index };
+            return object.second;
+          }
+          ++index;
         }
 
         throw std::runtime_error("id not found");
@@ -526,6 +564,51 @@ template<typename... UserTypes> struct cons_expr
     }
 
     return SExpr{ Lambda{ context, parameter_names, { std::next(params.begin()), params.end() } } };
+  }
+
+  [[nodiscard]] static constexpr SExpr doer(cons_expr &engine, Context &context, std::span<const SExpr> params)
+  {
+    if (params.size() < 2) { throw std::runtime_error("Wrong number of parameters to do expression"); }
+
+    std::vector<std::pair<std::size_t, SExpr>> variables;
+
+    const auto setup_variable = [&](const auto &expr) {
+      auto elements = expr.to_list();
+      if (elements.size() != 3) { throw std::runtime_error(""); }
+
+      const auto index = context.objects.size();
+      context.objects.emplace_back(
+        engine.eval_to<Identifier>(context, elements[0]).value, engine.eval(context, elements[1]));
+      variables.emplace_back(index, elements[2]);
+    };
+
+    const auto setup_variables = [&](const auto &expr) {
+      auto elements = expr.to_list();
+      for (const auto &variable : elements) { setup_variable(variable); }
+    };
+
+    setup_variables(params[0]);
+
+    const auto terminators = params[1].to_list();
+
+    std::vector<std::pair<std::size_t, SExpr>> new_values;
+
+    // continue while terminator test is false
+    while (!engine.eval_to<bool>(context, terminators[0])) {
+      // evaluate body
+      [[maybe_unused]] const auto result = engine.sequence(context, params.subspan(2));
+
+      // iterate loop variables
+      for (const auto &[index, expr] : variables) { new_values.emplace_back(index, engine.eval(context, expr)); }
+
+      // update values
+      for (auto &&[index, value] : new_values) { context.objects[index].second = std::move(value); }
+
+      new_values.clear();
+    }
+
+    // evaluate sequence of termination expressions
+    return engine.sequence(context, terminators.subspan(1));
   }
 
   [[nodiscard]] static constexpr SExpr ifer(cons_expr &engine, Context &context, std::span<const SExpr> params)
@@ -593,10 +676,10 @@ template<typename... UserTypes> struct cons_expr
             second = engine.eval_to<Param>(context, next);
             result = result && Op(first, second);
           }
-          odd = !odd;               
+          odd = !odd;
         }
 
-        return SExpr{ Atom{result} };
+        return SExpr{ Atom{ result } };
       } else {
         throw std::runtime_error("Operator not supported for types");
       }
