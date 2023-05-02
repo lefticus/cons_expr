@@ -654,7 +654,7 @@ template<typename... UserTypes> struct cons_expr
       }
     };
 
-    if (params.size() < 2) { return std::visit(sum, std::get<Atom>(engine.eval(context, params[0]).value)); }
+    if (params.size() > 1) { return std::visit(sum, std::get<Atom>(engine.eval(context, params[0]).value)); }
 
     throw std::runtime_error("Not enough params");
   }
@@ -685,7 +685,7 @@ template<typename... UserTypes> struct cons_expr
       }
     };
 
-    if (params.size() < 2) { return std::visit(sum, std::get<Atom>(engine.eval(context, params[0]).value)); }
+    if (params.size() > 1) { return std::visit(sum, std::get<Atom>(engine.eval(context, params[0]).value)); }
 
     throw std::runtime_error("Not enough params");
   }
