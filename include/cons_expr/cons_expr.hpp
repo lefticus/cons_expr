@@ -12,7 +12,7 @@
 #include <type_traits>
 #include <variant>
 #include <vector>
-
+#include <functional>
 
 // https://en.wikipedia.org/wiki/Greenspun%27s_tenth_rule
 //
@@ -40,6 +40,21 @@
  originally from: https://xkcd.com/297/  https://xkcd.com/license.html
  */
 
+
+/// Goals
+//
+// * always stay small and hackable. At most 1,000 lines, total, ever.
+// * s-expression based, Scheme-inspired embedded language for C++
+// * constexpr evaluation of script possible
+// * constexpr creation of interpreter possible
+// * small memory footprint, fast
+// * extreme type safety, no implicit conversions
+// * all objects are immutable, copies are preferred over sharing
+// * "impossible" to have memory errors because references don't naturally exist
+// * allow the user to add pointer types if they choose to, for sharing of data
+// between script and C++
+// * C++23 as a minimum
+// * never thread safe
 
 namespace lefticus {
 template<typename T>
@@ -278,6 +293,21 @@ template<typename... UserTypes> struct cons_expr
 {
   struct SExpr;
 
+  struct IndexedString
+  {
+    std::size_t start;
+    std::size_t length;
+    [[nodiscard]] constexpr auto size() const { return length; }
+    [[nodiscard]] constexpr bool operator==(const IndexedString &) const noexcept = default;
+  };
+
+  struct IndexedList
+  {
+    std::size_t start;
+    std::size_t length;
+    [[nodiscard]] constexpr auto size() const { return length; }
+  };
+
   struct Identifier
   {
     enum struct Map { builtin, global, local };
@@ -286,13 +316,13 @@ template<typename... UserTypes> struct cons_expr
       Map map;
       std::size_t index;
     };
-    std::string_view value;
+    IndexedString value;
     mutable std::optional<Location> found;
   };
 
   struct Context
   {
-    std::vector<std::pair<std::string_view, SExpr>> objects;
+    std::vector<std::pair<IndexedString, SExpr>> objects;
   };
 
   using function_ptr = SExpr (*)(cons_expr &, Context &, std::span<const SExpr>);
@@ -301,9 +331,9 @@ template<typename... UserTypes> struct cons_expr
   {
     if (params.size() != 2) { throw std::runtime_error("Wrong number of parameters to for-each expression"); }
 
-    const auto &list = engine.eval_to<LiteralList>(context, params[1]);
+    const auto &list = engine.to_list(engine.eval_to<LiteralList>(context, params[1]).items);
 
-    for (auto itr = list.items.begin(); itr != list.items.end(); ++itr) {
+    for (auto itr = list.begin(); itr != list.end(); ++itr) {
       [[maybe_unused]] const auto result =
         engine.invoke_function(context, params[0], std::span<const SExpr>{ itr, std::next(itr) });
     }
@@ -311,36 +341,100 @@ template<typename... UserTypes> struct cons_expr
     return SExpr{ Atom{ std::monostate{} } };
   }
 
-  using Atom = std::variant<std::monostate, bool, int, double, std::string_view, Identifier, UserTypes...>;
-  using List = std::vector<SExpr>;
+
+  using Atom = std::variant<std::monostate, bool, int, double, IndexedString, Identifier, UserTypes...>;
 
   std::array<std::pair<std::string_view, SExpr>, 20> built_ins;
-  std::vector<std::pair<std::string, SExpr>> symbols;
+  std::vector<std::pair<IndexedString, SExpr>> symbols;
+  std::vector<char> strings;
+  std::vector<SExpr> values;
 
   struct LiteralList
   {
-    std::vector<SExpr> items;
+    IndexedList items;
   };
+
   struct Lambda
   {
-    Context captured_context;
-    std::vector<std::string_view> parameter_names;
-    std::vector<SExpr> statements;
+    IndexedList parameter_names;
+    IndexedList captured_names;
+    IndexedList captured_values;
+    IndexedList statements;
+
+    [[nodiscard]] constexpr SExpr invoke(cons_expr &engine, Context &context, std::span<const SExpr> parameters)
+    {
+      if (parameters.size() != parameter_names.size()) {
+        throw std::runtime_error("Incorrect number of parameters for lambda");
+      }
+
+      const auto captured_names_list = engine.to_list(captured_names);
+      const auto captured_values_list = engine.to_list(captured_values);
+
+      // restore context
+      Context new_context;
+      for (std::size_t index = 0; index < captured_names_list.size(); ++index) {
+        new_context.objects.emplace_back(
+          std::get<Identifier>(std::get<Atom>(captured_names_list[index].value)).value, captured_values_list[index]);
+      }
+
+      const auto parameter_names_list = engine.to_list(parameter_names);
+
+      // set up params
+      // technically I'm evaluating the params lazily while invoking the lambda, not before
+      // does it matter?
+      for (std::size_t index = 0; index < parameter_names_list.size(); ++index) {
+        new_context.objects.emplace_back(std::get<Identifier>(std::get<Atom>(parameter_names_list[index].value)).value,
+          engine.eval(context, parameters[index]));
+      }
+
+
+      return engine.sequence(new_context, engine.to_list(statements));
+    }
   };
+
+  [[nodiscard]] constexpr std::span<const SExpr> to_list(IndexedList indexedlist) const
+  {
+    return std::span<const SExpr>(values).subspan(indexedlist.start, indexedlist.length);
+  }
+
+  [[nodiscard]] constexpr std::string_view to_string_view(IndexedString indexedstring) const {
+    return std::string_view(strings).substr(indexedstring.start, indexedstring.length);
+  }
 
   struct SExpr
   {
-    std::variant<Atom, List, LiteralList, Lambda, function_ptr> value;
-    constexpr std::span<const SExpr> to_list() const
+    std::variant<Atom, IndexedList, LiteralList, Lambda, function_ptr> value;
+    constexpr std::span<const SExpr> to_list(const cons_expr &engine) const
     {
-      if (const auto *list = std::get_if<List>(&value); list != nullptr) { return std::span<const SExpr>(*list); }
+      if (const auto *list = std::get_if<IndexedList>(&value); list != nullptr) { return engine.to_list(*list); }
+
       throw std::runtime_error("SExpr is not a list");
     }
   };
 
-  [[nodiscard]] static constexpr std::pair<SExpr, Token> parse(std::string_view input)
+
+  [[nodiscard]] constexpr IndexedString add_string(std::string_view value)
   {
-    List retval;
+    const auto location = std::search(strings.begin(), strings.end(), value.begin(), value.end());
+      if (location != strings.end()) {
+         return IndexedString{static_cast<std::size_t>(std::distance(strings.begin(), location)), value.size()};
+      } else{
+         strings.insert(strings.end(), value.begin(), value.end());
+         return IndexedString{strings.size() - value.size(), value.size()};
+      }
+  };
+
+  [[nodiscard]] constexpr IndexedList add_list(std::vector<SExpr> items)
+  {
+    const auto start = values.size();
+    values.insert(values.end(), std::make_move_iterator(items.begin()), std::make_move_iterator(items.end()));
+
+    return IndexedList{ start, values.size() - start };
+  };
+
+  [[nodiscard]] constexpr std::pair<SExpr, Token> parse(std::string_view input)
+  {
+    std::vector<SExpr> retval;
 
     auto token = next_token(input);
 
@@ -351,7 +445,7 @@ template<typename... UserTypes> struct cons_expr
         token = remaining;
       } else if (token.parsed == "'(") {
         auto [parsed, remaining] = parse(token.remaining);
-        retval.push_back(SExpr{ LiteralList{ std::get<List>(parsed.value) } });
+        retval.push_back(SExpr{ LiteralList{ std::get<IndexedList>(parsed.value) } });
         token = remaining;
       } else if (token.parsed == ")") {
         break;
@@ -364,20 +458,18 @@ template<typename... UserTypes> struct cons_expr
           // quoted string
           if (!token.parsed.ends_with('"')) { throw std::runtime_error("Unterminated string"); }
           // note that this doesn't remove escaped characters like it should yet
-          retval.push_back(SExpr{ Atom(token.parsed.substr(1, token.parsed.size() - 2)) });
+          retval.push_back(SExpr{ Atom(add_string(token.parsed.substr(1, token.parsed.size() - 2))) });
         } else if (auto [int_did_parse, int_value] = parse_int(token.parsed); int_did_parse) {
           retval.push_back(SExpr{ Atom(int_value) });
         } else if (auto [float_did_parse, float_value] = parse_float<double>(token.parsed); float_did_parse) {
           retval.push_back(SExpr{ Atom(float_value) });
         } else {
-          // to-do, parse float
-          // for now just assume identifier
-          retval.push_back(SExpr{ Atom(Identifier{ token.parsed }) });
+          retval.push_back(SExpr{ Atom(Identifier{ add_string(token.parsed), {} }) });
         }
       }
       token = next_token(token.remaining);
     }
-    return std::pair<SExpr, Token>(SExpr{ retval }, token);
+    return std::pair<SExpr, Token>(SExpr{ add_list(retval) }, token);
   }
 
   [[nodiscard]] static constexpr auto make_built_ins()
@@ -424,14 +516,7 @@ template<typename... UserTypes> struct cons_expr
     SExpr resolved_function = eval(context, function);
 
     if (auto *lambda = std::get_if<Lambda>(&resolved_function.value); lambda != nullptr) {
-      if (parameters.size() != lambda->parameter_names.size()) {
-        throw std::runtime_error("Incorrect number of parameters for lambda");
-      }
-      Context new_context = lambda->captured_context;
-      for (std::size_t index = 0; index < parameters.size(); ++index) {
-        new_context.objects.emplace_back(lambda->parameter_names[index], eval(context, parameters[index]));
-      }
-      return sequence(new_context, lambda->statements);
+      return lambda->invoke(*this, context, parameters);
     } else {
       return get_function(resolved_function)(*this, context, parameters);
     }
@@ -469,20 +554,21 @@ template<typename... UserTypes> struct cons_expr
 
   template<auto Func> constexpr void add(std::string_view name)
   {
-    symbols.emplace_back(std::string(name), SExpr{ make_evaluator<Func>(Func) });
+    symbols.emplace_back(add_string(name), SExpr{ make_evaluator<Func>(Func) });
   }
 
   template<typename Value> constexpr void add(std::string_view name, Value &&value)
   {
-    symbols.emplace_back(std::string{ name }, Atom{ std::forward<Value>(value) });
+    symbols.emplace_back(add_string(name), Atom{ std::forward<Value>(value) });
   }
 
 
   [[nodiscard]] constexpr SExpr eval(Context &context, const SExpr &expr)
   {
-    if (const auto *list = std::get_if<List>(&expr.value); list != nullptr) {
+    if (const auto *indexedlist = std::get_if<IndexedList>(&expr.value); indexedlist != nullptr) {
       // if it's a non-empty list, then I need to evaluate it as a function
-      if (!list->empty()) { return invoke_function(context, (*list)[0], { std::next(list->begin()), list->end() }); }
+      auto list = to_list(*indexedlist);
+      if (!list.empty()) { return invoke_function(context, list[0], { std::next(list.begin()), list.end() }); }
     } else if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
       // if it's an identifier, we need to be able to find it
       if (const auto *id = std::get_if<Identifier>(atom); id != nullptr) {
@@ -514,7 +600,7 @@ template<typename... UserTypes> struct cons_expr
         }
 
         for (std::size_t index = 0; const auto &object : built_ins) {
-          if (object.first == id->value) {
+          if (object.first == to_string_view(id->value)) {
             id->found = typename Identifier::Location{ Identifier::Map::builtin, index };
             return object.second;
           }
@@ -529,7 +615,7 @@ template<typename... UserTypes> struct cons_expr
 
   template<typename Type> [[nodiscard]] constexpr Type eval_to(Context &context, const SExpr &expr)
   {
-    if constexpr (std::is_same_v<Type, LiteralList> || std::is_same_v<Type, List> || std::is_same_v<Type, Lambda>
+    if constexpr (std::is_same_v<Type, LiteralList> || std::is_same_v<Type, IndexedList> || std::is_same_v<Type, Lambda>
                   || std::is_same_v<Type, function_ptr>) {
       if (const auto *obj = std::get_if<Type>(&expr.value); obj != nullptr) { return *obj; }
     } else {
@@ -546,24 +632,28 @@ template<typename... UserTypes> struct cons_expr
 
   [[nodiscard]] static constexpr SExpr list(cons_expr &engine, Context &context, std::span<const SExpr> params)
   {
-    LiteralList result;
+    std::vector<SExpr> result;
 
-    for (const auto &param : params) { result.items.push_back(engine.eval(context, param)); }
+    for (const auto &param : params) { result.push_back(engine.eval(context, param)); }
 
-    return SExpr{ result };
+    return SExpr{ LiteralList{ engine.add_list(result) } };
   }
 
-  [[nodiscard]] static constexpr SExpr lambda(cons_expr &, Context &context, std::span<const SExpr> params)
+  [[nodiscard]] static constexpr SExpr lambda(cons_expr &engine, Context &context, std::span<const SExpr> params)
   {
     if (params.size() < 2) { throw std::runtime_error("Wrong number of parameters to lambda expression"); }
 
-    std::vector<std::string_view> parameter_names;
-
-    for (const auto &name : std::get<List>(params[0].value)) {
-      parameter_names.push_back(std::get<Identifier>(std::get<Atom>(name.value)).value);
+    std::vector<SExpr> context_ids;
+    std::vector<SExpr> context_values;
+    for (const auto &object : context.objects) {
+      context_ids.push_back(SExpr{ Identifier{ object.first, {} } });
+      context_values.push_back(object.second);
     }
 
-    return SExpr{ Lambda{ context, parameter_names, { std::next(params.begin()), params.end() } } };
+    return SExpr{ Lambda{ std::get<IndexedList>(params[0].value),
+      engine.add_list(context_ids),
+      engine.add_list(context_values),
+      { engine.add_list({ std::next(params.begin()), params.end() }) } } };
   }
 
   [[nodiscard]] static constexpr SExpr doer(cons_expr &engine, Context &context, std::span<const SExpr> params)
@@ -573,7 +663,7 @@ template<typename... UserTypes> struct cons_expr
     std::vector<std::pair<std::size_t, SExpr>> variables;
 
     const auto setup_variable = [&](const auto &expr) {
-      auto elements = expr.to_list();
+      auto elements = expr.to_list(engine);
       if (elements.size() != 3) { throw std::runtime_error(""); }
 
       const auto index = context.objects.size();
@@ -583,13 +673,13 @@ template<typename... UserTypes> struct cons_expr
     };
 
     const auto setup_variables = [&](const auto &expr) {
-      auto elements = expr.to_list();
+      auto elements = expr.to_list(engine);
       for (const auto &variable : elements) { setup_variable(variable); }
     };
 
     setup_variables(params[0]);
 
-    const auto terminators = params[1].to_list();
+    const auto terminators = params[1].to_list(engine);
 
     std::vector<std::pair<std::size_t, SExpr>> new_values;
 
@@ -630,11 +720,12 @@ template<typename... UserTypes> struct cons_expr
       // this is fragile, we need to check parsing better
       Context temp_ctx;
 
-      return [callable = eval(temp_ctx, std::get<List>(parse(function).first.value)[0]), this](Params... params) {
-        Context ctx;
-        std::array<SExpr, sizeof...(Params)> args{ SExpr{ Atom{ params } }... };
-        return eval_to<Ret>(ctx, invoke_function(ctx, callable, args));
-      };
+      return
+        [callable = eval(temp_ctx, to_list(std::get<IndexedList>(parse(function).first.value))[0]), this](Params... params) {
+          Context ctx;
+          std::array<SExpr, sizeof...(Params)> args{ SExpr{ Atom{ params } }... };
+          return eval_to<Ret>(ctx, invoke_function(ctx, callable, args));
+        };
     };
 
     return impl(std::add_pointer_t<Signature>{ nullptr });
@@ -692,21 +783,6 @@ template<typename... UserTypes> struct cons_expr
 };
 }// namespace lefticus
 
-/// Goals
-//
-// * always stay small and hackable. At most 1,000 lines, total, ever.
-// Preferably
-//   more like 500 lines
-// * s-expression based, Scheme-inspired embedded language for C++
-// * constexpr evaluation of script possible
-// * constexpr creation of interpreter possible
-// * small memory footprint, fast
-// * extreme type safety, no implicit conversions
-// * all objects are immutable, copies are preferred over sharing
-// * "impossible" to have memory errors because references don't naturally exist
-// * allow the user to add pointer types if they choose to, for sharing of data
-// between script and C++
-// * C++23 as a minimum
 
 /// TODO
 // * add the ability to define / let things

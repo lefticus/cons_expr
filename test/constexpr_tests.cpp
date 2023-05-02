@@ -3,13 +3,14 @@
 
 #include <cons_expr/cons_expr.hpp>
 
+static_assert(std::is_trivially_copyable_v<lefticus::cons_expr<>::SExpr>);
 
 constexpr auto evaluate(std::string_view input)
 {
   lefticus::cons_expr<> evaluator;
   lefticus::cons_expr<>::Context context;
 
-  return evaluator.sequence(context, std::get<lefticus::cons_expr<>::List>(evaluator.parse(input).first.value));
+  return evaluator.sequence(context, evaluator.parse(input).first.to_list(evaluator));
 }
 
 template<typename Result> constexpr Result evaluate_to(std::string_view input)
@@ -64,6 +65,7 @@ TEST_CASE("basic lambda usage", "[lambdas]")
   STATIC_CHECK(evaluate_to<bool>("((lambda () true))") == true);
   STATIC_CHECK(evaluate_to<bool>("((lambda () false))") == false);
   STATIC_CHECK(evaluate_to<bool>("((lambda (x) x) true)") == true);
+  STATIC_CHECK(evaluate_to<int>("((lambda (x) (* x x)) 11)") == 121);
 }
 
 TEST_CASE("simple do expression", "[builtins]")
