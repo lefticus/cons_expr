@@ -654,7 +654,7 @@ template<typename... UserTypes> struct cons_expr
       }
     };
 
-    if (!params.empty()) { return std::visit(sum, std::get<Atom>(engine.eval(context, params[0]).value)); }
+    if (params.size() < 2) { return std::visit(sum, std::get<Atom>(engine.eval(context, params[0]).value)); }
 
     throw std::runtime_error("Not enough params");
   }
@@ -685,7 +685,7 @@ template<typename... UserTypes> struct cons_expr
       }
     };
 
-    if (!params.empty()) { return std::visit(sum, std::get<Atom>(engine.eval(context, params[0]).value)); }
+    if (params.size() < 2) { return std::visit(sum, std::get<Atom>(engine.eval(context, params[0]).value)); }
 
     throw std::runtime_error("Not enough params");
   }
@@ -711,7 +711,6 @@ template<typename... UserTypes> struct cons_expr
 /// TODO
 // * add the ability to define / let things
 // * replace function identifiers with function pointers while parsing
-// * "compile" identifiers to be exact indexes into appropriate maps
 // * add cons car cdr
 // * sort out copying on return of objects when possible
 // * convert constexpr `defined` objects into static string views and static spans
