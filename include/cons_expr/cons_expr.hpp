@@ -4,6 +4,7 @@
 #include <fmt/format.h>
 
 #include <charconv>
+#include <functional>
 #include <iostream>
 #include <optional>
 #include <span>
@@ -12,7 +13,6 @@
 #include <type_traits>
 #include <variant>
 #include <vector>
-#include <functional>
 
 // https://en.wikipedia.org/wiki/Greenspun%27s_tenth_rule
 //
@@ -289,36 +289,45 @@ template<typename T> [[nodiscard]] constexpr std::pair<bool, T> parse_float(std:
   return make_token(input, static_cast<std::size_t>(std::distance(input.begin(), value.begin())));
 }
 
-template<typename... UserTypes> struct cons_expr
+struct IndexedString
+{
+  std::size_t start;
+  std::size_t length;
+  [[nodiscard]] constexpr auto size() const { return length; }
+  [[nodiscard]] constexpr bool operator==(const IndexedString &) const noexcept = default;
+};
+
+struct IndexedList
+{
+  std::size_t start;
+  std::size_t length;
+  [[nodiscard]] constexpr auto size() const { return length; }
+};
+struct LiteralList
+{
+  IndexedList items;
+};
+
+struct Identifier
+{
+  enum struct Map { builtin, global, local };
+  struct Location
+  {
+    Map map;
+    std::size_t index;
+  };
+  IndexedString value;
+  mutable std::optional<Location> found;
+};
+
+template<std::size_t BuiltInSymbolsSize = 32,
+  std::size_t BuiltInStringsSize = 255,
+  std::size_t BuiltInValuesSize = 0,
+  typename... UserTypes>
+struct cons_expr
 {
   struct SExpr;
 
-  struct IndexedString
-  {
-    std::size_t start;
-    std::size_t length;
-    [[nodiscard]] constexpr auto size() const { return length; }
-    [[nodiscard]] constexpr bool operator==(const IndexedString &) const noexcept = default;
-  };
-
-  struct IndexedList
-  {
-    std::size_t start;
-    std::size_t length;
-    [[nodiscard]] constexpr auto size() const { return length; }
-  };
-
-  struct Identifier
-  {
-    enum struct Map { builtin, global, local };
-    struct Location
-    {
-      Map map;
-      std::size_t index;
-    };
-    IndexedString value;
-    mutable std::optional<Location> found;
-  };
 
   struct Context
   {
@@ -341,18 +350,31 @@ template<typename... UserTypes> struct cons_expr
     return SExpr{ Atom{ std::monostate{} } };
   }
 
-
   using Atom = std::variant<std::monostate, bool, int, double, IndexedString, Identifier, UserTypes...>;
 
-  std::array<std::pair<std::string_view, SExpr>, 20> built_ins;
+  struct Lambda;
+
+  struct SExpr
+  {
+    std::variant<Atom, IndexedList, LiteralList, Lambda, function_ptr> value;
+    constexpr std::span<const SExpr> to_list(const cons_expr &engine) const
+    {
+      if (const auto *list = std::get_if<IndexedList>(&value); list != nullptr) { return engine.to_list(*list); }
+
+      throw std::runtime_error("SExpr is not a list");
+    }
+  };
+
+  std::array<std::pair<IndexedString, SExpr>, BuiltInSymbolsSize> builtin_symbols{};
   std::vector<std::pair<IndexedString, SExpr>> symbols;
+  std::size_t builtin_symbols_size = 0;
+  std::array<char, BuiltInStringsSize> builtin_strings{};
+  std::size_t builtin_strings_size = 0;
   std::vector<char> strings;
+  std::array<SExpr, BuiltInValuesSize> builtin_values{};
+  std::size_t builtin_values_size = 0;
   std::vector<SExpr> values;
 
-  struct LiteralList
-  {
-    IndexedList items;
-  };
 
   struct Lambda
   {
@@ -394,34 +416,39 @@ template<typename... UserTypes> struct cons_expr
 
   [[nodiscard]] constexpr std::span<const SExpr> to_list(IndexedList indexedlist) const
   {
-    return std::span<const SExpr>(values).subspan(indexedlist.start, indexedlist.length);
-  }
-
-  [[nodiscard]] constexpr std::string_view to_string_view(IndexedString indexedstring) const {
-    return std::string_view(strings).substr(indexedstring.start, indexedstring.length);
-  }
-
-  struct SExpr
-  {
-    std::variant<Atom, IndexedList, LiteralList, Lambda, function_ptr> value;
-    constexpr std::span<const SExpr> to_list(const cons_expr &engine) const
-    {
-      if (const auto *list = std::get_if<IndexedList>(&value); list != nullptr) { return engine.to_list(*list); }
-
-      throw std::runtime_error("SExpr is not a list");
+    if (indexedlist.start >= BuiltInValuesSize) {
+      return std::span<const SExpr>(values).subspan(indexedlist.start, indexedlist.length);
+    } else {
+      return std::span<const SExpr>(builtin_values).subspan(indexedlist.start, indexedlist.length);
     }
-  };
+  }
+
+  [[nodiscard]] constexpr std::string_view to_string_view(IndexedString indexedstring) const
+  {
+    if (indexedstring.start >= BuiltInValuesSize) {
+      return std::string_view(strings).substr(indexedstring.start, indexedstring.length);
+    } else {
+      return std::string_view(builtin_strings).substr(indexedstring.start, indexedstring.length);
+    }
+  }
+
 
 
   [[nodiscard]] constexpr IndexedString add_string(std::string_view value)
   {
-    const auto location = std::search(strings.begin(), strings.end(), value.begin(), value.end());
-      if (location != strings.end()) {
-         return IndexedString{static_cast<std::size_t>(std::distance(strings.begin(), location)), value.size()};
-      } else{
-         strings.insert(strings.end(), value.begin(), value.end());
-         return IndexedString{strings.size() - value.size(), value.size()};
-      }
+    if (const auto builtin_location =
+          std::search(builtin_strings.begin(), builtin_strings.end(), value.begin(), value.end());
+        builtin_location != builtin_strings.end()) {
+      return IndexedString{ static_cast<std::size_t>(std::distance(builtin_strings.begin(), builtin_location)),
+        value.size() };
+    } else if (const auto location = std::search(strings.begin(), strings.end(), value.begin(), value.end());
+               location != strings.end()) {
+      return IndexedString{ static_cast<std::size_t>(std::distance(strings.begin(), location)) + BuiltInStringsSize,
+        value.size() };
+    } else {
+      strings.insert(strings.end(), value.begin(), value.end());
+      return IndexedString{ strings.size() - value.size() + BuiltInStringsSize, value.size() };
+    }
   };
 
   [[nodiscard]] constexpr IndexedList add_list(std::vector<SExpr> items)
@@ -429,7 +456,7 @@ template<typename... UserTypes> struct cons_expr
     const auto start = values.size();
     values.insert(values.end(), std::make_move_iterator(items.begin()), std::make_move_iterator(items.end()));
 
-    return IndexedList{ start, values.size() - start };
+    return IndexedList{ start + BuiltInValuesSize, values.size() - start };
   };
 
   [[nodiscard]] constexpr std::pair<SExpr, Token> parse(std::string_view input)
@@ -472,31 +499,51 @@ template<typename... UserTypes> struct cons_expr
     return std::pair<SExpr, Token>(SExpr{ add_list(retval) }, token);
   }
 
-  [[nodiscard]] static constexpr auto make_built_ins()
+  consteval IndexedString add_builtin(std::string_view value)
   {
-    decltype(built_ins) retval;
-    retval[0] = { "+", SExpr{ binary_left_fold<plus_equal> } };
-    retval[1] = { "*", SExpr{ binary_left_fold<multiply_equal> } };
-    retval[2] = { "-", SExpr{ binary_left_fold<minus_equal> } };
-    retval[3] = { "/", SExpr{ binary_left_fold<division_equal> } };
-    retval[4] = { "<", SExpr{ binary_boolean_apply_pairwise<less_than> } };
-    retval[5] = { ">", SExpr{ binary_boolean_apply_pairwise<greater_than> } };
-    retval[6] = { "<=", SExpr{ binary_boolean_apply_pairwise<less_than_equal> } };
-    retval[7] = { ">=", SExpr{ binary_boolean_apply_pairwise<greater_than_equal> } };
-    retval[8] = { "and", SExpr{ binary_boolean_apply_pairwise<logical_and> } };
-    retval[9] = { "or", SExpr{ binary_boolean_apply_pairwise<logical_or> } };
-    retval[10] = { "if", SExpr{ ifer } };
-    retval[11] = { "not", SExpr{ make_evaluator<logical_not>() } };
-    retval[12] = { "==", SExpr{ binary_boolean_apply_pairwise<equal> } };
-    retval[13] = { "!=", SExpr{ binary_boolean_apply_pairwise<not_equal> } };
-    retval[14] = { "for-each", SExpr{ for_each } };
-    retval[15] = { "list", SExpr{ list } };
-    retval[16] = { "lambda", SExpr{ lambda } };
-    retval[17] = { "do", SExpr{ doer } };
-    return retval;
+    const auto end = std::next(builtin_strings.begin(), static_cast<std::ptrdiff_t>(builtin_strings_size));
+    const auto location = std::search(builtin_strings.begin(),
+      end,
+      value.begin(),
+      value.end());
+    if (location != end) {
+      return IndexedString{ static_cast<std::size_t>(std::distance(builtin_strings.begin(), location)), value.size() };
+    } else {
+      std::copy(
+        value.begin(), value.end(), std::next(builtin_strings.begin(), static_cast<std::ptrdiff_t>(builtin_strings_size)));
+      const auto start = builtin_strings_size;
+      builtin_strings_size += value.size();
+      return IndexedString{ start, value.size() };
+    }
   }
 
-  consteval cons_expr() : built_ins(make_built_ins()) {}
+  consteval void add_builtin(std::string_view name, SExpr value)
+  {
+    builtin_symbols[builtin_symbols_size] = std::pair{ add_builtin(name), value };
+    ++builtin_symbols_size;
+  }
+
+  consteval cons_expr()
+  {
+    add_builtin("+", SExpr{ binary_left_fold<plus_equal> });
+    add_builtin("*", SExpr{ binary_left_fold<multiply_equal> });
+    add_builtin("-", SExpr{ binary_left_fold<minus_equal> });
+    add_builtin("/", SExpr{ binary_left_fold<division_equal> });
+    add_builtin("<", SExpr{ binary_boolean_apply_pairwise<less_than> });
+    add_builtin(">", SExpr{ binary_boolean_apply_pairwise<greater_than> });
+    add_builtin("<=", SExpr{ binary_boolean_apply_pairwise<less_than_equal> });
+    add_builtin(">=", SExpr{ binary_boolean_apply_pairwise<greater_than_equal> });
+    add_builtin("and", SExpr{ binary_boolean_apply_pairwise<logical_and> });
+    add_builtin("or", SExpr{ binary_boolean_apply_pairwise<logical_or> });
+    add_builtin("if", SExpr{ ifer });
+    add_builtin("not", SExpr{ make_evaluator<logical_not>() });
+    add_builtin("==", SExpr{ binary_boolean_apply_pairwise<equal> });
+    add_builtin("!=", SExpr{ binary_boolean_apply_pairwise<not_equal> });
+    add_builtin("for-each", SExpr{ for_each });
+    add_builtin("list", SExpr{ list });
+    add_builtin("lambda", SExpr{ lambda });
+    add_builtin("do", SExpr{ doer });
+  }
 
   [[nodiscard]] constexpr SExpr sequence(Context &context, std::span<const SExpr> statements)
   {
@@ -559,7 +606,7 @@ template<typename... UserTypes> struct cons_expr
 
   template<typename Value> constexpr void add(std::string_view name, Value &&value)
   {
-    symbols.emplace_back(add_string(name), Atom{ std::forward<Value>(value) });
+    symbols.emplace_back(add_string(name), SExpr{ Atom{ std::forward<Value>(value) } });
   }
 
 
@@ -579,7 +626,7 @@ template<typename... UserTypes> struct cons_expr
           case Identifier::Map::local:
             return context.objects[index].second;
           case Identifier::Map::builtin:
-            return built_ins[index].second;
+            return builtin_symbols[index].second;
           }
         }
 
@@ -599,8 +646,8 @@ template<typename... UserTypes> struct cons_expr
           ++index;
         }
 
-        for (std::size_t index = 0; const auto &object : built_ins) {
-          if (object.first == to_string_view(id->value)) {
+        for (std::size_t index = 0; const auto &object : builtin_symbols) {
+          if (object.first == id->value) {
             id->found = typename Identifier::Location{ Identifier::Map::builtin, index };
             return object.second;
           }
@@ -720,12 +767,12 @@ template<typename... UserTypes> struct cons_expr
       // this is fragile, we need to check parsing better
       Context temp_ctx;
 
-      return
-        [callable = eval(temp_ctx, to_list(std::get<IndexedList>(parse(function).first.value))[0]), this](Params... params) {
-          Context ctx;
-          std::array<SExpr, sizeof...(Params)> args{ SExpr{ Atom{ params } }... };
-          return eval_to<Ret>(ctx, invoke_function(ctx, callable, args));
-        };
+      return [callable = eval(temp_ctx, to_list(std::get<IndexedList>(parse(function).first.value))[0]), this](
+               Params... params) {
+        Context ctx;
+        std::array<SExpr, sizeof...(Params)> args{ SExpr{ Atom{ params } }... };
+        return eval_to<Ret>(ctx, invoke_function(ctx, callable, args));
+      };
     };
 
     return impl(std::add_pointer_t<Signature>{ nullptr });
@@ -781,15 +828,18 @@ template<typename... UserTypes> struct cons_expr
     throw std::runtime_error("Not enough params");
   }
 };
+
+
 }// namespace lefticus
 
 
 /// TODO
 // * add the ability to define / let things
 // * replace function identifiers with function pointers while parsing
-// * add cons car cdr
+// * add cons car cdr eval apply
 // * sort out copying on return of objects when possible
 // * convert constexpr `defined` objects into static string views and static spans
-// * remove exceptions I guess
+// * remove exceptions I guess?
+// * fix short circuiting
 
 #endif

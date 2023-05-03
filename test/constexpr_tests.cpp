@@ -5,6 +5,15 @@
 
 static_assert(std::is_trivially_copyable_v<lefticus::cons_expr<>::SExpr>);
 
+constexpr auto build_cons_expr()
+{
+  lefticus::cons_expr<> result;
+  result.add("x", 42);
+  return result;
+}
+
+
+
 constexpr auto evaluate(std::string_view input)
 {
   lefticus::cons_expr<> evaluator;
@@ -24,6 +33,7 @@ TEST_CASE("basic float operators", "[operators]")
   STATIC_CHECK(evaluate_to<double>("(+ 0.0 1.0e-1)") == 1.0e-1);
   STATIC_CHECK(evaluate_to<double>("(+ 0.0 0.1e1)") == 0.1e1);
 }
+
 
 TEST_CASE("basic string_view operators", "[operators]") {
   STATIC_CHECK(evaluate_to<bool>(R"((== "hello" "hello"))") == true);
