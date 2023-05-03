@@ -56,6 +56,73 @@
 // * C++23 as a minimum
 // * never thread safe
 
+
+template<typename Contained, std::size_t SmallSize, typename KeyType, typename SpanType = std::span<const Contained>>
+struct SmallOptimizedVector
+{
+  std::array<Contained, SmallSize> small;
+  std::size_t small_size_used = 0;
+  std::vector<Contained> rest;
+
+  [[nodiscard]] constexpr const Contained &operator[](std::size_t index) const
+  {
+    if (index < SmallSize) {
+      return small[index];
+    } else {
+      return rest[index - SmallSize];
+    }
+  }
+
+  [[nodiscard]] constexpr SpanType operator[](KeyType range) const
+  {
+    if (range.start > SmallSize) {
+      return std::span<const Contained>(rest).subspan(range.start - SmallSize, range.size);
+    } else {
+      return std::span<const Contained>(small).subspan(range.start, range.size);
+    }
+  }
+
+  template<typename ... Param >
+  constexpr auto emplace_back(Param  && ...  param) {
+    return insert(Contained{std::forward<Param>(param) ...});
+  }
+
+  constexpr std::size_t insert(Contained obj, bool force_rest = false)
+  {
+    if (force_rest || small_size_used == SmallSize) {
+      rest.push_back(std::move(obj));
+      return (rest.size() - 1) + SmallSize;
+    } else {
+      small[small_size_used] = std::move(obj);
+      return small_size_used++;
+    }
+  }
+
+  constexpr auto small_end() const { return std::next(small.begin(), static_cast<std::ptrdiff_t>(small_size_used)); }
+  constexpr auto small_end()  { return std::next(small.begin(), static_cast<std::ptrdiff_t>(small_size_used)); }
+
+  constexpr KeyType insert_or_find(SpanType values)
+  {
+    if (const auto small_found = std::search(small.begin(), small_end(), values.begin(), values.end());
+        small_found != small_end()) {
+      return KeyType{ static_cast<std::size_t>(std::distance(small.begin(), small_found)), values.size() };
+    } else if (const auto rest_found = std::search(rest.begin(), rest.end(), values.begin(), values.end());
+               rest_found != rest.end()) {
+      return KeyType{ static_cast<std::size_t>(std::distance(rest.begin(), rest_found)) + SmallSize, values.size() };
+    } else {
+      return insert(values);
+    }
+  }
+
+  constexpr KeyType insert(SpanType values)
+  {
+    const bool force_rest = (values.size() + small_size_used) > SmallSize;
+    std::size_t last = 0;
+    for (const auto &value : values) { last = insert(value, force_rest); }
+    return KeyType{ last - values.size() + 1, values.size() };
+  }
+};
+
 namespace lefticus {
 template<typename T>
 concept not_bool_or_ptr = !std::same_as<std::remove_cvref_t<T>, bool> && !std::is_pointer_v<std::remove_cvref_t<T>>;
@@ -292,16 +359,14 @@ template<typename T> [[nodiscard]] constexpr std::pair<bool, T> parse_float(std:
 struct IndexedString
 {
   std::size_t start;
-  std::size_t length;
-  [[nodiscard]] constexpr auto size() const { return length; }
+  std::size_t size;
   [[nodiscard]] constexpr bool operator==(const IndexedString &) const noexcept = default;
 };
 
 struct IndexedList
 {
   std::size_t start;
-  std::size_t length;
-  [[nodiscard]] constexpr auto size() const { return length; }
+  std::size_t size;
 };
 struct LiteralList
 {
@@ -310,7 +375,7 @@ struct LiteralList
 
 struct Identifier
 {
-  enum struct Map { builtin, global, local };
+  enum struct Map { global, local };
   struct Location
   {
     Map map;
@@ -322,7 +387,7 @@ struct Identifier
 
 template<std::size_t BuiltInSymbolsSize = 32,
   std::size_t BuiltInStringsSize = 255,
-  std::size_t BuiltInValuesSize = 0,
+  std::size_t BuiltInValuesSize = 32,
   typename... UserTypes>
 struct cons_expr
 {
@@ -340,7 +405,7 @@ struct cons_expr
   {
     if (params.size() != 2) { throw std::runtime_error("Wrong number of parameters to for-each expression"); }
 
-    const auto &list = engine.to_list(engine.eval_to<LiteralList>(context, params[1]).items);
+    const auto &list = engine.values[engine.eval_to<LiteralList>(context, params[1]).items];
 
     for (auto itr = list.begin(); itr != list.end(); ++itr) {
       [[maybe_unused]] const auto result =
@@ -359,22 +424,15 @@ struct cons_expr
     std::variant<Atom, IndexedList, LiteralList, Lambda, function_ptr> value;
     constexpr std::span<const SExpr> to_list(const cons_expr &engine) const
     {
-      if (const auto *list = std::get_if<IndexedList>(&value); list != nullptr) { return engine.to_list(*list); }
+      if (const auto *list = std::get_if<IndexedList>(&value); list != nullptr) { return engine.values[*list]; }
 
       throw std::runtime_error("SExpr is not a list");
     }
   };
 
-  std::array<std::pair<IndexedString, SExpr>, BuiltInSymbolsSize> builtin_symbols{};
-  std::vector<std::pair<IndexedString, SExpr>> symbols;
-  std::size_t builtin_symbols_size = 0;
-  std::array<char, BuiltInStringsSize> builtin_strings{};
-  std::size_t builtin_strings_size = 0;
-  std::vector<char> strings;
-  std::array<SExpr, BuiltInValuesSize> builtin_values{};
-  std::size_t builtin_values_size = 0;
-  std::vector<SExpr> values;
-
+  SmallOptimizedVector<std::pair<IndexedString, SExpr>, BuiltInSymbolsSize, IndexedList> symbols{};
+  SmallOptimizedVector<char, BuiltInStringsSize, IndexedString, std::string_view> strings{};
+  SmallOptimizedVector<SExpr, BuiltInValuesSize, IndexedList> values{};
 
   struct Lambda
   {
@@ -385,12 +443,12 @@ struct cons_expr
 
     [[nodiscard]] constexpr SExpr invoke(cons_expr &engine, Context &context, std::span<const SExpr> parameters)
     {
-      if (parameters.size() != parameter_names.size()) {
+      if (parameters.size() != parameter_names.size) {
         throw std::runtime_error("Incorrect number of parameters for lambda");
       }
 
-      const auto captured_names_list = engine.to_list(captured_names);
-      const auto captured_values_list = engine.to_list(captured_values);
+      const auto captured_names_list = engine.values[captured_names];
+      const auto captured_values_list = engine.values[captured_values];
 
       // restore context
       Context new_context;
@@ -399,7 +457,7 @@ struct cons_expr
           std::get<Identifier>(std::get<Atom>(captured_names_list[index].value)).value, captured_values_list[index]);
       }
 
-      const auto parameter_names_list = engine.to_list(parameter_names);
+      const auto parameter_names_list = engine.values[parameter_names];
 
       // set up params
       // technically I'm evaluating the params lazily while invoking the lambda, not before
@@ -409,55 +467,10 @@ struct cons_expr
           engine.eval(context, parameters[index]));
       }
 
-
-      return engine.sequence(new_context, engine.to_list(statements));
+      return engine.sequence(new_context, engine.values[statements]);
     }
   };
 
-  [[nodiscard]] constexpr std::span<const SExpr> to_list(IndexedList indexedlist) const
-  {
-    if (indexedlist.start >= BuiltInValuesSize) {
-      return std::span<const SExpr>(values).subspan(indexedlist.start, indexedlist.length);
-    } else {
-      return std::span<const SExpr>(builtin_values).subspan(indexedlist.start, indexedlist.length);
-    }
-  }
-
-  [[nodiscard]] constexpr std::string_view to_string_view(IndexedString indexedstring) const
-  {
-    if (indexedstring.start >= BuiltInValuesSize) {
-      return std::string_view(strings).substr(indexedstring.start, indexedstring.length);
-    } else {
-      return std::string_view(builtin_strings).substr(indexedstring.start, indexedstring.length);
-    }
-  }
-
-
-
-  [[nodiscard]] constexpr IndexedString add_string(std::string_view value)
-  {
-    if (const auto builtin_location =
-          std::search(builtin_strings.begin(), builtin_strings.end(), value.begin(), value.end());
-        builtin_location != builtin_strings.end()) {
-      return IndexedString{ static_cast<std::size_t>(std::distance(builtin_strings.begin(), builtin_location)),
-        value.size() };
-    } else if (const auto location = std::search(strings.begin(), strings.end(), value.begin(), value.end());
-               location != strings.end()) {
-      return IndexedString{ static_cast<std::size_t>(std::distance(strings.begin(), location)) + BuiltInStringsSize,
-        value.size() };
-    } else {
-      strings.insert(strings.end(), value.begin(), value.end());
-      return IndexedString{ strings.size() - value.size() + BuiltInStringsSize, value.size() };
-    }
-  };
-
-  [[nodiscard]] constexpr IndexedList add_list(std::vector<SExpr> items)
-  {
-    const auto start = values.size();
-    values.insert(values.end(), std::make_move_iterator(items.begin()), std::make_move_iterator(items.end()));
-
-    return IndexedList{ start + BuiltInValuesSize, values.size() - start };
-  };
 
   [[nodiscard]] constexpr std::pair<SExpr, Token> parse(std::string_view input)
   {
@@ -485,64 +498,41 @@ struct cons_expr
           // quoted string
           if (!token.parsed.ends_with('"')) { throw std::runtime_error("Unterminated string"); }
           // note that this doesn't remove escaped characters like it should yet
-          retval.push_back(SExpr{ Atom(add_string(token.parsed.substr(1, token.parsed.size() - 2))) });
+          retval.push_back(SExpr{ Atom(strings.insert_or_find(token.parsed.substr(1, token.parsed.size() - 2))) });
         } else if (auto [int_did_parse, int_value] = parse_int(token.parsed); int_did_parse) {
           retval.push_back(SExpr{ Atom(int_value) });
         } else if (auto [float_did_parse, float_value] = parse_float<double>(token.parsed); float_did_parse) {
           retval.push_back(SExpr{ Atom(float_value) });
         } else {
-          retval.push_back(SExpr{ Atom(Identifier{ add_string(token.parsed), {} }) });
+          retval.push_back(SExpr{ Atom(Identifier{ strings.insert_or_find(token.parsed), {} }) });
         }
       }
       token = next_token(token.remaining);
     }
-    return std::pair<SExpr, Token>(SExpr{ add_list(retval) }, token);
+    return std::pair<SExpr, Token>(SExpr{ values.insert(retval) }, token);
   }
 
-  consteval IndexedString add_builtin(std::string_view value)
-  {
-    const auto end = std::next(builtin_strings.begin(), static_cast<std::ptrdiff_t>(builtin_strings_size));
-    const auto location = std::search(builtin_strings.begin(),
-      end,
-      value.begin(),
-      value.end());
-    if (location != end) {
-      return IndexedString{ static_cast<std::size_t>(std::distance(builtin_strings.begin(), location)), value.size() };
-    } else {
-      std::copy(
-        value.begin(), value.end(), std::next(builtin_strings.begin(), static_cast<std::ptrdiff_t>(builtin_strings_size)));
-      const auto start = builtin_strings_size;
-      builtin_strings_size += value.size();
-      return IndexedString{ start, value.size() };
-    }
-  }
-
-  consteval void add_builtin(std::string_view name, SExpr value)
-  {
-    builtin_symbols[builtin_symbols_size] = std::pair{ add_builtin(name), value };
-    ++builtin_symbols_size;
-  }
 
   consteval cons_expr()
   {
-    add_builtin("+", SExpr{ binary_left_fold<plus_equal> });
-    add_builtin("*", SExpr{ binary_left_fold<multiply_equal> });
-    add_builtin("-", SExpr{ binary_left_fold<minus_equal> });
-    add_builtin("/", SExpr{ binary_left_fold<division_equal> });
-    add_builtin("<", SExpr{ binary_boolean_apply_pairwise<less_than> });
-    add_builtin(">", SExpr{ binary_boolean_apply_pairwise<greater_than> });
-    add_builtin("<=", SExpr{ binary_boolean_apply_pairwise<less_than_equal> });
-    add_builtin(">=", SExpr{ binary_boolean_apply_pairwise<greater_than_equal> });
-    add_builtin("and", SExpr{ binary_boolean_apply_pairwise<logical_and> });
-    add_builtin("or", SExpr{ binary_boolean_apply_pairwise<logical_or> });
-    add_builtin("if", SExpr{ ifer });
-    add_builtin("not", SExpr{ make_evaluator<logical_not>() });
-    add_builtin("==", SExpr{ binary_boolean_apply_pairwise<equal> });
-    add_builtin("!=", SExpr{ binary_boolean_apply_pairwise<not_equal> });
-    add_builtin("for-each", SExpr{ for_each });
-    add_builtin("list", SExpr{ list });
-    add_builtin("lambda", SExpr{ lambda });
-    add_builtin("do", SExpr{ doer });
+    add("+", SExpr{ binary_left_fold<plus_equal> });
+    add("*", SExpr{ binary_left_fold<multiply_equal> });
+    add("-", SExpr{ binary_left_fold<minus_equal> });
+    add("/", SExpr{ binary_left_fold<division_equal> });
+    add("<", SExpr{ binary_boolean_apply_pairwise<less_than> });
+    add(">", SExpr{ binary_boolean_apply_pairwise<greater_than> });
+    add("<=", SExpr{ binary_boolean_apply_pairwise<less_than_equal> });
+    add(">=", SExpr{ binary_boolean_apply_pairwise<greater_than_equal> });
+    add("and", SExpr{ binary_boolean_apply_pairwise<logical_and> });
+    add("or", SExpr{ binary_boolean_apply_pairwise<logical_or> });
+    add("if", SExpr{ ifer });
+    add("not", SExpr{ make_evaluator<logical_not>() });
+    add("==", SExpr{ binary_boolean_apply_pairwise<equal> });
+    add("!=", SExpr{ binary_boolean_apply_pairwise<not_equal> });
+    add("for-each", SExpr{ for_each });
+    add("list", SExpr{ list });
+    add("lambda", SExpr{ lambda });
+    add("do", SExpr{ doer });
   }
 
   [[nodiscard]] constexpr SExpr sequence(Context &context, std::span<const SExpr> statements)
@@ -601,12 +591,18 @@ struct cons_expr
 
   template<auto Func> constexpr void add(std::string_view name)
   {
-    symbols.emplace_back(add_string(name), SExpr{ make_evaluator<Func>(Func) });
+    symbols.emplace_back(strings.insert_or_find(name), SExpr{ make_evaluator<Func>(Func) });
+  }
+
+  constexpr void add(std::string_view name, SExpr value)
+  {
+    symbols.insert(
+      std::pair<IndexedString, SExpr>(strings.insert_or_find(name), std::move(value))  );
   }
 
   template<typename Value> constexpr void add(std::string_view name, Value &&value)
   {
-    symbols.emplace_back(add_string(name), SExpr{ Atom{ std::forward<Value>(value) } });
+    symbols.insert(std::pair<IndexedString, SExpr>(strings.insert_or_find(name), SExpr{ Atom{ std::forward<Value>(value) } }));
   }
 
 
@@ -614,7 +610,7 @@ struct cons_expr
   {
     if (const auto *indexedlist = std::get_if<IndexedList>(&expr.value); indexedlist != nullptr) {
       // if it's a non-empty list, then I need to evaluate it as a function
-      auto list = to_list(*indexedlist);
+      auto list = values[*indexedlist];
       if (!list.empty()) { return invoke_function(context, list[0], { std::next(list.begin()), list.end() }); }
     } else if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
       // if it's an identifier, we need to be able to find it
@@ -625,8 +621,6 @@ struct cons_expr
             return symbols[index].second;
           case Identifier::Map::local:
             return context.objects[index].second;
-          case Identifier::Map::builtin:
-            return builtin_symbols[index].second;
           }
         }
 
@@ -638,17 +632,17 @@ struct cons_expr
           ++index;
         }
 
-        for (std::size_t index = 0; const auto &object : symbols) {
+        for (std::size_t index = 0; const auto &object : symbols.small ) {
           if (object.first == id->value) {
             id->found = typename Identifier::Location{ Identifier::Map::global, index };
             return object.second;
           }
           ++index;
         }
-
-        for (std::size_t index = 0; const auto &object : builtin_symbols) {
+        // add a lookup function for this?
+        for (std::size_t index = 0; const auto &object : symbols.rest) {
           if (object.first == id->value) {
-            id->found = typename Identifier::Location{ Identifier::Map::builtin, index };
+            id->found = typename Identifier::Location{ Identifier::Map::global, index + BuiltInSymbolsSize };
             return object.second;
           }
           ++index;
@@ -683,7 +677,7 @@ struct cons_expr
 
     for (const auto &param : params) { result.push_back(engine.eval(context, param)); }
 
-    return SExpr{ LiteralList{ engine.add_list(result) } };
+    return SExpr{ LiteralList{ engine.values.insert(result) } };
   }
 
   [[nodiscard]] static constexpr SExpr lambda(cons_expr &engine, Context &context, std::span<const SExpr> params)
@@ -698,9 +692,9 @@ struct cons_expr
     }
 
     return SExpr{ Lambda{ std::get<IndexedList>(params[0].value),
-      engine.add_list(context_ids),
-      engine.add_list(context_values),
-      { engine.add_list({ std::next(params.begin()), params.end() }) } } };
+      engine.values.insert(context_ids),
+      engine.values.insert(context_values),
+      { engine.values.insert({ std::next(params.begin()), params.end() }) } } };
   }
 
   [[nodiscard]] static constexpr SExpr doer(cons_expr &engine, Context &context, std::span<const SExpr> params)
@@ -767,7 +761,7 @@ struct cons_expr
       // this is fragile, we need to check parsing better
       Context temp_ctx;
 
-      return [callable = eval(temp_ctx, to_list(std::get<IndexedList>(parse(function).first.value))[0]), this](
+      return [callable = eval(temp_ctx, values[std::get<IndexedList>(parse(function).first.value)][0]), this](
                Params... params) {
         Context ctx;
         std::array<SExpr, sizeof...(Params)> args{ SExpr{ Atom{ params } }... };

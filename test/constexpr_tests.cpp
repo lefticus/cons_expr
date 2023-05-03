@@ -5,7 +5,7 @@
 
 static_assert(std::is_trivially_copyable_v<lefticus::cons_expr<>::SExpr>);
 
-constexpr auto build_cons_expr()
+consteval auto build_cons_expr()
 {
   lefticus::cons_expr<> result;
   result.add("x", 42);
@@ -25,6 +25,11 @@ constexpr auto evaluate(std::string_view input)
 template<typename Result> constexpr Result evaluate_to(std::string_view input)
 {
   return std::get<Result>(std::get<lefticus::cons_expr<>::Atom>(evaluate(input).value));
+}
+
+TEST_CASE("test constexpr construction") {
+  auto eval = build_cons_expr();
+  CHECK(evaluate_to<int>("x") == 42);
 }
 
 TEST_CASE("basic float operators", "[operators]")
