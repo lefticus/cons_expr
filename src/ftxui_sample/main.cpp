@@ -28,9 +28,7 @@ std::string to_string(const lefticus::cons_expr<> &, bool annotate, const leftic
 
 std::string to_string([[maybe_unused]] const lefticus::cons_expr<> &, bool, const lefticus::cons_expr<>::Lambda &lambda)
 {
-  return std::format("[lambda captures {{{}, {}}} parameters {{{}, {}}} statements {{{}, {}}}]",
-    lambda.captured_values.start,
-    lambda.captured_values.size,
+  return std::format("[lambda parameters {{{}, {}}} statements {{{}, {}}}]",
     lambda.parameter_names.start,
     lambda.parameter_names.size,
     lambda.statements.start,
@@ -144,6 +142,12 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
     std::size_t index = 0;
     for (auto itr = evaluator.values.small.begin(); itr != evaluator.values.small_end(); ++itr) {
       entries.push_back(std::format("{}: {}", index, to_string(evaluator, true, *itr)));
+      ++index;
+    }
+
+    index = evaluator.values.small_capacity;
+    for (const auto &value : evaluator.values.rest) {
+      entries.push_back(std::format("{}: {}", index, to_string(evaluator, true, value)));
       ++index;
     }
 

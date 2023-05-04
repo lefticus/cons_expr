@@ -1,14 +1,11 @@
 #ifndef CONS_EXPR_HPP
 #define CONS_EXPR_HPP
 
-#include <fmt/format.h>
-
 #include <charconv>
 #include <functional>
-#include <iostream>
-#include <optional>
 #include <span>
 #include <stacktrace>
+#include <stdexcept>
 #include <string_view>
 #include <type_traits>
 #include <variant>
@@ -19,40 +16,36 @@
 // Any sufficiently complicated C or Fortran program contains an ad hoc,
 // informally-specified, bug-ridden, slow implementation of half of Common Lisp.
 
-/*
-┌─────────────────────────┐┌─────────────────────────┐┌──────────────────────────┐
-│ LISP is over half a     ││ I wonder if the cycles  ││   /  These are your    \ │
-│ century old and it      ││ will continue forever.  ││   |father's parentheses| │
-│ still has this perfect  ││\________________  _____/││  / ____________________/ │
-│ timeless air about it.  ││              /-\|/      ││  |/                      │
-│\_______________  ______/││              | |        ││ /-\ ((()            /-\  │
-│                \|       ││              \-/        ││ | | ((()            | |  │
-│  ╔══            /-\     ││          \   /|         ││ \-/ ((()            \-/  │
-│  ║ |            | |     ││          |\ / |         ││  |---- )            /|\  │
-│  ║-/       \    \-/     ││       ------  |         ││  |    (            / | \ │
-│  /|\       |\   /|      ││ ________________|\____  ││  |         _______   |   │
-│  || \   ------ - |*     ││/                       \││ / \       /elegant\ / \  │
-│   |      |   |/--|*     ││ A few coders from each  ││/   \      |weapons|/   \ │
-│  / \     |   ||****     ││ new generation will re- ││ _____|\___\       /______│
-│ /   \    |   ||*  *     ││ discover the LISP arts. ││for a more...civilized age│
-└─────────────────────────┘└─────────────────────────┘└──────────────────────────┘
-
- originally from: https://xkcd.com/297/  https://xkcd.com/license.html
- */
+// ┌─────────────────────────┐┌─────────────────────────┐┌──────────────────────────┐
+// │ LISP is over half a     ││ I wonder if the cycles  ││   /  These are your    \ │
+// │ century old and it      ││ will continue forever.  ││   |father's parentheses| │
+// │ still has this perfect  ││\________________  _____/││  / ____________________/ │
+// │ timeless air about it.  ││              /-\|/      ││  |/                      │
+// │\_______________  ______/││              | |        ││ /-\ ((()            /-\  │
+// │                \|       ││              \-/        ││ | | ((()            | |  │
+// │  ╔══            /-\     ││          \   /|         ││ \-/ ((()            \-/  │
+// │  ║ |            | |     ││          |\ / |         ││  |---- )            /|\  │
+// │  ║-/       \    \-/     ││       ------  |         ││  |    (            / | \ │
+// │  /|\       |\   /|      ││ ________________|\____  ││  |         _______   |   │
+// │  || \   ------ - |*     ││/                       \││ / \       /elegant\ / \  │
+// │   |      |   |/--|*     ││ A few coders from each  ││/   \      |weapons|/   \ │
+// │  / \     |   ||****     ││ new generation will re- ││ _____|\___\       /______│
+// │ /   \    |   ||*  *     ││ discover the LISP arts. ││for a more...civilized age│
+// └─────────────────────────┘└─────────────────────────┘└──────────────────────────┘
+//  originally from: https://xkcd.com/297/  https://xkcd.com/license.html
 
 
 /// Goals
 //
-// * always stay small and hackable. At most 1,000 lines, total, ever.
+// * always stay small and hackable. At most 1,000 lines, total, ever, with comments
 // * s-expression based, Scheme-inspired embedded language for C++
 // * constexpr evaluation of script possible
 // * constexpr creation of interpreter possible
 // * small memory footprint, fast
 // * extreme type safety, no implicit conversions
 // * all objects are immutable, copies are preferred over sharing
-// * "impossible" to have memory errors because references don't naturally exist
 // * allow the user to add pointer types if they choose to, for sharing of data
-// between script and C++
+//   between script and C++
 // * C++23 as a minimum
 // * never thread safe
 
@@ -65,6 +58,7 @@ struct SmallOptimizedVector
   std::array<Contained, SmallSize> small;
   std::size_t small_size_used = 0;
   std::vector<Contained> rest;
+  static constexpr auto small_capacity = SmallSize;
 
   [[nodiscard]] constexpr const Contained &operator[](std::size_t index) const
   {
@@ -368,22 +362,18 @@ struct IndexedList
 {
   std::size_t start;
   std::size_t size;
+  [[nodiscard]] constexpr bool operator==(const IndexedList &) const noexcept = default;
 };
 struct LiteralList
 {
   IndexedList items;
+  [[nodiscard]] constexpr bool operator==(const LiteralList &) const noexcept = default;
 };
 
 struct Identifier
 {
-  enum struct Map { global, local };
-  struct Location
-  {
-    Map map;
-    std::size_t index;
-  };
   IndexedString value;
-  mutable std::optional<Location> found;
+  [[nodiscard]] constexpr bool operator==(const Identifier &) const noexcept = default;
 };
 
 template<std::size_t BuiltInSymbolsSize = 32,
@@ -423,6 +413,8 @@ struct cons_expr
   struct SExpr
   {
     std::variant<Atom, IndexedList, LiteralList, Lambda, function_ptr> value;
+    [[nodiscard]] constexpr bool operator==(const SExpr &) const noexcept = default;
+
     constexpr std::span<const SExpr> to_list(const cons_expr &engine) const
     {
       if (const auto *list = std::get_if<IndexedList>(&value); list != nullptr) { return engine.values[*list]; }
@@ -438,9 +430,9 @@ struct cons_expr
   struct Lambda
   {
     IndexedList parameter_names;
-    IndexedList captured_names;
-    IndexedList captured_values;
     IndexedList statements;
+
+    [[nodiscard]] constexpr bool operator==(const Lambda &) const noexcept = default;
 
     [[nodiscard]] constexpr SExpr invoke(cons_expr &engine, Context &context, std::span<const SExpr> parameters)
     {
@@ -448,15 +440,7 @@ struct cons_expr
         throw std::runtime_error("Incorrect number of parameters for lambda");
       }
 
-      const auto captured_names_list = engine.values[captured_names];
-      const auto captured_values_list = engine.values[captured_values];
-
-      // restore context
       Context new_context;
-      for (std::size_t index = 0; index < captured_names_list.size(); ++index) {
-        new_context.objects.emplace_back(
-          std::get<Identifier>(std::get<Atom>(captured_names_list[index].value)).value, captured_values_list[index]);
-      }
 
       const auto parameter_names_list = engine.values[parameter_names];
 
@@ -505,12 +489,12 @@ struct cons_expr
         } else if (auto [float_did_parse, float_value] = parse_float<double>(token.parsed); float_did_parse) {
           retval.push_back(SExpr{ Atom(float_value) });
         } else {
-          retval.push_back(SExpr{ Atom(Identifier{ strings.insert_or_find(token.parsed), {} }) });
+          retval.push_back(SExpr{ Atom(Identifier{ strings.insert_or_find(token.parsed) }) });
         }
       }
       token = next_token(token.remaining);
     }
-    return std::pair<SExpr, Token>(SExpr{ values.insert(retval) }, token);
+    return std::pair<SExpr, Token>(SExpr{ values.insert_or_find(retval) }, token);
   }
 
 
@@ -617,38 +601,19 @@ struct cons_expr
     } else if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
       // if it's an identifier, we need to be able to find it
       if (const auto *id = std::get_if<Identifier>(atom); id != nullptr) {
-        if (id->found.has_value()) {
-          switch (const auto &[map, index] = *id->found; map) {
-          case Identifier::Map::global:
-            return symbols[index].second;
-          case Identifier::Map::local:
-            return context.objects[index].second;
-          }
+        for (const auto &object : context.objects) {
+          if (object.first == id->value) { return object.second; }
         }
 
-        for (std::size_t index = 0; const auto &object : context.objects) {
-          if (object.first == id->value) {
-            id->found = typename Identifier::Location{ Identifier::Map::local, index };
-            return object.second;
-          }
-          ++index;
-        }
-
-        for (std::size_t index = 0; const auto &object : symbols.small) {
-          if (object.first == id->value) {
-            id->found = typename Identifier::Location{ Identifier::Map::global, index };
-            return object.second;
-          }
-          ++index;
-        }
         // add a lookup function for this?
-        for (std::size_t index = 0; const auto &object : symbols.rest) {
-          if (object.first == id->value) {
-            id->found = typename Identifier::Location{ Identifier::Map::global, index + BuiltInSymbolsSize };
-            return object.second;
-          }
-          ++index;
+        for (const auto &object : symbols.rest) {
+          if (object.first == id->value) { return object.second; }
         }
+
+        for (const auto &object : symbols.small) {
+          if (object.first == id->value) { return object.second; }
+        }
+
 
         throw std::runtime_error("id not found");
       }
@@ -688,24 +653,54 @@ struct cons_expr
   {
     if (params.size() < 2) { throw std::runtime_error("Wrong number of parameters to lambda expression"); }
 
-    std::vector<SExpr> context_ids;
-    std::vector<SExpr> context_values;
-    for (const auto &object : context.objects) {
-      context_ids.push_back(SExpr{ Identifier{ object.first, {} } });
-      context_values.push_back(object.second);
+    // replace all references to captured values with constant copies
+    std::vector<SExpr> fixed_statements;
+    for (const auto &statement : params.subspan(1)) {
+      fixed_statements.push_back(engine.fix_identifiers(statement, {}, context.objects));
     }
 
-    return SExpr{ Lambda{ std::get<IndexedList>(params[0].value),
-      engine.values.insert(context_ids),
-      engine.values.insert(context_values),
-      { engine.values.insert({ std::next(params.begin()), params.end() }) } } };
+    return SExpr{ Lambda{
+      std::get<IndexedList>(params[0].value), { engine.values.insert_or_find(fixed_statements) } } };
   }
 
   [[nodiscard]] static constexpr SExpr definer(cons_expr &engine, Context &context, std::span<const SExpr> params)
   {
     if (params.size() != 2) { throw std::runtime_error("Wrong number of parameters to define expression"); }
-    engine.add(engine.strings[engine.eval_to<Identifier>(context, params[0]).value], engine.eval(context, params[1]));
+    engine.add(engine.strings[engine.eval_to<Identifier>(context, params[0]).value],
+      engine.fix_identifiers(engine.eval(context, params[1]),{}, context.objects));
     return SExpr{ Atom{ std::monostate{} } };
+  }
+
+  [[nodiscard]] constexpr SExpr
+    fix_identifiers(const SExpr &input, const Context &context, std::span<std::pair<IndexedString, SExpr>> local_constants)
+  {
+    if (auto *list = std::get_if<IndexedList>(&input.value); list != nullptr) {
+      std::vector<SExpr> result;
+      result.reserve(list->size);
+      for (const auto &value : values[*list]) { result.push_back(fix_identifiers(value, context, local_constants)); }
+      return SExpr{ this->values.insert_or_find(result) };
+    } else if (auto *atom = std::get_if<Atom>(&input.value); atom != nullptr) {
+      if (auto *id = std::get_if<Identifier>(atom); id != nullptr) {
+        for (const auto &object : context.objects) {
+          if (object.first == id->value) {
+            // do something smarter later, but abort for now because it's in the variable context
+            return input;
+          }
+        }
+
+        // we're hoping it's a global, which we will treat as a constant
+        for (const auto &object : local_constants) {
+          if (object.first == id->value) { return object.second; }
+        }
+
+        for (const auto &object : this->symbols.small) {
+          if (object.first == id->value) { return object.second; }
+        }
+        return input;
+      }
+    }
+
+    return input;
   }
 
   [[nodiscard]] static constexpr SExpr doer(cons_expr &engine, Context &context, std::span<const SExpr> params)
@@ -730,6 +725,10 @@ struct cons_expr
     };
 
     setup_variables(params[0]);
+
+    for (auto &variable : variables) {
+      variable.second = engine.fix_identifiers(variable.second, context, std::span<std::pair<IndexedString, SExpr>>{});
+    }
 
     const auto terminators = params[1].to_list(engine);
 
@@ -839,11 +838,9 @@ struct cons_expr
 
 
 /// TODO
-// * add the ability to define / let things
+// * add the ability to let things
 // * replace function identifiers with function pointers while parsing
 // * add cons car cdr eval apply
-// * sort out copying on return of objects when possible
-// * convert constexpr `defined` objects into static string views and static spans
 // * remove exceptions I guess?
 // * fix short-circuiting
 
