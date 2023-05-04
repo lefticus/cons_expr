@@ -26,29 +26,37 @@ std::string to_string(const lefticus::cons_expr<> &, bool annotate, const leftic
 std::string to_string(const lefticus::cons_expr<> &, bool annotate, const lefticus::IndexedString &string);
 
 
-std::string to_string([[maybe_unused]] const lefticus::cons_expr<> &, bool , const lefticus::cons_expr<>::Lambda &)
+std::string to_string([[maybe_unused]] const lefticus::cons_expr<> &, bool, const lefticus::cons_expr<>::Lambda &lambda)
 {
-  return "[lambda]";
+  return std::format("[lambda captures {{{}, {}}} parameters {{{}, {}}} statements {{{}, {}}}]",
+    lambda.captured_values.start,
+    lambda.captured_values.size,
+    lambda.parameter_names.start,
+    lambda.parameter_names.size,
+    lambda.statements.start,
+    lambda.statements.size);
 }
 
-std::string to_string([[maybe_unused]] const lefticus::cons_expr<> &, bool , const std::monostate &) { return "nil"; }
+std::string to_string([[maybe_unused]] const lefticus::cons_expr<> &, bool, const std::monostate &) { return "[nil]"; }
 
 std::string to_string(const lefticus::cons_expr<> &engine, bool annotate, const lefticus::Identifier &id)
 {
   if (annotate) {
     return std::format("[identifier] {{{}, {}}} {}", id.value.start, id.value.size, engine.strings[id.value]);
   } else {
-    return std::string{engine.strings[id.value]};
+    return std::string{ engine.strings[id.value] };
   }
 }
 
 
-std::string to_string(const lefticus::cons_expr<> &, bool , const bool input)
+std::string to_string(const lefticus::cons_expr<> &, bool annotate, const bool input)
 {
+  std::string result;
+  if (annotate) { result = "[bool] "; }
   if (input) {
-    return "true";
+    return result + "true";
   } else {
-    return "false";
+    return result + "false";
   }
 }
 
@@ -57,26 +65,35 @@ std::string to_string(const lefticus::cons_expr<> &engine, bool annotate, const 
   return std::visit([&](const auto &value) { return to_string(engine, annotate, value); }, input);
 }
 
-std::string to_string(const lefticus::cons_expr<> &, bool , const double input) { return std::format("{}f", input); }
-std::string to_string(const lefticus::cons_expr<> &, bool , const int input) { return std::format("{}", input); }
-
-std::string to_string(const lefticus::cons_expr<> &, bool , const lefticus::cons_expr<>::function_ptr &)
+std::string to_string(const lefticus::cons_expr<> &, bool annotate, const double input)
 {
-  return "function_ptr";
+  std::string result;
+  if (annotate) { result = "[double] "; }
+
+  return result + std::format("{}", input);
+}
+std::string to_string(const lefticus::cons_expr<> &, bool annotate, const int input)
+{
+  std::string result;
+  if (annotate) { result = "[int] "; }
+  return result + std::format("{}", input);
+}
+
+std::string to_string(const lefticus::cons_expr<> &, bool, const lefticus::cons_expr<>::function_ptr &func)
+{
+  return std::format("[function_ptr {}]", reinterpret_cast<const void *>(func));
 }
 std::string to_string(const lefticus::cons_expr<> &engine, bool annotate, const lefticus::IndexedList &list)
 {
   std::string result;
 
-  if (annotate) {
-    result += std::format("[list] {{{}, {}}} ", list.start, list.size);
-  }
+  if (annotate) { result += std::format("[list] {{{}, {}}} ", list.start, list.size); }
   result += "(";
   const auto span = engine.values[list];
 
   if (!span.empty()) {
-    for (const auto &item : span.subspan(0, span.size() - 1)) { result += to_string(engine, annotate, item) + ' '; }
-    result += to_string(engine, annotate, span.back());
+    for (const auto &item : span.subspan(0, span.size() - 1)) { result += to_string(engine, false, item) + ' '; }
+    result += to_string(engine, false, span.back());
   }
   result += ")";
   return result;
@@ -86,7 +103,7 @@ std::string to_string(const lefticus::cons_expr<> &engine, bool annotate, const 
 {
   std::string result;
   if (annotate) { result += std::format("[literal list] {{{}, {}}} ", list.items.start, list.items.size); }
-  return result + "'" + to_string(engine, annotate, list.items);
+  return result + "'" + to_string(engine, false, list.items);
 }
 
 std::string to_string(const lefticus::cons_expr<> &engine, bool annotate, const lefticus::IndexedString &string)
@@ -117,13 +134,23 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
   // evaluator.add<display>("display");
 
   std::vector<std::string> entries;
+  std::vector<std::string> characters;
+
   int selected = 0;
+  int character_selected = 0;
 
   auto update_objects = [&]() {
     entries.clear();
     std::size_t index = 0;
     for (auto itr = evaluator.values.small.begin(); itr != evaluator.values.small_end(); ++itr) {
       entries.push_back(std::format("{}: {}", index, to_string(evaluator, true, *itr)));
+      ++index;
+    }
+
+    characters.clear();
+    index = 0;
+    for (auto itr = evaluator.strings.small.begin(); itr != evaluator.strings.small_end(); ++itr) {
+      characters.push_back(std::format("{}: '{}'", index, *itr));
       ++index;
     }
   };
@@ -136,11 +163,12 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
     content_2 += "\n> " + content_1 + "\n";
 
     try {
-      content_2 += to_string(evaluator, false, evaluator.sequence(context, evaluator.parse(content_1).first.to_list(evaluator)));
+      content_2 +=
+        to_string(evaluator, false, evaluator.sequence(context, evaluator.parse(content_1).first.to_list(evaluator)));
     } catch (const std::exception &e) {
       content_2 += std::string("Error: ") + e.what();
     }
-    //content_1.clear();
+    // content_1.clear();
     update_objects();
   };
 
@@ -152,15 +180,20 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
   auto resizeable_bits = ftxui::ResizableSplitLeft(textarea_1, output_1, &size);
 
   auto radiobox = ftxui::Menu(&entries, &selected);
+  auto characterbox = ftxui::Menu(&characters, &character_selected);
 
-  auto layout = ftxui::Container::Vertical({ radiobox, resizeable_bits, button });
+  auto layout =
+    ftxui::Container::Horizontal({ characterbox, radiobox, resizeable_bits, button });
 
   auto component = ftxui::Renderer(layout, [&] {
-    return ftxui::vbox({ radiobox->Render() | ftxui::vscroll_indicator | ftxui::frame
-                           | ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, 10),
-             ftxui::separator(),
-             resizeable_bits->Render() | ftxui::flex,
-             button->Render() })
+    return ftxui::hbox({ characterbox->Render() | ftxui::vscroll_indicator | ftxui::frame,
+             ftxui::separator() ,
+             ftxui::vbox({ radiobox->Render() | ftxui::vscroll_indicator | ftxui::frame
+                             | ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, 10),
+               ftxui::separator(),
+               resizeable_bits->Render() | ftxui::flex,
+               button->Render() })  | ftxui::flex
+           })
            | ftxui::border;
   });
 
