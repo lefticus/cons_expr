@@ -57,6 +57,8 @@
 // * never thread safe
 
 
+namespace lefticus {
+
 template<typename Contained, std::size_t SmallSize, typename KeyType, typename SpanType = std::span<const Contained>>
 struct SmallOptimizedVector
 {
@@ -75,16 +77,16 @@ struct SmallOptimizedVector
 
   [[nodiscard]] constexpr SpanType operator[](KeyType range) const
   {
-    if (range.start > SmallSize) {
-      return std::span<const Contained>(rest).subspan(range.start - SmallSize, range.size);
+    if (range.start >= SmallSize) {
+      return SpanType{ std::span<const Contained>(rest).subspan(range.start - SmallSize, range.size) };
     } else {
-      return std::span<const Contained>(small).subspan(range.start, range.size);
+      return SpanType{ std::span<const Contained>(small).subspan(range.start, range.size) };
     }
   }
 
-  template<typename ... Param >
-  constexpr auto emplace_back(Param  && ...  param) {
-    return insert(Contained{std::forward<Param>(param) ...});
+  template<typename... Param> constexpr auto emplace_back(Param &&...param)
+  {
+    return insert(Contained{ std::forward<Param>(param)... });
   }
 
   constexpr std::size_t insert(Contained obj, bool force_rest = false)
@@ -99,7 +101,7 @@ struct SmallOptimizedVector
   }
 
   constexpr auto small_end() const { return std::next(small.begin(), static_cast<std::ptrdiff_t>(small_size_used)); }
-  constexpr auto small_end()  { return std::next(small.begin(), static_cast<std::ptrdiff_t>(small_size_used)); }
+  constexpr auto small_end() { return std::next(small.begin(), static_cast<std::ptrdiff_t>(small_size_used)); }
 
   constexpr KeyType insert_or_find(SpanType values)
   {
@@ -123,7 +125,6 @@ struct SmallOptimizedVector
   }
 };
 
-namespace lefticus {
 template<typename T>
 concept not_bool_or_ptr = !std::same_as<std::remove_cvref_t<T>, bool> && !std::is_pointer_v<std::remove_cvref_t<T>>;
 
@@ -533,6 +534,7 @@ struct cons_expr
     add("list", SExpr{ list });
     add("lambda", SExpr{ lambda });
     add("do", SExpr{ doer });
+    add("define", SExpr{ definer });
   }
 
   [[nodiscard]] constexpr SExpr sequence(Context &context, std::span<const SExpr> statements)
@@ -591,18 +593,18 @@ struct cons_expr
 
   template<auto Func> constexpr void add(std::string_view name)
   {
-    symbols.emplace_back(strings.insert_or_find(name), SExpr{ make_evaluator<Func>(Func) });
+    symbols.emplace_back(strings.insert_or_find(name), SExpr{ make_evaluator<Func>() });
   }
 
   constexpr void add(std::string_view name, SExpr value)
   {
-    symbols.insert(
-      std::pair<IndexedString, SExpr>(strings.insert_or_find(name), std::move(value))  );
+    symbols.insert(std::pair<IndexedString, SExpr>(strings.insert_or_find(name), std::move(value)));
   }
 
   template<typename Value> constexpr void add(std::string_view name, Value &&value)
   {
-    symbols.insert(std::pair<IndexedString, SExpr>(strings.insert_or_find(name), SExpr{ Atom{ std::forward<Value>(value) } }));
+    symbols.insert(
+      std::pair<IndexedString, SExpr>(strings.insert_or_find(name), SExpr{ Atom{ std::forward<Value>(value) } }));
   }
 
 
@@ -632,7 +634,7 @@ struct cons_expr
           ++index;
         }
 
-        for (std::size_t index = 0; const auto &object : symbols.small ) {
+        for (std::size_t index = 0; const auto &object : symbols.small) {
           if (object.first == id->value) {
             id->found = typename Identifier::Location{ Identifier::Map::global, index };
             return object.second;
@@ -656,8 +658,10 @@ struct cons_expr
 
   template<typename Type> [[nodiscard]] constexpr Type eval_to(Context &context, const SExpr &expr)
   {
-    if constexpr (std::is_same_v<Type, LiteralList> || std::is_same_v<Type, IndexedList> || std::is_same_v<Type, Lambda>
-                  || std::is_same_v<Type, function_ptr>) {
+    if constexpr (std::is_same_v<Type, SExpr>) {
+      return expr;
+    } else if constexpr (std::is_same_v<Type, LiteralList> || std::is_same_v<Type, IndexedList>
+                         || std::is_same_v<Type, Lambda> || std::is_same_v<Type, function_ptr>) {
       if (const auto *obj = std::get_if<Type>(&expr.value); obj != nullptr) { return *obj; }
     } else {
       if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
@@ -695,6 +699,13 @@ struct cons_expr
       engine.values.insert(context_ids),
       engine.values.insert(context_values),
       { engine.values.insert({ std::next(params.begin()), params.end() }) } } };
+  }
+
+  [[nodiscard]] static constexpr SExpr definer(cons_expr &engine, Context &context, std::span<const SExpr> params)
+  {
+    if (params.size() != 2) { throw std::runtime_error("Wrong number of parameters to define expression"); }
+    engine.add(engine.strings[engine.eval_to<Identifier>(context, params[0]).value], engine.eval(context, params[1]));
+    return SExpr{ Atom{ std::monostate{} } };
   }
 
   [[nodiscard]] static constexpr SExpr doer(cons_expr &engine, Context &context, std::span<const SExpr> params)
@@ -834,6 +845,6 @@ struct cons_expr
 // * sort out copying on return of objects when possible
 // * convert constexpr `defined` objects into static string views and static spans
 // * remove exceptions I guess?
-// * fix short circuiting
+// * fix short-circuiting
 
 #endif

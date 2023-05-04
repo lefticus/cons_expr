@@ -32,6 +32,11 @@ TEST_CASE("test constexpr construction") {
   CHECK(evaluate_to<int>("x") == 42);
 }
 
+TEST_CASE("Operator identifiers", "[operators]") {
+  STATIC_CHECK(evaluate_to<int>("((if false + *) 3 4)") == 12);
+  STATIC_CHECK(evaluate_to<int>("((if true + *) 3 4)") == 7);
+}
+
 TEST_CASE("basic float operators", "[operators]")
 {
   STATIC_CHECK(evaluate_to<double>("(+ 1.0 0.1)") == 1.1);

@@ -1,349 +1,173 @@
-#include <array>
-#include <functional>
-#include <iostream>
-#include <optional>
+#include <memory>// for allocator, __shared_ptr_access, shared_ptr
+#include <string>// for string
 
-#include <random>
+#include <format>
 
-#include <CLI/CLI.hpp>
-#include <ftxui/component/captured_mouse.hpp>// for ftxui
-#include <ftxui/component/component.hpp>// for Slider
-#include <ftxui/component/screen_interactive.hpp>// for ScreenInteractive
-#include <spdlog/spdlog.h>
+#include "ftxui/component/captured_mouse.hpp"// for ftxui
+#include "ftxui/component/component.hpp"// for Input, Renderer, ResizableSplitLeft
+#include "ftxui/component/component_base.hpp"// for ComponentBase, Component
+#include "ftxui/component/screen_interactive.hpp"// for ScreenInteractive
+#include "ftxui/dom/elements.hpp"// for operator|, separator, text, Element, flex, vbox, border
+#include "ftxui/dom/table.hpp"// for operator|, separator, text, Element, flex, vbox, border
 
-#include <lefticus/tools/non_promoting_ints.hpp>
+#include <cons_expr/cons_expr.hpp>
 
-// This file will be generated automatically when cur_you run the CMake
-// configuration step. It creates a namespace called `cons_expr`. You can modify
-// the source template at `configured_files/config.hpp.in`.
-#include <internal_use_only/config.hpp>
 
-template<std::size_t Width, std::size_t Height> struct GameBoard
+std::string to_string(const lefticus::cons_expr<> &, bool annotate, const lefticus::cons_expr<>::SExpr &input);
+std::string to_string(const lefticus::cons_expr<> &, bool annotate, const bool input);
+std::string to_string(const lefticus::cons_expr<> &, bool annotate, const double input);
+std::string to_string(const lefticus::cons_expr<> &, bool annotate, const int input);
+std::string to_string(const lefticus::cons_expr<> &, bool annotate, const lefticus::cons_expr<>::Lambda &);
+std::string to_string(const lefticus::cons_expr<> &, bool annotate, const std::monostate &);
+std::string to_string(const lefticus::cons_expr<> &, bool annotate, const lefticus::cons_expr<>::Atom &input);
+std::string to_string(const lefticus::cons_expr<> &, bool annotate, const lefticus::cons_expr<>::function_ptr &);
+std::string to_string(const lefticus::cons_expr<> &, bool annotate, const lefticus::IndexedList &list);
+std::string to_string(const lefticus::cons_expr<> &, bool annotate, const lefticus::LiteralList &list);
+std::string to_string(const lefticus::cons_expr<> &, bool annotate, const lefticus::IndexedString &string);
+
+
+std::string to_string([[maybe_unused]] const lefticus::cons_expr<> &, bool , const lefticus::cons_expr<>::Lambda &)
 {
-  static constexpr std::size_t width = Width;
-  static constexpr std::size_t height = Height;
-
-  std::array<std::array<std::string, height>, width> strings;
-  std::array<std::array<bool, height>, width> values{};
-
-  std::size_t move_count{ 0 };
-
-  std::string &get_string(std::size_t cur_x, std::size_t cur_y) { return strings.at(cur_x).at(cur_y); }
-
-
-  void set(std::size_t cur_x, std::size_t cur_y, bool new_value)
-  {
-    get(cur_x, cur_y) = new_value;
-
-    if (new_value) {
-      get_string(cur_x, cur_y) = " ON";
-    } else {
-      get_string(cur_x, cur_y) = "OFF";
-    }
-  }
-
-  void visit(auto visitor)
-  {
-    for (std::size_t cur_x = 0; cur_x < width; ++cur_x) {
-      for (std::size_t cur_y = 0; cur_y < height; ++cur_y) { visitor(cur_x, cur_y, *this); }
-    }
-  }
-
-  [[nodiscard]] bool get(std::size_t cur_x, std::size_t cur_y) const { return values.at(cur_x).at(cur_y); }
-
-  [[nodiscard]] bool &get(std::size_t cur_x, std::size_t cur_y) { return values.at(cur_x).at(cur_y); }
-
-  GameBoard()
-  {
-    visit([](const auto cur_x, const auto cur_y, auto &gameboard) { gameboard.set(cur_x, cur_y, true); });
-  }
-
-  void update_strings()
-  {
-    for (std::size_t cur_x = 0; cur_x < width; ++cur_x) {
-      for (std::size_t cur_y = 0; cur_y < height; ++cur_y) { set(cur_x, cur_y, get(cur_x, cur_y)); }
-    }
-  }
-
-  void toggle(std::size_t cur_x, std::size_t cur_y) { set(cur_x, cur_y, !get(cur_x, cur_y)); }
-
-  void press(std::size_t cur_x, std::size_t cur_y)
-  {
-    ++move_count;
-    toggle(cur_x, cur_y);
-    if (cur_x > 0) { toggle(cur_x - 1, cur_y); }
-    if (cur_y > 0) { toggle(cur_x, cur_y - 1); }
-    if (cur_x < width - 1) { toggle(cur_x + 1, cur_y); }
-    if (cur_y < height - 1) { toggle(cur_x, cur_y + 1); }
-  }
-
-  [[nodiscard]] bool solved() const
-  {
-    for (std::size_t cur_x = 0; cur_x < width; ++cur_x) {
-      for (std::size_t cur_y = 0; cur_y < height; ++cur_y) {
-        if (!get(cur_x, cur_y)) { return false; }
-      }
-    }
-
-    return true;
-  }
-};
-
-
-void consequence_game()
-{
-  auto screen = ftxui::ScreenInteractive::TerminalOutput();
-
-  GameBoard<3, 3> game_board;
-
-  std::string quit_text;
-
-  const auto update_quit_text = [&quit_text](const auto &game_board_param) {
-    quit_text = fmt::format("Quit ({} moves)", game_board_param.move_count);
-    if (game_board_param.solved()) { quit_text += " Solved!"; }
-  };
-
-  const auto make_buttons = [&] {
-    std::vector<ftxui::Component> buttons;
-    for (std::size_t cur_x = 0; cur_x < game_board.width; ++cur_x) {
-      for (std::size_t cur_y = 0; cur_y < game_board.height; ++cur_y) {
-        buttons.push_back(ftxui::Button(&game_board.get_string(cur_x, cur_y), [=, &game_board] {
-          if (!game_board.solved()) { game_board.press(cur_x, cur_y); }
-          update_quit_text(game_board);
-        }));
-      }
-    }
-    return buttons;
-  };
-
-  auto buttons = make_buttons();
-
-  auto quit_button = ftxui::Button(&quit_text, screen.ExitLoopClosure());
-
-  auto make_layout = [&] {
-    std::vector<ftxui::Element> rows;
-
-    std::size_t idx = 0;
-
-    for (std::size_t cur_x = 0; cur_x < game_board.width; ++cur_x) {
-      std::vector<ftxui::Element> row;
-      for (std::size_t cur_y = 0; cur_y < game_board.height; ++cur_y) {
-        row.push_back(buttons[idx]->Render());
-        ++idx;
-      }
-      rows.push_back(ftxui::hbox(std::move(row)));
-    }
-
-    rows.push_back(ftxui::hbox({ quit_button->Render() }));
-
-    return ftxui::vbox(std::move(rows));
-  };
-
-
-  static constexpr int randomization_iterations = 100;
-  static constexpr int random_seed = 42;
-
-  std::mt19937 gen32{ random_seed };// NOLINT fixed seed
-
-  // NOLINTNEXTLINE This cannot be const
-  std::uniform_int_distribution<std::size_t> cur_x(static_cast<std::size_t>(0), game_board.width - 1);
-  // NOLINTNEXTLINE This cannot be const
-  std::uniform_int_distribution<std::size_t> cur_y(static_cast<std::size_t>(0), game_board.height - 1);
-
-  for (int i = 0; i < randomization_iterations; ++i) { game_board.press(cur_x(gen32), cur_y(gen32)); }
-  game_board.move_count = 0;
-  update_quit_text(game_board);
-
-  auto all_buttons = buttons;
-  all_buttons.push_back(quit_button);
-  auto container = ftxui::Container::Horizontal(all_buttons);
-
-  auto renderer = ftxui::Renderer(container, make_layout);
-
-  screen.Loop(renderer);
+  return "[lambda]";
 }
 
-struct Color
+std::string to_string([[maybe_unused]] const lefticus::cons_expr<> &, bool , const std::monostate &) { return "nil"; }
+
+std::string to_string(const lefticus::cons_expr<> &engine, bool annotate, const lefticus::Identifier &id)
 {
-  lefticus::tools::uint_np8_t R{ static_cast<std::uint8_t>(0) };
-  lefticus::tools::uint_np8_t G{ static_cast<std::uint8_t>(0) };
-  lefticus::tools::uint_np8_t B{ static_cast<std::uint8_t>(0) };
-};
-
-// A simple way of representing a bitmap on screen using only characters
-struct Bitmap : ftxui::Node
-{
-  Bitmap(std::size_t width, std::size_t height)// NOLINT same typed parameters adjacent to each other
-    : width_(width), height_(height)
-  {}
-
-  Color &at(std::size_t cur_x, std::size_t cur_y) { return pixels.at(width_ * cur_y + cur_x); }
-
-  void ComputeRequirement() override
-  {
-    requirement_ = ftxui::Requirement{
-      .min_x = static_cast<int>(width_), .min_y = static_cast<int>(height_ / 2), .selected_box{ 0, 0, 0, 0 }
-    };
+  if (annotate) {
+    return std::format("[identifier] {{{}, {}}} {}", id.value.start, id.value.size, engine.strings[id.value]);
+  } else {
+    return std::string{engine.strings[id.value]};
   }
+}
 
-  void Render(ftxui::Screen &screen) override
-  {
-    for (std::size_t cur_x = 0; cur_x < width_; ++cur_x) {
-      for (std::size_t cur_y = 0; cur_y < height_ / 2; ++cur_y) {
-        auto &pixel = screen.PixelAt(box_.x_min + static_cast<int>(cur_x), box_.y_min + static_cast<int>(cur_y));
-        pixel.character = "▄";
-        const auto &top_color = at(cur_x, cur_y * 2);
-        const auto &bottom_color = at(cur_x, cur_y * 2 + 1);
-        pixel.background_color = ftxui::Color{ top_color.R.get(), top_color.G.get(), top_color.B.get() };
-        pixel.foreground_color = ftxui::Color{ bottom_color.R.get(), bottom_color.G.get(), bottom_color.B.get() };
-      }
-    }
-  }
 
-  [[nodiscard]] auto width() const noexcept { return width_; }
-
-  [[nodiscard]] auto height() const noexcept { return height_; }
-
-  [[nodiscard]] auto &data() noexcept { return pixels; }
-
-private:
-  std::size_t width_;
-  std::size_t height_;
-
-  std::vector<Color> pixels = std::vector<Color>(width_ * height_, Color{});
-};
-
-void game_iteration_canvas()
+std::string to_string(const lefticus::cons_expr<> &, bool , const bool input)
 {
-  // this should probably have a `bitmap` helper function that does what cur_you expect
-  // similar to the other parts of FTXUI
-  auto bm = std::make_shared<Bitmap>(50, 50);// NOLINT magic numbers
-  auto small_bm = std::make_shared<Bitmap>(6, 6);// NOLINT magic numbers
+  if (input) {
+    return "true";
+  } else {
+    return "false";
+  }
+}
 
-  double fps = 0;
+std::string to_string(const lefticus::cons_expr<> &engine, bool annotate, const lefticus::cons_expr<>::Atom &input)
+{
+  return std::visit([&](const auto &value) { return to_string(engine, annotate, value); }, input);
+}
 
-  std::size_t max_row = 0;
-  std::size_t max_col = 0;
+std::string to_string(const lefticus::cons_expr<> &, bool , const double input) { return std::format("{}f", input); }
+std::string to_string(const lefticus::cons_expr<> &, bool , const int input) { return std::format("{}", input); }
 
-  // to do, add total game time clock also, not just current elapsed time
-  auto game_iteration = [&](const std::chrono::steady_clock::duration elapsed_time) {
-    // in here we simulate however much game time has elapsed. Update animations,
-    // run character AI, whatever, update stats, etc
+std::string to_string(const lefticus::cons_expr<> &, bool , const lefticus::cons_expr<>::function_ptr &)
+{
+  return "function_ptr";
+}
+std::string to_string(const lefticus::cons_expr<> &engine, bool annotate, const lefticus::IndexedList &list)
+{
+  std::string result;
 
-    // this isn't actually timing based for now, it's just updating the display however fast it can
-    fps = 1.0
-          / (static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(elapsed_time).count())
-             / 1'000'000.0);// NOLINT magic numbers
+  if (annotate) {
+    result += std::format("[list] {{{}, {}}} ", list.start, list.size);
+  }
+  result += "(";
+  const auto span = engine.values[list];
 
-    for (std::size_t row = 0; row < max_row; ++row) {
-      for (std::size_t col = 0; col < bm->width(); ++col) { ++(bm->at(col, row).R); }
+  if (!span.empty()) {
+    for (const auto &item : span.subspan(0, span.size() - 1)) { result += to_string(engine, annotate, item) + ' '; }
+    result += to_string(engine, annotate, span.back());
+  }
+  result += ")";
+  return result;
+}
+
+std::string to_string(const lefticus::cons_expr<> &engine, bool annotate, const lefticus::LiteralList &list)
+{
+  std::string result;
+  if (annotate) { result += std::format("[literal list] {{{}, {}}} ", list.items.start, list.items.size); }
+  return result + "'" + to_string(engine, annotate, list.items);
+}
+
+std::string to_string(const lefticus::cons_expr<> &engine, bool annotate, const lefticus::IndexedString &string)
+{
+  if (annotate) {
+    return std::format("[identifier] {{{}, {}}} \"{}\"", string.start, string.size, engine.strings[string]);
+  } else {
+    return std::format("\"{}\"", engine.strings[string]);
+  }
+}
+
+std::string to_string(const lefticus::cons_expr<> &engine, bool annotate, const lefticus::cons_expr<>::SExpr &input)
+{
+  return std::visit([&](const auto &value) { return to_string(engine, annotate, value); }, input.value);
+}
+
+
+int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
+{
+
+  lefticus::cons_expr evaluator;
+
+
+  std::string content_1;
+  std::string content_2;
+
+
+  // evaluator.add<display>("display");
+
+  std::vector<std::string> entries;
+  int selected = 0;
+
+  auto update_objects = [&]() {
+    entries.clear();
+    std::size_t index = 0;
+    for (auto itr = evaluator.values.small.begin(); itr != evaluator.values.small_end(); ++itr) {
+      entries.push_back(std::format("{}: {}", index, to_string(evaluator, true, *itr)));
+      ++index;
     }
-
-    for (std::size_t row = 0; row < bm->height(); ++row) {
-      for (std::size_t col = 0; col < max_col; ++col) { ++(bm->at(col, row).G); }
-    }
-
-    // for the fun of it, let's have a second window doing interesting things
-    auto &small_bm_pixel =
-      small_bm->data().at(static_cast<std::size_t>(elapsed_time.count()) % small_bm->data().size());
-
-    switch (elapsed_time.count() % 3) {
-    case 0:
-      small_bm_pixel.R += 11;// NOLINT Magic Number
-      break;
-    case 1:
-      small_bm_pixel.G += 11;// NOLINT Magic Number
-      break;
-    case 2:
-      small_bm_pixel.B += 11;// NOLINT Magic Number
-      break;
-    }
-
-
-    ++max_row;
-    if (max_row >= bm->height()) { max_row = 0; }
-    ++max_col;
-    if (max_col >= bm->width()) { max_col = 0; }
   };
 
-  auto screen = ftxui::ScreenInteractive::TerminalOutput();
+  update_objects();
 
-  int counter = 0;
+  auto do_evaluate = [&]() {
+    lefticus::cons_expr<>::Context context;
 
-  auto last_time = std::chrono::steady_clock::now();
+    content_2 += "\n> " + content_1 + "\n";
 
-  auto make_layout = [&] {
-    // This code actually processes the draw event
-    const auto new_time = std::chrono::steady_clock::now();
-
-    ++counter;
-    // we will dispatch to the game_iteration function, where the work happens
-    game_iteration(new_time - last_time);
-    last_time = new_time;
-
-    // now actually draw the game elements
-    return ftxui::hbox({ bm | ftxui::border,
-      ftxui::vbox({ ftxui::text("Frame: " + std::to_string(counter)),
-        ftxui::text("FPS: " + std::to_string(fps)),
-        small_bm | ftxui::border }) });
+    try {
+      content_2 += to_string(evaluator, false, evaluator.sequence(context, evaluator.parse(content_1).first.to_list(evaluator)));
+    } catch (const std::exception &e) {
+      content_2 += std::string("Error: ") + e.what();
+    }
+    //content_1.clear();
+    update_objects();
   };
 
-  auto renderer = ftxui::Renderer(make_layout);
 
+  auto textarea_1 = ftxui::Input(&content_1);
+  auto output_1 = ftxui::Input(&content_2);
+  auto button = ftxui::Button("Evaluate", do_evaluate);
+  int size = 50;
+  auto resizeable_bits = ftxui::ResizableSplitLeft(textarea_1, output_1, &size);
 
-  std::atomic<bool> refresh_ui_continue = true;
+  auto radiobox = ftxui::Menu(&entries, &selected);
 
-  // This thread exists to make sure that the event queue has an event to
-  // process at approximately a rate of 30 FPS
-  std::thread refresh_ui([&] {
-    while (refresh_ui_continue) {
-      using namespace std::chrono_literals;
-      std::this_thread::sleep_for(1.0s / 30.0);// NOLINT magic numbers
-      screen.PostEvent(ftxui::Event::Custom);
-    }
+  auto layout = ftxui::Container::Vertical({ radiobox, resizeable_bits, button });
+
+  auto component = ftxui::Renderer(layout, [&] {
+    return ftxui::vbox({ radiobox->Render() | ftxui::vscroll_indicator | ftxui::frame
+                           | ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, 10),
+             ftxui::separator(),
+             resizeable_bits->Render() | ftxui::flex,
+             button->Render() })
+           | ftxui::border;
   });
 
-  screen.Loop(renderer);
-
-  refresh_ui_continue = false;
-  refresh_ui.join();
+  auto screen = ftxui::ScreenInteractive::Fullscreen();
+  screen.Loop(component);
 }
 
-// NOLINTNEXTLINE(bugprone-exception-escape)
-int main(int argc, const char **argv)
-{
-  try {
-    CLI::App app{ fmt::format("{} version {}", cons_expr::cmake::project_name, cons_expr::cmake::project_version) };
-
-    std::optional<std::string> message;
-    app.add_option("-m,--message", message, "A message to print back out");
-    bool show_version = false;
-    app.add_flag("--version", show_version, "Show version information");
-
-    bool is_turn_based = false;
-    auto *turn_based = app.add_flag("--turn_based", is_turn_based);
-
-    bool is_loop_based = false;
-    auto *loop_based = app.add_flag("--loop_based", is_loop_based);
-
-    turn_based->excludes(loop_based);
-    loop_based->excludes(turn_based);
-
-
-    CLI11_PARSE(app, argc, argv);
-
-    if (show_version) {
-      fmt::print("{}\n", cons_expr::cmake::project_version);
-      return EXIT_SUCCESS;
-    }
-
-    if (is_turn_based) {
-      consequence_game();
-    } else {
-      game_iteration_canvas();
-    }
-
-  } catch (const std::exception &e) {
-    spdlog::error("Unhandled exception in main: {}", e.what());
-  }
-}
+// Copyright 2020 Arthur Sonzogni. All rights reserved.
+// Use of this source code is governed by the MIT license that can be found in
+// the LICENSE file.
