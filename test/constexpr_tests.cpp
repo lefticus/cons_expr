@@ -88,6 +88,12 @@ TEST_CASE("basic lambda usage", "[lambdas]")
   STATIC_CHECK(evaluate_to<int>("((lambda (x) (* x x)) 11)") == 121);
 }
 
+TEST_CASE("nested lambda usage", "[lambdas]")
+{
+  STATIC_CHECK(evaluate_to<int>("(define l (lambda (x) (lambda () x))) ((l 1))") == 1);
+  STATIC_CHECK(evaluate_to<int>("(define l (lambda (x) (lambda (y) (lambda () (+ x y))))) (((l 1) 3))") == 4);
+}
+
 TEST_CASE("basic define usage", "[define]")
 {
   STATIC_CHECK(evaluate_to<int>("(define x 32) x") == 32);

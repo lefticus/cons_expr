@@ -750,7 +750,6 @@ struct cons_expr
 
     std::vector<IndexedString> variable_names;
 
-    for (const auto &local : context.objects) { variable_names.push_back(local.first); }
 
     auto new_context = context;
 
