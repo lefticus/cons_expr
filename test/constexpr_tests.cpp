@@ -112,6 +112,12 @@ TEST_CASE("binary short circuiting", "[short circuiting]")
   STATIC_CHECK(evaluate_to<bool>("(> 1 2 (unknownfunc))") == false);
 }
 
+TEST_CASE("let variables", "[let variables]")
+{
+  STATIC_CHECK(evaluate_to<int>("(let ((x 3)(y 14)) (* x y))") == 42);
+  STATIC_CHECK(evaluate_to<int>("(let ((x (* 3 1))(y (- 18 4))) (* x y))") == 42);
+}
+
 
 TEST_CASE("simple do expression", "[builtins]")
 {

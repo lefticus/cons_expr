@@ -535,6 +535,7 @@ struct cons_expr
     add("lambda", SExpr{ lambda });
     add("do", SExpr{ doer });
     add("define", SExpr{ definer });
+    add("let", SExpr{ letter });
   }
 
   [[nodiscard]] constexpr SExpr sequence(Context &context, std::span<const SExpr> statements)
@@ -757,6 +758,34 @@ struct cons_expr
 
     return input;
   }
+
+  [[nodiscard]] static constexpr SExpr letter(cons_expr &engine, Context &context, std::span<const SExpr> params)
+  {
+    if (params.empty()) { throw std::runtime_error("Wrong number of parameters to let expression"); }
+
+    std::vector<std::pair<std::size_t, SExpr>> variables;
+
+    auto new_context = context;
+
+    const auto setup_variable = [&](const auto &expr) {
+      auto elements = expr.to_list(engine);
+      if (elements.size() != 2) { throw std::runtime_error(""); }
+
+      new_context.objects.emplace_back(
+        engine.eval_to<Identifier>(new_context, elements[0]).value, engine.eval(new_context, elements[1]));
+    };
+
+    const auto setup_variables = [&](const auto &expr) {
+      auto elements = expr.to_list(engine);
+      for (const auto &variable : elements) { setup_variable(variable); }
+    };
+
+    setup_variables(params[0]);
+
+    // evaluate body
+    return engine.sequence(new_context, params.subspan(1));
+  }
+
 
   [[nodiscard]] static constexpr SExpr doer(cons_expr &engine, Context &context, std::span<const SExpr> params)
   {
