@@ -123,13 +123,13 @@ template<typename T>
 concept not_bool_or_ptr = !std::same_as<std::remove_cvref_t<T>, bool> && !std::is_pointer_v<std::remove_cvref_t<T>>;
 
 static constexpr auto adds = []<not_bool_or_ptr T>(const T &lhs, const T &rhs)
-  requires  requires { lhs + rhs; }
+  requires requires { lhs + rhs; }
 {
   return lhs + rhs;
 };
 
 static constexpr auto multiplies = []<not_bool_or_ptr T>(const T &lhs, const T &rhs)
-  requires  requires { lhs * rhs; }
+  requires requires { lhs *rhs; }
 {
   return lhs * rhs;
 };
@@ -181,9 +181,6 @@ static constexpr auto not_equal = []<typename T>(const T &lhs, const T &rhs) -> 
 {
   return lhs != rhs;
 };
-
-static constexpr auto logical_and = []<std::same_as<bool> Param>(Param lhs, Param rhs) -> bool { return lhs && rhs; };
-static constexpr auto logical_or = []<std::same_as<bool> Param>(Param lhs, Param rhs) -> bool { return lhs || rhs; };
 
 static constexpr bool logical_not(bool lhs) { return !lhs; }
 
@@ -527,8 +524,8 @@ struct cons_expr
     add(">", SExpr{ binary_boolean_apply_pairwise<greater_than> });
     add("<=", SExpr{ binary_boolean_apply_pairwise<less_than_equal> });
     add(">=", SExpr{ binary_boolean_apply_pairwise<greater_than_equal> });
-    add("and", SExpr{ binary_boolean_apply_pairwise<logical_and> });
-    add("or", SExpr{ binary_boolean_apply_pairwise<logical_or> });
+    add("and", SExpr{ logical_and });
+    add("or", SExpr{ logical_or });
     add("if", SExpr{ ifer });
     add("not", SExpr{ make_evaluator<logical_not>() });
     add("==", SExpr{ binary_boolean_apply_pairwise<equal> });
@@ -867,6 +864,24 @@ struct cons_expr
     throw std::runtime_error("Not enough params");
   }
 
+  [[nodiscard]] static constexpr SExpr logical_and(cons_expr &engine, Context &context, std::span<const SExpr> params)
+  {
+    for (const auto &next : params) {
+      if (!engine.eval_to<bool>(context, next)) { return SExpr{ Atom{ false } }; }
+    }
+
+    return SExpr{ Atom{ true } };
+  }
+
+  [[nodiscard]] static constexpr SExpr logical_or(cons_expr &engine, Context &context, std::span<const SExpr> params)
+  {
+    for (const auto &next : params) {
+      if (engine.eval_to<bool>(context, next)) { return SExpr{ Atom{ true } }; }
+    }
+
+    return SExpr{ Atom{ false } };
+  }
+
   template<auto Op>
   [[nodiscard]] static constexpr SExpr
     binary_boolean_apply_pairwise(cons_expr &engine, Context &context, std::span<const SExpr> params)
@@ -877,6 +892,8 @@ struct cons_expr
         bool result = Op(first, second);
         bool odd = true;
         for (const auto &next : params.subspan(2)) {
+          if (!result) { return SExpr{ Atom{ false } }; }
+          
           if (odd) {
             first = engine.eval_to<Param>(context, next);
             result = result && Op(second, first);
@@ -884,6 +901,7 @@ struct cons_expr
             second = engine.eval_to<Param>(context, next);
             result = result && Op(first, second);
           }
+
           odd = !odd;
         }
 
@@ -907,9 +925,6 @@ struct cons_expr
 // * add the ability to let things
 // * add cons car cdr eval apply
 // * remove exceptions I guess?
-// * fix short-circuiting
-// * require types to be trivial
-// * simplify float parsing
 // * check propogation of lambda constants down into do/lambda/whatever below it
 // * make allocator aware
 #endif

@@ -104,6 +104,15 @@ TEST_CASE("basic define usage", "[define]")
   STATIC_CHECK(evaluate_to<int>("(define x 42) (define l (lambda (x)(+ x 4))) (l 10)") == 14);
 }
 
+TEST_CASE("binary short circuiting", "[short circuiting]")
+{
+  STATIC_CHECK(evaluate_to<bool>("(and false (unknownfunc))") == false);
+  STATIC_CHECK(evaluate_to<bool>("(or true (unknownfunc))") == true);
+  STATIC_CHECK(evaluate_to<bool>("(< 2 1 (unknownfunc))") == false);
+  STATIC_CHECK(evaluate_to<bool>("(> 1 2 (unknownfunc))") == false);
+}
+
+
 TEST_CASE("simple do expression", "[builtins]")
 {
   STATIC_CHECK(evaluate_to<int>(R"(
