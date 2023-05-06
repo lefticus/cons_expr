@@ -186,18 +186,32 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
   auto radiobox = ftxui::Menu(&entries, &selected);
   auto characterbox = ftxui::Menu(&characters, &character_selected);
 
-  auto layout =
-    ftxui::Container::Horizontal({ characterbox, radiobox, resizeable_bits, button });
+  auto layout = ftxui::Container::Horizontal({ characterbox, radiobox, resizeable_bits, button });
+
+  auto get_stats = [&]() {
+    return ftxui::vbox({ ftxui::text(std::format("Data Sizes: cons_expr<> {} SExpr {} Atom {}",
+                           sizeof(lefticus::cons_expr<>),
+                           sizeof(lefticus::cons_expr<>::SExpr),
+                           sizeof(lefticus::cons_expr<>::Atom))),
+      ftxui::text(std::format("string used: {}+{}  symbols used: {}+{}  values used: {}+{}",
+        evaluator.strings.small_size_used,
+        evaluator.strings.rest.size(),
+        evaluator.symbols.small_size_used,
+        evaluator.symbols.rest.size(),
+        evaluator.values.small_size_used,
+        evaluator.values.rest.size())) });
+  };
 
   auto component = ftxui::Renderer(layout, [&] {
     return ftxui::hbox({ characterbox->Render() | ftxui::vscroll_indicator | ftxui::frame,
-             ftxui::separator() ,
+             ftxui::separator(),
              ftxui::vbox({ radiobox->Render() | ftxui::vscroll_indicator | ftxui::frame
                              | ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, 10),
                ftxui::separator(),
                resizeable_bits->Render() | ftxui::flex,
-               button->Render() })  | ftxui::flex
-           })
+               ftxui::separator(),
+               ftxui::hbox({ button->Render(), get_stats() }) })
+               | ftxui::flex })
            | ftxui::border;
   });
 

@@ -5,6 +5,9 @@
 
 static_assert(std::is_trivially_copyable_v<lefticus::cons_expr<>::SExpr>);
 
+// we'll be exactly 16k, because we can
+static_assert(sizeof(lefticus::cons_expr<>) == 16384);
+
 consteval auto build_cons_expr()
 {
   lefticus::cons_expr<> result;

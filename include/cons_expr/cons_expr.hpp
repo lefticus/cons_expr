@@ -376,9 +376,9 @@ struct Identifier
   [[nodiscard]] constexpr bool operator==(const Identifier &) const noexcept = default;
 };
 
-template<std::size_t BuiltInSymbolsSize = 32,
-  std::size_t BuiltInStringsSize = 255,
-  std::size_t BuiltInValuesSize = 32,
+template<std::size_t BuiltInSymbolsSize = 64,
+  std::size_t BuiltInStringsSize = 1540,
+  std::size_t BuiltInValuesSize = 279,
   typename... UserTypes>
 struct cons_expr
 {
@@ -423,6 +423,9 @@ struct cons_expr
     }
   };
 
+  static_assert(std::is_trivially_copyable_v<SExpr> && std::is_trivially_destructible_v<SExpr>,
+    "cons_expr does not work well with non-trivial types");
+  
   template<typename Result> [[nodiscard]] constexpr const Result *get_if(const SExpr *sexpr) const
   {
     if (sexpr == nullptr) { return nullptr; }
@@ -662,7 +665,7 @@ struct cons_expr
     return SExpr{ LiteralList{ engine.values.insert(result) } };
   }
 
-  constexpr std::vector<IndexedString> get_defined_locals(const SExpr &sexpr)
+  constexpr std::vector<IndexedString> get_lambda_parameter_names(const SExpr &sexpr)
   {
     std::vector<IndexedString> retval;
     if (auto *parameter_list = get_if<IndexedList>(&sexpr); parameter_list != nullptr) {
@@ -680,7 +683,7 @@ struct cons_expr
     // replace all references to captured values with constant copies
     std::vector<SExpr> fixed_statements;
 
-    auto locals = engine.get_defined_locals(params[0]);
+    auto locals = engine.get_lambda_parameter_names(params[0]);
 
     for (const auto &statement : params.subspan(1)) {
       fixed_statements.push_back(engine.fix_identifiers(statement, locals, context.objects));
@@ -708,7 +711,21 @@ struct cons_expr
         const auto &elem = values[first_index];
         if (auto *id = get_if<Identifier>(&elem); id != nullptr) {
           auto string = strings[id->value];
-          if (string == "lambda" || string == "let" || string == "define") {
+          if (string == "lambda") {
+            std::vector<IndexedString> new_locals{ local_identifiers.begin(), local_identifiers.end() };
+            auto lambda_locals = get_lambda_parameter_names(values[first_index + 1]);
+            new_locals.insert(new_locals.end(), lambda_locals.begin(), lambda_locals.end());
+
+            std::vector<SExpr> new_lambda;
+            new_lambda.push_back(values[first_index]);
+            new_lambda.push_back(values[first_index + 1]);
+
+            for (auto index = first_index + 2; index < list->size + list->start; ++index) {
+              new_lambda.push_back(fix_identifiers(values[index], new_locals, local_constants));
+            }
+
+            return SExpr{ values.insert_or_find(new_lambda) };
+          } else if (string == "let" || string == "define" || string == "do") {
             // we don't want to fix up things that set their own scope (yet)
             return input;
           }
@@ -734,6 +751,9 @@ struct cons_expr
       }
 
       for (const auto &object : this->symbols.small) {
+        if (object.first == id->value) { return object.second; }
+      }
+      for (const auto &object : this->symbols.rest) {
         if (object.first == id->value) { return object.second; }
       }
       return input;
