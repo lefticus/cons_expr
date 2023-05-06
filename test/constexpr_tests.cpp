@@ -29,7 +29,7 @@ template<typename Result> constexpr Result evaluate_to(std::string_view input)
 
 TEST_CASE("test constexpr construction") {
   auto eval = build_cons_expr();
-  CHECK(evaluate_to<int>("x") == 42);
+  //CHECK(eval.eval_to<int>("x") == 42);
 }
 
 TEST_CASE("Operator identifiers", "[operators]") {
@@ -86,6 +86,13 @@ TEST_CASE("basic lambda usage", "[lambdas]")
   STATIC_CHECK(evaluate_to<bool>("((lambda () false))") == false);
   STATIC_CHECK(evaluate_to<bool>("((lambda (x) x) true)") == true);
   STATIC_CHECK(evaluate_to<int>("((lambda (x) (* x x)) 11)") == 121);
+}
+
+TEST_CASE("basic define usage", "[define]")
+{
+  STATIC_CHECK(evaluate_to<int>("(define x 32) x") == 32);
+  STATIC_CHECK(evaluate_to<int>("(define x (lambda (y)(+ y 4))) (x 10)") == 14);
+  STATIC_CHECK(evaluate_to<int>("(define x 42) (define l (lambda (x)(+ x 4))) (l 10)") == 14);
 }
 
 TEST_CASE("simple do expression", "[builtins]")

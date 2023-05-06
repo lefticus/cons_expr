@@ -423,6 +423,23 @@ struct cons_expr
     }
   };
 
+  template<typename Result> [[nodiscard]] constexpr const Result *get_if(const SExpr *sexpr) const
+  {
+    if (sexpr == nullptr) { return nullptr; }
+
+    if constexpr (std::is_same_v<Result, Atom> || std::is_same_v<Result, IndexedList>
+                  || std::is_same_v<Result, LiteralList> || std::is_same_v<Result, Lambda>
+                  || std::is_same_v<Result, function_ptr>) {
+      return std::get_if<Result>(&sexpr->value);
+    } else {
+      if (const auto *atom = std::get_if<Atom>(&sexpr->value)) {
+        return std::get_if<Result>(atom);
+      } else {
+        return nullptr;
+      }
+    }
+  }
+
   SmallOptimizedVector<std::pair<IndexedString, SExpr>, BuiltInSymbolsSize, IndexedList> symbols{};
   SmallOptimizedVector<char, BuiltInStringsSize, IndexedString, std::string_view> strings{};
   SmallOptimizedVector<SExpr, BuiltInValuesSize, IndexedList> values{};
@@ -434,7 +451,7 @@ struct cons_expr
 
     [[nodiscard]] constexpr bool operator==(const Lambda &) const noexcept = default;
 
-    [[nodiscard]] constexpr SExpr invoke(cons_expr &engine, Context &context, std::span<const SExpr> parameters)
+    [[nodiscard]] constexpr SExpr invoke(cons_expr &engine, Context &context, std::span<const SExpr> parameters) const
     {
       if (parameters.size() != parameter_names.size) {
         throw std::runtime_error("Incorrect number of parameters for lambda");
@@ -538,7 +555,7 @@ struct cons_expr
   {
     SExpr resolved_function = eval(context, function);
 
-    if (auto *lambda = std::get_if<Lambda>(&resolved_function.value); lambda != nullptr) {
+    if (auto *lambda = get_if<Lambda>(&resolved_function); lambda != nullptr) {
       return lambda->invoke(*this, context, parameters);
     } else {
       return get_function(resolved_function)(*this, context, parameters);
@@ -547,7 +564,7 @@ struct cons_expr
 
   [[nodiscard]] constexpr function_ptr get_function(const SExpr &expr)
   {
-    if (const auto *func = std::get_if<function_ptr>(&expr.value); func != nullptr) { return *func; }
+    if (const auto *func = get_if<function_ptr>(&expr); func != nullptr) { return *func; }
     throw std::runtime_error("Does not evaluate to a function");
   }
 
@@ -594,29 +611,25 @@ struct cons_expr
 
   [[nodiscard]] constexpr SExpr eval(Context &context, const SExpr &expr)
   {
-    if (const auto *indexedlist = std::get_if<IndexedList>(&expr.value); indexedlist != nullptr) {
+    if (const auto *indexedlist = get_if<IndexedList>(&expr); indexedlist != nullptr) {
       // if it's a non-empty list, then I need to evaluate it as a function
       auto list = values[*indexedlist];
       if (!list.empty()) { return invoke_function(context, list[0], { std::next(list.begin()), list.end() }); }
-    } else if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
-      // if it's an identifier, we need to be able to find it
-      if (const auto *id = std::get_if<Identifier>(atom); id != nullptr) {
-        for (const auto &object : context.objects) {
-          if (object.first == id->value) { return object.second; }
-        }
-
-        // add a lookup function for this?
-        for (const auto &object : symbols.rest) {
-          if (object.first == id->value) { return object.second; }
-        }
-
-        for (const auto &object : symbols.small) {
-          if (object.first == id->value) { return object.second; }
-        }
-
-
-        throw std::runtime_error("id not found");
+    } else if (const auto *id = get_if<Identifier>(&expr); id != nullptr) {
+      for (const auto &object : context.objects) {
+        if (object.first == id->value) { return object.second; }
       }
+
+      // add a lookup function for this?
+      for (const auto &object : symbols.rest) {
+        if (object.first == id->value) { return object.second; }
+      }
+
+      for (const auto &object : symbols.small) {
+        if (object.first == id->value) { return object.second; }
+      }
+
+      throw std::runtime_error("id not found");
     }
     return expr;
   }
@@ -649,14 +662,28 @@ struct cons_expr
     return SExpr{ LiteralList{ engine.values.insert(result) } };
   }
 
+  constexpr std::vector<IndexedString> get_defined_locals(const SExpr &sexpr)
+  {
+    std::vector<IndexedString> retval;
+    if (auto *parameter_list = get_if<IndexedList>(&sexpr); parameter_list != nullptr) {
+      for (const auto &expr : values[*parameter_list]) {
+        if (auto *local_id = get_if<Identifier>(&expr); local_id != nullptr) { retval.push_back(local_id->value); }
+      }
+    }
+    return retval;
+  }
+
   [[nodiscard]] static constexpr SExpr lambda(cons_expr &engine, Context &context, std::span<const SExpr> params)
   {
     if (params.size() < 2) { throw std::runtime_error("Wrong number of parameters to lambda expression"); }
 
     // replace all references to captured values with constant copies
     std::vector<SExpr> fixed_statements;
+
+    auto locals = engine.get_defined_locals(params[0]);
+
     for (const auto &statement : params.subspan(1)) {
-      fixed_statements.push_back(engine.fix_identifiers(statement, {}, context.objects));
+      fixed_statements.push_back(engine.fix_identifiers(statement, locals, context.objects));
     }
 
     return SExpr{ Lambda{
@@ -667,37 +694,49 @@ struct cons_expr
   {
     if (params.size() != 2) { throw std::runtime_error("Wrong number of parameters to define expression"); }
     engine.add(engine.strings[engine.eval_to<Identifier>(context, params[0]).value],
-      engine.fix_identifiers(engine.eval(context, params[1]),{}, context.objects));
+      engine.fix_identifiers(engine.eval(context, params[1]), {}, context.objects));
     return SExpr{ Atom{ std::monostate{} } };
   }
 
-  [[nodiscard]] constexpr SExpr
-    fix_identifiers(const SExpr &input, const Context &context, std::span<std::pair<IndexedString, SExpr>> local_constants)
+  [[nodiscard]] constexpr SExpr fix_identifiers(const SExpr &input,
+    std::span<const IndexedString> local_identifiers,
+    std::span<const std::pair<IndexedString, SExpr>> local_constants)
   {
-    if (auto *list = std::get_if<IndexedList>(&input.value); list != nullptr) {
-      std::vector<SExpr> result;
-      result.reserve(list->size);
-      for (const auto &value : values[*list]) { result.push_back(fix_identifiers(value, context, local_constants)); }
-      return SExpr{ this->values.insert_or_find(result) };
-    } else if (auto *atom = std::get_if<Atom>(&input.value); atom != nullptr) {
-      if (auto *id = std::get_if<Identifier>(atom); id != nullptr) {
-        for (const auto &object : context.objects) {
-          if (object.first == id->value) {
-            // do something smarter later, but abort for now because it's in the variable context
+    if (auto *list = get_if<IndexedList>(&input); list != nullptr) {
+      if (list->size != 0) {
+        auto first_index = list->start;
+        const auto &elem = values[first_index];
+        if (auto *id = get_if<Identifier>(&elem); id != nullptr) {
+          auto string = strings[id->value];
+          if (string == "lambda" || string == "let" || string == "define") {
+            // we don't want to fix up things that set their own scope (yet)
             return input;
           }
         }
-
-        // we're hoping it's a global, which we will treat as a constant
-        for (const auto &object : local_constants) {
-          if (object.first == id->value) { return object.second; }
-        }
-
-        for (const auto &object : this->symbols.small) {
-          if (object.first == id->value) { return object.second; }
-        }
-        return input;
       }
+      std::vector<SExpr> result;
+      result.reserve(list->size);
+      for (const auto &value : values[*list]) {
+        result.push_back(fix_identifiers(value, local_identifiers, local_constants));
+      }
+      return SExpr{ this->values.insert_or_find(result) };
+    } else if (auto *id = get_if<Identifier>(&input); id != nullptr) {
+      for (const auto &local : local_identifiers) {
+        if (local == id->value) {
+          // do something smarter later, but abort for now because it's in the variable context
+          return input;
+        }
+      }
+
+      // we're hoping it's a global, which we will treat as a constant
+      for (const auto &object : local_constants) {
+        if (object.first == id->value) { return object.second; }
+      }
+
+      for (const auto &object : this->symbols.small) {
+        if (object.first == id->value) { return object.second; }
+      }
+      return input;
     }
 
     return input;
@@ -709,13 +748,19 @@ struct cons_expr
 
     std::vector<std::pair<std::size_t, SExpr>> variables;
 
+    std::vector<IndexedString> variable_names;
+
+    for (const auto &local : context.objects) { variable_names.push_back(local.first); }
+
+    auto new_context = context;
+
     const auto setup_variable = [&](const auto &expr) {
       auto elements = expr.to_list(engine);
       if (elements.size() != 3) { throw std::runtime_error(""); }
 
-      const auto index = context.objects.size();
-      context.objects.emplace_back(
-        engine.eval_to<Identifier>(context, elements[0]).value, engine.eval(context, elements[1]));
+      const auto index = new_context.objects.size();
+      new_context.objects.emplace_back(
+        engine.eval_to<Identifier>(new_context, elements[0]).value, engine.eval(new_context, elements[1]));
       variables.emplace_back(index, elements[2]);
     };
 
@@ -726,30 +771,33 @@ struct cons_expr
 
     setup_variables(params[0]);
 
-    for (auto &variable : variables) {
-      variable.second = engine.fix_identifiers(variable.second, context, std::span<std::pair<IndexedString, SExpr>>{});
-    }
+    for (auto &variable : variables) { variable.second = engine.fix_identifiers(variable.second, variable_names, {}); }
+
+    // make copy of context first, then build this from entire context
+    for (const auto &local : new_context.objects) { variable_names.push_back(local.first); }
 
     const auto terminators = params[1].to_list(engine);
 
     std::vector<std::pair<std::size_t, SExpr>> new_values;
 
+    auto fixed_up_terminator = engine.fix_identifiers(terminators[0], variable_names, {});
+
     // continue while terminator test is false
-    while (!engine.eval_to<bool>(context, terminators[0])) {
+    while (!engine.eval_to<bool>(new_context, fixed_up_terminator)) {
       // evaluate body
-      [[maybe_unused]] const auto result = engine.sequence(context, params.subspan(2));
+      [[maybe_unused]] const auto result = engine.sequence(new_context, params.subspan(2));
 
       // iterate loop variables
-      for (const auto &[index, expr] : variables) { new_values.emplace_back(index, engine.eval(context, expr)); }
+      for (const auto &[index, expr] : variables) { new_values.emplace_back(index, engine.eval(new_context, expr)); }
 
       // update values
-      for (auto &&[index, value] : new_values) { context.objects[index].second = std::move(value); }
+      for (auto &&[index, value] : new_values) { new_context.objects[index].second = std::move(value); }
 
       new_values.clear();
     }
 
     // evaluate sequence of termination expressions
-    return engine.sequence(context, terminators.subspan(1));
+    return engine.sequence(new_context, terminators.subspan(1));
   }
 
   [[nodiscard]] static constexpr SExpr ifer(cons_expr &engine, Context &context, std::span<const SExpr> params)
@@ -839,9 +887,10 @@ struct cons_expr
 
 /// TODO
 // * add the ability to let things
-// * replace function identifiers with function pointers while parsing
 // * add cons car cdr eval apply
 // * remove exceptions I guess?
 // * fix short-circuiting
-
+// * require types to be trivial
+// * simplify float parsing
+// * check propogation of lambda constants down into do/lambda/whatever below it
 #endif
