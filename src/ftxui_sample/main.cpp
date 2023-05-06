@@ -218,7 +218,3 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
   auto screen = ftxui::ScreenInteractive::Fullscreen();
   screen.Loop(component);
 }
-
-// Copyright 2020 Arthur Sonzogni. All rights reserved.
-// Use of this source code is governed by the MIT license that can be found in
-// the LICENSE file.

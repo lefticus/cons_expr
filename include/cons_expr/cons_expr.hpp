@@ -122,60 +122,61 @@ struct SmallOptimizedVector
 template<typename T>
 concept not_bool_or_ptr = !std::same_as<std::remove_cvref_t<T>, bool> && !std::is_pointer_v<std::remove_cvref_t<T>>;
 
-static constexpr auto plus_equal = [](auto &lhs, const auto &rhs) -> auto &
-  requires not_bool_or_ptr<decltype(lhs)> && requires { lhs += rhs; }
+static constexpr auto adds = []<not_bool_or_ptr T>(const T &lhs, const T &rhs)
+  requires  requires { lhs + rhs; }
 {
-  return lhs += rhs;
+  return lhs + rhs;
 };
 
-static constexpr auto multiply_equal = [](auto &lhs, const auto &rhs) -> auto &
-  requires not_bool_or_ptr<decltype(lhs)> && requires { lhs *= rhs; }
+static constexpr auto multiplies = []<not_bool_or_ptr T>(const T &lhs, const T &rhs)
+  requires  requires { lhs * rhs; }
 {
-  return lhs *= rhs;
+  return lhs * rhs;
 };
 
-static constexpr auto division_equal = [](auto &lhs, const auto &rhs) -> auto &
-  requires not_bool_or_ptr<decltype(lhs)> && requires { lhs /= rhs; }
+static constexpr auto divides = []<not_bool_or_ptr T>(const T &lhs, const T &rhs)
+  requires requires { lhs / rhs; }
 {
-  return lhs /= rhs;
+  return lhs / rhs;
 };
 
-static constexpr auto minus_equal = [](auto &lhs, const auto &rhs) -> auto &
-  requires not_bool_or_ptr<decltype(lhs)> && requires { lhs -= rhs; }
+static constexpr auto subtracts = []<not_bool_or_ptr T>(const T &lhs, const T &rhs)
+  requires requires { lhs - rhs; }
 {
-  return lhs -= rhs;
+  return lhs - rhs;
 };
 
-static constexpr auto less_than = [](const auto &lhs, const auto &rhs) -> bool
-  requires not_bool_or_ptr<decltype(lhs)> && requires { lhs < rhs; }
+static constexpr auto less_than = []<not_bool_or_ptr T>(const T &lhs, const T &rhs)
+  requires requires { lhs < rhs; }
 {
   return lhs < rhs;
 };
-static constexpr auto greater_than = [](const auto &lhs, const auto &rhs) -> bool
-  requires not_bool_or_ptr<decltype(lhs)> && requires { lhs > rhs; }
+static constexpr auto greater_than = []<not_bool_or_ptr T>(const T &lhs, const T &rhs)
+  requires requires { lhs > rhs; }
 {
   return lhs > rhs;
 };
 
-static constexpr auto less_than_equal = [](const auto &lhs, const auto &rhs) -> bool
-  requires not_bool_or_ptr<decltype(lhs)> && requires { lhs <= rhs; }
+static constexpr auto less_than_equal = []<not_bool_or_ptr T>(const T &lhs, const T &rhs)
+  requires requires { lhs <= rhs; }
 {
   return lhs <= rhs;
 };
 
-static constexpr auto greater_than_equal = [](const auto &lhs, const auto &rhs) -> bool
-  requires not_bool_or_ptr<decltype(lhs)> && requires { lhs >= rhs; }
+static constexpr auto greater_than_equal = []<not_bool_or_ptr T>(const T &lhs, const T &rhs)
+  requires requires { lhs >= rhs; }
 {
   return lhs >= rhs;
 };
 
-static constexpr auto equal = [](const auto &lhs, const auto &rhs) -> bool
+
+static constexpr auto equal = []<typename T>(const T &lhs, const T &rhs) -> bool
   requires requires { lhs == rhs; }
 {
   return lhs == rhs;
 };
 
-static constexpr auto not_equal = [](const auto &lhs, const auto &rhs) -> bool
+static constexpr auto not_equal = []<typename T>(const T &lhs, const T &rhs) -> bool
   requires requires { lhs != rhs; }
 {
   return lhs != rhs;
@@ -192,6 +193,7 @@ struct Token
   std::string_view remaining;
 };
 
+
 [[nodiscard]] constexpr std::pair<bool, int> parse_int(std::string_view input)
 {
   int parsed = 0;
@@ -205,9 +207,17 @@ struct Token
 
 template<typename T> [[nodiscard]] constexpr std::pair<bool, T> parse_float(std::string_view input)
 {
-  if (input == "-") { return { false, 0 }; }
+  static constexpr std::pair<bool, T> failure{ false, 0 };
+  if (input == "-") { return failure; }
 
-  enum class State { Start, IntegerPart, FractionPart, ExponentPart, ExponentStart, Fail };
+  enum struct State {
+    Start,
+    IntegerPart,
+    FractionPart,
+    ExponentPart,
+    ExponentStart,
+  };
+
   struct ParseState
   {
     State state = State::Start;
@@ -229,16 +239,9 @@ template<typename T> [[nodiscard]] constexpr std::pair<bool, T> parse_float(std:
       return result;
     };
 
-    [[nodiscard]] constexpr auto next_state(State new_state) const noexcept
-    {
-      auto retval = *this;
-      retval.state = new_state;
-      return retval;
-    }
-
     [[nodiscard]] constexpr auto float_value() const noexcept -> std::pair<bool, T>
     {
-      if (state == State::Fail || state == State::Start || state == State::ExponentStart) { return { false, 0 }; }
+      if (state == State::Start || state == State::ExponentStart) { return { false, 0 }; }
 
       return { true,
         (static_cast<T>(value_sign) * (static_cast<T>(value) + static_cast<T>(frac) * pow(static_cast<T>(10), frac_exp))
@@ -246,7 +249,7 @@ template<typename T> [[nodiscard]] constexpr std::pair<bool, T> parse_float(std:
     }
   };
 
-  ParseState current_state;
+  ParseState state;
 
   auto parse_digit = [](auto &value, char ch) {
     if (ch >= '0' && ch <= '9') {
@@ -257,52 +260,48 @@ template<typename T> [[nodiscard]] constexpr std::pair<bool, T> parse_float(std:
     }
   };
 
-  auto parse_char = [parse_digit](ParseState state, char c) -> ParseState {
+  for (const char c : input) {
     switch (state.state) {
     case State::Start:
       if (c == '-') {
         state.value_sign = -1;
       } else if (!parse_digit(state.value, c)) {
-        return state.next_state(State::Fail);
+        return failure;
       }
-      return state.next_state(State::IntegerPart);
+      state.state = State::IntegerPart;
+      break;
     case State::IntegerPart:
-      if (parse_digit(state.value, c)) {
-        return state;
-      } else if (c == '.') {
-        return state.next_state(State::FractionPart);
+      if (c == '.') {
+        state.state = State::FractionPart;
       } else if (c == 'e' || c == 'E') {
-        return state.next_state(State::ExponentPart);
+        state.state = State::ExponentPart;
+      } else if (!parse_digit(state.value, c)) {
+        return failure;
       }
-      return state.next_state(State::Fail);
+      break;
     case State::FractionPart:
       if (parse_digit(state.frac, c)) {
         state.frac_exp--;
-        return state;
       } else if (c == 'e' || c == 'E') {
-        return state.next_state(State::ExponentStart);
+        state.state = State::ExponentStart;
+      } else {
+        return failure;
       }
-      return state.next_state(State::Fail);
+      break;
     case State::ExponentStart:
       if (c == '-') {
         state.exp_sign = -1;
       } else if (!parse_digit(state.exp, c)) {
-        return state.next_state(State::Fail);
+        return failure;
       }
-      return state.next_state(State::ExponentPart);
+      state.state = State::ExponentPart;
+      break;
     case State::ExponentPart:
-      if (parse_digit(state.exp, c)) { return state; }
-      return state.next_state(State::Fail);
-    case State::Fail:
-      return state;
+      if (!parse_digit(state.exp, c)) { return failure; }
     }
+  }
 
-    return state.next_state(State::Fail);
-  };
-
-  for (const char current_c : input) { current_state = parse_char(current_state, current_c); }
-
-  return current_state.float_value();
+  return state.float_value();
 }
 
 
@@ -364,6 +363,7 @@ struct IndexedList
   std::size_t size;
   [[nodiscard]] constexpr bool operator==(const IndexedList &) const noexcept = default;
 };
+
 struct LiteralList
 {
   IndexedList items;
@@ -383,7 +383,6 @@ template<std::size_t BuiltInSymbolsSize = 64,
 struct cons_expr
 {
   struct SExpr;
-
 
   struct Context
   {
@@ -425,7 +424,7 @@ struct cons_expr
 
   static_assert(std::is_trivially_copyable_v<SExpr> && std::is_trivially_destructible_v<SExpr>,
     "cons_expr does not work well with non-trivial types");
-  
+
   template<typename Result> [[nodiscard]] constexpr const Result *get_if(const SExpr *sexpr) const
   {
     if (sexpr == nullptr) { return nullptr; }
@@ -520,10 +519,10 @@ struct cons_expr
 
   consteval cons_expr()
   {
-    add("+", SExpr{ binary_left_fold<plus_equal> });
-    add("*", SExpr{ binary_left_fold<multiply_equal> });
-    add("-", SExpr{ binary_left_fold<minus_equal> });
-    add("/", SExpr{ binary_left_fold<division_equal> });
+    add("+", SExpr{ binary_left_fold<adds> });
+    add("*", SExpr{ binary_left_fold<multiplies> });
+    add("-", SExpr{ binary_left_fold<subtracts> });
+    add("/", SExpr{ binary_left_fold<divides> });
     add("<", SExpr{ binary_boolean_apply_pairwise<less_than> });
     add(">", SExpr{ binary_boolean_apply_pairwise<greater_than> });
     add("<=", SExpr{ binary_boolean_apply_pairwise<less_than_equal> });
@@ -556,7 +555,7 @@ struct cons_expr
   [[nodiscard]] constexpr SExpr
     invoke_function(Context &context, const SExpr &function, std::span<const SExpr> parameters)
   {
-    SExpr resolved_function = eval(context, function);
+    const SExpr resolved_function = eval(context, function);
 
     if (auto *lambda = get_if<Lambda>(&resolved_function); lambda != nullptr) {
       return lambda->invoke(*this, context, parameters);
@@ -855,7 +854,7 @@ struct cons_expr
   {
     auto sum = [&engine, &context, params]<typename Param>(Param first) -> SExpr {
       if constexpr (requires(Param p1, Param p2) { Op(p1, p2); }) {
-        for (const auto &next : params.subspan(1)) { Op(first, engine.eval_to<Param>(context, next)); }
+        for (const auto &next : params.subspan(1)) { first = Op(first, engine.eval_to<Param>(context, next)); }
 
         return SExpr{ Atom{ first } };
       } else {
@@ -912,4 +911,5 @@ struct cons_expr
 // * require types to be trivial
 // * simplify float parsing
 // * check propogation of lambda constants down into do/lambda/whatever below it
+// * make allocator aware
 #endif
