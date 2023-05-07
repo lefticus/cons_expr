@@ -404,11 +404,11 @@ struct cons_expr
 
   using Atom = std::variant<std::monostate, bool, int, double, IndexedString, Identifier, UserTypes...>;
 
-  struct Lambda;
+  struct Closure;
 
   struct SExpr
   {
-    std::variant<Atom, IndexedList, LiteralList, Lambda, function_ptr> value;
+    std::variant<Atom, IndexedList, LiteralList, Closure, function_ptr> value;
     [[nodiscard]] constexpr bool operator==(const SExpr &) const noexcept = default;
 
     constexpr std::span<const SExpr> to_list(const cons_expr &engine) const
@@ -427,7 +427,7 @@ struct cons_expr
     if (sexpr == nullptr) { return nullptr; }
 
     if constexpr (std::is_same_v<Result, Atom> || std::is_same_v<Result, IndexedList>
-                  || std::is_same_v<Result, LiteralList> || std::is_same_v<Result, Lambda>
+                  || std::is_same_v<Result, LiteralList> || std::is_same_v<Result, Closure>
                   || std::is_same_v<Result, function_ptr>) {
       return std::get_if<Result>(&sexpr->value);
     } else {
@@ -443,12 +443,12 @@ struct cons_expr
   SmallOptimizedVector<char, BuiltInStringsSize, IndexedString, std::string_view> strings{};
   SmallOptimizedVector<SExpr, BuiltInValuesSize, IndexedList> values{};
 
-  struct Lambda
+  struct Closure
   {
     IndexedList parameter_names;
     IndexedList statements;
 
-    [[nodiscard]] constexpr bool operator==(const Lambda &) const noexcept = default;
+    [[nodiscard]] constexpr bool operator==(const Closure &) const noexcept = default;
 
     [[nodiscard]] constexpr SExpr invoke(cons_expr &engine, Context &context, std::span<const SExpr> parameters) const
     {
@@ -555,7 +555,7 @@ struct cons_expr
   {
     const SExpr resolved_function = eval(context, function);
 
-    if (auto *lambda = get_if<Lambda>(&resolved_function); lambda != nullptr) {
+    if (auto *lambda = get_if<Closure>(&resolved_function); lambda != nullptr) {
       return lambda->invoke(*this, context, parameters);
     } else {
       return get_function(resolved_function)(*this, context, parameters);
@@ -639,7 +639,7 @@ struct cons_expr
     if constexpr (std::is_same_v<Type, SExpr>) {
       return expr;
     } else if constexpr (std::is_same_v<Type, LiteralList> || std::is_same_v<Type, IndexedList>
-                         || std::is_same_v<Type, Lambda> || std::is_same_v<Type, function_ptr>) {
+                         || std::is_same_v<Type, Closure> || std::is_same_v<Type, function_ptr>) {
       if (const auto *obj = std::get_if<Type>(&expr.value); obj != nullptr) { return *obj; }
     } else {
       if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
@@ -686,7 +686,7 @@ struct cons_expr
       fixed_statements.push_back(engine.fix_identifiers(statement, locals, context.objects));
     }
 
-    return SExpr{ Lambda{
+    return SExpr{ Closure{
       std::get<IndexedList>(params[0].value), { engine.values.insert_or_find(fixed_statements) } } };
   }
 
@@ -817,7 +817,6 @@ struct cons_expr
     std::vector<std::pair<std::size_t, SExpr>> variables;
 
     std::vector<IndexedString> variable_names;
-
 
     auto new_context = context;
 

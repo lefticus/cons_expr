@@ -17,7 +17,7 @@ std::string to_string(const lefticus::cons_expr<> &, bool annotate, const leftic
 std::string to_string(const lefticus::cons_expr<> &, bool annotate, const bool input);
 std::string to_string(const lefticus::cons_expr<> &, bool annotate, const double input);
 std::string to_string(const lefticus::cons_expr<> &, bool annotate, const int input);
-std::string to_string(const lefticus::cons_expr<> &, bool annotate, const lefticus::cons_expr<>::Lambda &);
+std::string to_string(const lefticus::cons_expr<> &, bool annotate, const lefticus::cons_expr<>::Closure &);
 std::string to_string(const lefticus::cons_expr<> &, bool annotate, const std::monostate &);
 std::string to_string(const lefticus::cons_expr<> &, bool annotate, const lefticus::cons_expr<>::Atom &input);
 std::string to_string(const lefticus::cons_expr<> &, bool annotate, const lefticus::cons_expr<>::function_ptr &);
@@ -26,13 +26,13 @@ std::string to_string(const lefticus::cons_expr<> &, bool annotate, const leftic
 std::string to_string(const lefticus::cons_expr<> &, bool annotate, const lefticus::IndexedString &string);
 
 
-std::string to_string([[maybe_unused]] const lefticus::cons_expr<> &, bool, const lefticus::cons_expr<>::Lambda &lambda)
+std::string to_string([[maybe_unused]] const lefticus::cons_expr<> &, bool, const lefticus::cons_expr<>::Closure &closure)
 {
-  return std::format("[lambda parameters {{{}, {}}} statements {{{}, {}}}]",
-    lambda.parameter_names.start,
-    lambda.parameter_names.size,
-    lambda.statements.start,
-    lambda.statements.size);
+  return std::format("[closure parameters {{{}, {}}} statements {{{}, {}}}]",
+    closure.parameter_names.start,
+    closure.parameter_names.size,
+    closure.statements.start,
+    closure.statements.size);
 }
 
 std::string to_string([[maybe_unused]] const lefticus::cons_expr<> &, bool, const std::monostate &) { return "[nil]"; }
