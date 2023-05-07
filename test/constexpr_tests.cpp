@@ -92,16 +92,18 @@ TEST_CASE("basic lambda usage", "[lambdas]")
 }
 
 TEST_CASE("nested lambda usage", "[lambdas]")
-{
+{                     
   STATIC_CHECK(evaluate_to<int>("(define l (lambda (x) (lambda () x))) ((l 1))") == 1);
   STATIC_CHECK(evaluate_to<int>("(define l (lambda (x) (lambda (y) (lambda () (+ x y))))) (((l 1) 3))") == 4);
+  STATIC_CHECK(evaluate_to<int>("(define l (lambda (x) (lambda (y) (let ((z (+ x y))) z)))) ((l 1) 3)") == 4);
+  STATIC_CHECK(evaluate_to<int>("(define l (lambda (x) (lambda (y) (let ((z 10)) (+ x y z))))) ((l 1) 3)") == 14);
+  STATIC_CHECK(evaluate_to<int>("((lambda(x) (let ((x (+ x 5))) x)) 2)") == 7);
 }
 
 TEST_CASE("basic define usage", "[define]")
 {
   STATIC_CHECK(evaluate_to<int>("(define x 32) x") == 32);
   STATIC_CHECK(evaluate_to<int>("(define x (lambda (y)(+ y 4))) (x 10)") == 14);
-  STATIC_CHECK(evaluate_to<int>("(define x 42) (define l (lambda (x)(+ x 4))) (l 10)") == 14);
 }
 
 TEST_CASE("binary short circuiting", "[short circuiting]")
@@ -116,6 +118,7 @@ TEST_CASE("let variables", "[let variables]")
 {
   STATIC_CHECK(evaluate_to<int>("(let ((x 3)(y 14)) (* x y))") == 42);
   STATIC_CHECK(evaluate_to<int>("(let ((x (* 3 1))(y (- 18 4))) (* x y))") == 42);
+  STATIC_CHECK(evaluate_to<int>("(define x 42) (define l (lambda (x)(+ x 4))) (l 10)") == 14);
 }
 
 

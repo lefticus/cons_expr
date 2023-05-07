@@ -616,8 +616,8 @@ struct cons_expr
       auto list = values[*indexedlist];
       if (!list.empty()) { return invoke_function(context, list[0], { std::next(list.begin()), list.end() }); }
     } else if (const auto *id = get_if<Identifier>(&expr); id != nullptr) {
-      for (const auto &object : context.objects) {
-        if (object.first == id->value) { return object.second; }
+      for (auto itr = context.objects.crbegin(); itr != context.objects.crend(); ++itr) {
+        if (itr->first == id->value) { return itr->second; }
       }
 
       // add a lookup function for this?
@@ -722,7 +722,30 @@ struct cons_expr
             }
 
             return SExpr{ values.insert_or_find(new_lambda) };
-          } else if (string == "let" || string == "define" || string == "do") {
+          } else if (string == "let") {
+            std::vector<IndexedString> new_locals{ local_identifiers.begin(), local_identifiers.end() };
+
+            std::vector<SExpr> new_parameters;
+
+            for (const auto &param : values[first_index + 1].to_list(*this)) {
+              auto param_list = param.to_list(*this);
+              std::vector<SExpr> new_param;
+              new_param.push_back(param_list[0]);
+              new_locals.push_back(get_if<Identifier>(&param_list[0])->value);
+              new_param.push_back(fix_identifiers(param_list[1], local_identifiers, local_constants));
+              new_parameters.push_back(SExpr{ values.insert_or_find(new_param) });
+            }
+
+            std::vector<SExpr> new_let;
+            new_let.push_back(values[first_index]);
+            new_let.push_back(SExpr{ values.insert_or_find(new_parameters) });
+
+            for (auto index = first_index + 2; index < list->size + list->start; ++index) {
+              new_let.push_back(fix_identifiers(values[index], new_locals, local_constants));
+            }
+
+            return SExpr{ values.insert_or_find(new_let) };
+          } else if (string == "define" || string == "do") {
             // we don't want to fix up things that set their own scope (yet)
             return input;
           }
@@ -772,7 +795,7 @@ struct cons_expr
       if (elements.size() != 2) { throw std::runtime_error(""); }
 
       new_context.objects.emplace_back(
-        engine.eval_to<Identifier>(new_context, elements[0]).value, engine.eval(new_context, elements[1]));
+        engine.eval_to<Identifier>(context, elements[0]).value, engine.eval(context, elements[1]));
     };
 
     const auto setup_variables = [&](const auto &expr) {
@@ -922,7 +945,7 @@ struct cons_expr
         bool odd = true;
         for (const auto &next : params.subspan(2)) {
           if (!result) { return SExpr{ Atom{ false } }; }
-          
+
           if (odd) {
             first = engine.eval_to<Param>(context, next);
             result = result && Op(second, first);
