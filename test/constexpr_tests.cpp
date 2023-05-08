@@ -112,6 +112,7 @@ TEST_CASE("define scoping", "[define]")
   STATIC_CHECK(evaluate_to<int>("((lambda () (define y 20)  y))") == 20);
   STATIC_CHECK(evaluate_to<int>("((lambda (x) (define y 20) (+ x y)) 10)") == 30);
   STATIC_CHECK(evaluate_to<int>("((lambda (x) (define y (* x 2)) y) 20)") == 40);
+  STATIC_CHECK(evaluate_to<int>("(define x 42) (define l (lambda (x)(+ x 4))) (l 10)") == 14);
   STATIC_CHECK(evaluate_to<int>(R"(
              (
                (lambda (x)
@@ -137,7 +138,7 @@ TEST_CASE("let variables", "[let variables]")
 {
   STATIC_CHECK(evaluate_to<int>("(let ((x 3)(y 14)) (* x y))") == 42);
   STATIC_CHECK(evaluate_to<int>("(let ((x (* 3 1))(y (- 18 4))) (* x y))") == 42);
-  STATIC_CHECK(evaluate_to<int>("(define x 42) (define l (lambda (x)(+ x 4))) (l 10)") == 14);
+  STATIC_CHECK(evaluate_to<int>("(define x 42) (let ((l (lambda (x)(+ x 4)))) (l 10))") == 14);
 }
 
 
