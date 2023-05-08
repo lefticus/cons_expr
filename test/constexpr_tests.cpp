@@ -107,6 +107,24 @@ TEST_CASE("basic define usage", "[define]")
   STATIC_CHECK(evaluate_to<int>("(define x (lambda (y)(+ y 4))) (x 10)") == 14);
 }
 
+TEST_CASE("define scoping", "[define]")
+{
+  STATIC_CHECK(evaluate_to<int>("((lambda () (define y 20)  y))") == 20);
+  STATIC_CHECK(evaluate_to<int>("((lambda (x) (define y 20) (+ x y)) 10)") == 30);
+  STATIC_CHECK(evaluate_to<int>("((lambda (x) (define y (* x 2)) y) 20)") == 40);
+  STATIC_CHECK(evaluate_to<int>(R"(
+             (
+               (lambda (x)
+                 (define y
+                   ((lambda (z) (* z x 2)) 3)
+                 )
+                 y
+               )
+             4)
+)") == 24);
+}
+
+
 TEST_CASE("binary short circuiting", "[short circuiting]")
 {
   STATIC_CHECK(evaluate_to<bool>("(and false (unknownfunc))") == false);

@@ -77,9 +77,9 @@ std::string to_string(const lefticus::cons_expr<> &, bool annotate, const int in
   return result + std::format("{}", input);
 }
 
-std::string to_string(const lefticus::cons_expr<> &, bool, const lefticus::cons_expr<>::function_ptr &func)
+std::string to_string(const lefticus::cons_expr<> &, bool, const lefticus::cons_expr<>::FunctionPtr &func)
 {
-  return std::format("[function_ptr {}]", reinterpret_cast<const void *>(func));
+  return std::format("[function_ptr {}]", reinterpret_cast<const void *>(func.ptr));
 }
 std::string to_string(const lefticus::cons_expr<> &engine, bool annotate, const lefticus::IndexedList &list)
 {

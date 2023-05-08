@@ -61,14 +61,15 @@ struct SmallOptimizedVector
   std::vector<Contained> rest;
   static constexpr auto small_capacity = SmallSize;
 
-  [[nodiscard]] constexpr auto max_index() const noexcept {
+  [[nodiscard]] constexpr auto max_index() const noexcept
+  {
     if (!rest.empty()) {
       return rest.size() + SmallSize;
     } else {
       return small_size_used;
     }
   }
-  [[nodiscard]] constexpr Contained &operator[](std::size_t index) 
+  [[nodiscard]] constexpr Contained &operator[](std::size_t index)
   {
     if (index < SmallSize) {
       return small[index];
@@ -131,16 +132,16 @@ struct SmallOptimizedVector
     constexpr auto &operator++()
     {
       ++index;
-      if (index == container->small_size_used && !container->rest.empty()) {
-        index = SmallSize; }
+      if (index == container->small_size_used && !container->rest.empty()) { index = SmallSize; }
       return *this;
     }
-    [[nodiscard]] constexpr auto operator++(int) {
+    [[nodiscard]] constexpr auto operator++(int)
+    {
       auto result = *this;
       ++(*this);
       return result;
     }
-    [[nodiscard]]  constexpr auto operator--(int)
+    [[nodiscard]] constexpr auto operator--(int)
     {
       auto result = *this;
       --(*this);
@@ -164,7 +165,7 @@ struct SmallOptimizedVector
     {
       KeyType span;
       const SmallOptimizedVector *container;
-      constexpr auto begin() const { return Iterator{  container, span.start }; }
+      constexpr auto begin() const { return Iterator{ container, span.start }; }
       constexpr auto end() const { return Iterator{ container, span.start + span.size }; }
     };
 
@@ -469,11 +470,10 @@ struct cons_expr
 
   using function_ptr = SExpr (*)(cons_expr &, LexicalScope &, std::span<const SExpr>);
 
-  struct FunctionPtr {
+  struct FunctionPtr
+  {
     function_ptr ptr;
-    [[nodiscard]] constexpr bool operator==(const FunctionPtr &) const noexcept {
-      return false;
-    }
+    [[nodiscard]] constexpr bool operator==(const FunctionPtr &) const noexcept { return false; }
   };
 
   [[nodiscard]] static constexpr SExpr for_each(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
@@ -605,26 +605,26 @@ struct cons_expr
 
   consteval cons_expr()
   {
-    add("+", SExpr{ FunctionPtr{binary_left_fold<adds>} });
-    add("*", SExpr{ FunctionPtr{binary_left_fold<multiplies> }});
-    add("-", SExpr{ FunctionPtr{binary_left_fold<subtracts>} });
-    add("/", SExpr{ FunctionPtr{binary_left_fold<divides>} });
-    add("<", SExpr{ FunctionPtr{binary_boolean_apply_pairwise<less_than> }});
-    add(">", SExpr{ FunctionPtr{binary_boolean_apply_pairwise<greater_than> }});
-    add("<=", SExpr{ FunctionPtr{binary_boolean_apply_pairwise<less_than_equal> }});
-    add(">=", SExpr{ FunctionPtr{binary_boolean_apply_pairwise<greater_than_equal> }});
-    add("and", SExpr{ FunctionPtr{logical_and }});
-    add("or", SExpr{ FunctionPtr{logical_or }});
-    add("if", SExpr{ FunctionPtr{ifer }});
-    add("not", SExpr{ FunctionPtr{make_evaluator<logical_not>() }});
-    add("==", SExpr{ FunctionPtr{binary_boolean_apply_pairwise<equal> }});
-    add("!=", SExpr{ FunctionPtr{binary_boolean_apply_pairwise<not_equal> }});
-    add("for-each", SExpr{ FunctionPtr{for_each }});
-    add("list", SExpr{ FunctionPtr{list} });
-    add("lambda", SExpr{ FunctionPtr{lambda }});
-    add("do", SExpr{ FunctionPtr{doer }});
-    add("define", SExpr{ FunctionPtr{definer }});
-    add("let", SExpr{ FunctionPtr{letter} });
+    add("+", SExpr{ FunctionPtr{ binary_left_fold<adds> } });
+    add("*", SExpr{ FunctionPtr{ binary_left_fold<multiplies> } });
+    add("-", SExpr{ FunctionPtr{ binary_left_fold<subtracts> } });
+    add("/", SExpr{ FunctionPtr{ binary_left_fold<divides> } });
+    add("<", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<less_than> } });
+    add(">", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<greater_than> } });
+    add("<=", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<less_than_equal> } });
+    add(">=", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<greater_than_equal> } });
+    add("and", SExpr{ FunctionPtr{ logical_and } });
+    add("or", SExpr{ FunctionPtr{ logical_or } });
+    add("if", SExpr{ FunctionPtr{ ifer } });
+    add("not", SExpr{ FunctionPtr{ make_evaluator<logical_not>() } });
+    add("==", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<equal> } });
+    add("!=", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<not_equal> } });
+    add("for-each", SExpr{ FunctionPtr{ for_each } });
+    add("list", SExpr{ FunctionPtr{ list } });
+    add("lambda", SExpr{ FunctionPtr{ lambda } });
+    add("do", SExpr{ FunctionPtr{ doer } });
+    add("define", SExpr{ FunctionPtr{ definer } });
+    add("let", SExpr{ FunctionPtr{ letter } });
   }
 
   [[nodiscard]] constexpr SExpr sequence(LexicalScope &scope, std::span<const SExpr> statements)
@@ -774,7 +774,7 @@ struct cons_expr
   [[nodiscard]] static constexpr SExpr definer(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
   {
     if (params.size() != 2) { throw std::runtime_error("Wrong number of parameters to define expression"); }
-    engine.add(engine.strings[engine.eval_to<Identifier>(scope, params[0]).value],
+    scope.emplace_back(engine.eval_to<Identifier>(scope, params[0]).value,
       engine.fix_identifiers(engine.eval(scope, params[1]), {}, scope));
     return SExpr{ Atom{ std::monostate{} } };
   }
@@ -828,6 +828,15 @@ struct cons_expr
             }
 
             return SExpr{ values.insert_or_find(new_let) };
+          } else if (string == "define") {
+            std::vector<IndexedString> new_locals{ local_identifiers.begin(), local_identifiers.end() };
+            new_locals.push_back(get_if<Identifier>(&values[first_index + 1])->value);
+
+            std::vector<SExpr> new_define;
+            new_define.push_back(fix_identifiers(values[first_index], local_identifiers, local_constants));
+            new_define.push_back(values[first_index + 1]);
+            new_define.push_back(fix_identifiers(values[first_index + 2], new_locals, local_constants));
+            return SExpr{ values.insert_or_find(new_define) };
           } else if (string == "define" || string == "do") {
             // we don't want to fix up things that set their own scope (yet)
             return input;
@@ -848,7 +857,7 @@ struct cons_expr
         }
       }
 
-      // we're hoping it's a global, which we will treat as a constant
+      // we're hoping it's a constant
       for (const auto &object : local_constants.view() | std::ranges::views::reverse) {
         if (object.first == id->value) { return object.second; }
       }
@@ -871,8 +880,7 @@ struct cons_expr
       auto elements = expr.to_list(engine);
       if (elements.size() != 2) { throw std::runtime_error(""); }
 
-      new_scope.emplace_back(
-        engine.eval_to<Identifier>(scope, elements[0]).value, engine.eval(scope, elements[1]));
+      new_scope.emplace_back(engine.eval_to<Identifier>(scope, elements[0]).value, engine.eval(scope, elements[1]));
     };
 
     const auto setup_variables = [&](const auto &expr) {
@@ -902,8 +910,7 @@ struct cons_expr
       if (elements.size() != 3) { throw std::runtime_error(""); }
 
       const auto index = new_scope.max_index();
-      new_scope.emplace_back(
-        engine.eval_to<Identifier>(scope, elements[0]).value, engine.eval(scope, elements[1]));
+      new_scope.emplace_back(engine.eval_to<Identifier>(scope, elements[0]).value, engine.eval(scope, elements[1]));
       variables.emplace_back(index, elements[2]);
     };
 
