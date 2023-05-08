@@ -843,8 +843,39 @@ struct cons_expr
             new_define.push_back(fix_identifiers(values[first_index + 2], new_locals, local_constants));
             return SExpr{ values.insert_or_find(new_define) };
           } else if (string == "do") {
-            // we don't want to fix up things that set their own scope (yet)
-            return input;
+            std::vector<IndexedString> new_locals{ local_identifiers.begin(), local_identifiers.end() };
+
+            std::vector<SExpr> new_parameters;
+
+            // collect all locals
+            for (const auto &param : values[first_index + 1].to_list(*this)) {
+              auto param_list = param.to_list(*this);
+              new_locals.push_back(get_if<Identifier>(&param_list[0])->value);
+            }
+
+            for (const auto &param : values[first_index + 1].to_list(*this)) {
+              auto param_list = param.to_list(*this);
+              std::vector<SExpr> new_param;
+              new_param.push_back(param_list[0]);
+              new_param.push_back(fix_identifiers(param_list[1], local_identifiers, local_constants));
+              // increment thingy
+              new_param.push_back(fix_identifiers(param_list[2], new_locals, local_constants));
+              new_parameters.push_back(SExpr{ values.insert_or_find(new_param) });
+            }
+
+            std::vector<SExpr> new_do;
+            // fixup pointer to "let" function
+            new_do.push_back(fix_identifiers(values[first_index], new_locals, local_constants));
+
+            // add parameter setup
+            new_do.push_back(SExpr{ values.insert_or_find(new_parameters) });
+
+            
+            for (auto index = first_index + 2; index < list->size + list->start; ++index) {
+              new_do.push_back(fix_identifiers(values[index], new_locals, local_constants));
+            }
+
+            return SExpr{ values.insert_or_find(new_do) };
           }
         }
       }

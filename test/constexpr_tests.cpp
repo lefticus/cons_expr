@@ -156,6 +156,20 @@ TEST_CASE("simple do expression", "[builtins]")
 }
 
 
+TEST_CASE("scoped do expression", "[builtins]")
+{
+  STATIC_CHECK(evaluate_to<int>(R"(
+
+((lambda (count)
+   (do ((i 1 (+ i 1))
+         (sum 0 (+ sum i)))
+        ((> i count) sum)
+   )
+) 10)
+
+)") == 55);
+}
+
 TEST_CASE("basic for-each usage", "[builtins]")
 {
   // STATIC_CHECK_NOTHROW(evaluate_to<std::monostate>("(for-each display '(1 2 3 4))"));
