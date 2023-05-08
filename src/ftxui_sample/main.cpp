@@ -162,13 +162,11 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
   update_objects();
 
   auto do_evaluate = [&]() {
-    lefticus::cons_expr<>::Context context;
-
     content_2 += "\n> " + content_1 + "\n";
 
     try {
       content_2 +=
-        to_string(evaluator, false, evaluator.sequence(context, evaluator.parse(content_1).first.to_list(evaluator)));
+        to_string(evaluator, false, evaluator.sequence(evaluator.global_scope, evaluator.parse(content_1).first.to_list(evaluator)));
     } catch (const std::exception &e) {
       content_2 += std::string("Error: ") + e.what();
     }
@@ -196,8 +194,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
       ftxui::text(std::format("string used: {}+{}  symbols used: {}+{}  values used: {}+{}",
         evaluator.strings.small_size_used,
         evaluator.strings.rest.size(),
-        evaluator.symbols.small_size_used,
-        evaluator.symbols.rest.size(),
+        evaluator.global_scope.small_size_used,
+        evaluator.global_scope.rest.size(),
         evaluator.values.small_size_used,
         evaluator.values.rest.size())) });
   };

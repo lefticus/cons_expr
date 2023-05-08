@@ -3,6 +3,7 @@
 
 #include <charconv>
 #include <functional>
+#include <ranges>
 #include <span>
 #include <stacktrace>
 #include <stdexcept>
@@ -60,6 +61,22 @@ struct SmallOptimizedVector
   std::vector<Contained> rest;
   static constexpr auto small_capacity = SmallSize;
 
+  [[nodiscard]] constexpr auto max_index() const noexcept {
+    if (!rest.empty()) {
+      return rest.size() + SmallSize;
+    } else {
+      return small_size_used;
+    }
+  }
+  [[nodiscard]] constexpr Contained &operator[](std::size_t index) 
+  {
+    if (index < SmallSize) {
+      return small[index];
+    } else {
+      return rest[index - SmallSize];
+    }
+  }
+
   [[nodiscard]] constexpr const Contained &operator[](std::size_t index) const
   {
     if (index < SmallSize) {
@@ -85,7 +102,7 @@ struct SmallOptimizedVector
 
   constexpr std::size_t insert(Contained obj, bool force_rest = false)
   {
-    if (force_rest || small_size_used == SmallSize) {
+    if (!rest.empty() || force_rest || small_size_used == SmallSize) {
       rest.push_back(std::move(obj));
       return (rest.size() - 1) + SmallSize;
     } else {
@@ -94,8 +111,74 @@ struct SmallOptimizedVector
     }
   }
 
-  constexpr auto small_end() const { return std::next(small.begin(), static_cast<std::ptrdiff_t>(small_size_used)); }
   constexpr auto small_end() { return std::next(small.begin(), static_cast<std::ptrdiff_t>(small_size_used)); }
+
+  struct Iterator
+  {
+    using difference_type = std::ptrdiff_t;
+    using value_type = Contained;
+    using pointer = const Contained *;
+    using reference = const Contained &;
+    using iterator_category = std::bidirectional_iterator_tag;
+
+    const SmallOptimizedVector *container;
+    std::size_t index;
+
+    constexpr bool operator==(const Iterator &) const noexcept = default;
+    constexpr bool operator!=(const Iterator &) const noexcept = default;
+
+    constexpr const auto &operator*() const { return (*container)[index]; }
+    constexpr auto &operator++()
+    {
+      ++index;
+      if (index == container->small_size_used && !container->rest.empty()) {
+        index = SmallSize; }
+      return *this;
+    }
+    [[nodiscard]] constexpr auto operator++(int) {
+      auto result = *this;
+      ++(*this);
+      return result;
+    }
+    [[nodiscard]]  constexpr auto operator--(int)
+    {
+      auto result = *this;
+      --(*this);
+      return result;
+    }
+
+    constexpr auto &operator--()
+    {
+      if (index == SmallSize) {
+        index = container->small_size_used - 1;
+      } else {
+        --index;
+      }
+      return *this;
+    }
+  };
+
+  [[nodiscard]] constexpr auto view(KeyType span) const noexcept
+  {
+    struct View
+    {
+      KeyType span;
+      const SmallOptimizedVector *container;
+      constexpr auto begin() const { return Iterator{  container, span.start }; }
+      constexpr auto end() const { return Iterator{ container, span.start + span.size }; }
+    };
+
+    return View{ span, this };
+  }
+
+  constexpr auto view() const
+  {
+    if (rest.empty()) {
+      return view(KeyType{ 0, small_size_used });
+    } else {
+      return view(KeyType{ 0, rest.size() + SmallSize });
+    }
+  }
 
   constexpr KeyType insert_or_find(SpanType values)
   {
@@ -381,22 +464,27 @@ struct cons_expr
 {
   struct SExpr;
 
-  struct Context
-  {
-    std::vector<std::pair<IndexedString, SExpr>> objects;
+  using LexicalScope = SmallOptimizedVector<std::pair<IndexedString, SExpr>, BuiltInSymbolsSize, IndexedList>;
+
+
+  using function_ptr = SExpr (*)(cons_expr &, LexicalScope &, std::span<const SExpr>);
+
+  struct FunctionPtr {
+    function_ptr ptr;
+    [[nodiscard]] constexpr bool operator==(const FunctionPtr &) const noexcept {
+      return false;
+    }
   };
 
-  using function_ptr = SExpr (*)(cons_expr &, Context &, std::span<const SExpr>);
-
-  [[nodiscard]] static constexpr SExpr for_each(cons_expr &engine, Context &context, std::span<const SExpr> params)
+  [[nodiscard]] static constexpr SExpr for_each(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
   {
     if (params.size() != 2) { throw std::runtime_error("Wrong number of parameters to for-each expression"); }
 
-    const auto &list = engine.values[engine.eval_to<LiteralList>(context, params[1]).items];
+    const auto &list = engine.values[engine.eval_to<LiteralList>(scope, params[1]).items];
 
     for (auto itr = list.begin(); itr != list.end(); ++itr) {
       [[maybe_unused]] const auto result =
-        engine.invoke_function(context, params[0], std::span<const SExpr>{ itr, std::next(itr) });
+        engine.invoke_function(scope, params[0], std::span<const SExpr>{ itr, std::next(itr) });
     }
 
     return SExpr{ Atom{ std::monostate{} } };
@@ -408,7 +496,7 @@ struct cons_expr
 
   struct SExpr
   {
-    std::variant<Atom, IndexedList, LiteralList, Closure, function_ptr> value;
+    std::variant<Atom, IndexedList, LiteralList, Closure, FunctionPtr> value;
     [[nodiscard]] constexpr bool operator==(const SExpr &) const noexcept = default;
 
     constexpr std::span<const SExpr> to_list(const cons_expr &engine) const
@@ -428,7 +516,7 @@ struct cons_expr
 
     if constexpr (std::is_same_v<Result, Atom> || std::is_same_v<Result, IndexedList>
                   || std::is_same_v<Result, LiteralList> || std::is_same_v<Result, Closure>
-                  || std::is_same_v<Result, function_ptr>) {
+                  || std::is_same_v<Result, FunctionPtr>) {
       return std::get_if<Result>(&sexpr->value);
     } else {
       if (const auto *atom = std::get_if<Atom>(&sexpr->value)) {
@@ -439,7 +527,7 @@ struct cons_expr
     }
   }
 
-  SmallOptimizedVector<std::pair<IndexedString, SExpr>, BuiltInSymbolsSize, IndexedList> symbols{};
+  LexicalScope global_scope{};
   SmallOptimizedVector<char, BuiltInStringsSize, IndexedString, std::string_view> strings{};
   SmallOptimizedVector<SExpr, BuiltInValuesSize, IndexedList> values{};
 
@@ -450,13 +538,14 @@ struct cons_expr
 
     [[nodiscard]] constexpr bool operator==(const Closure &) const noexcept = default;
 
-    [[nodiscard]] constexpr SExpr invoke(cons_expr &engine, Context &context, std::span<const SExpr> parameters) const
+    [[nodiscard]] constexpr SExpr
+      invoke(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> parameters) const
     {
       if (parameters.size() != parameter_names.size) {
         throw std::runtime_error("Incorrect number of parameters for lambda");
       }
 
-      Context new_context;
+      LexicalScope new_scope;
 
       const auto parameter_names_list = engine.values[parameter_names];
 
@@ -464,11 +553,11 @@ struct cons_expr
       // technically I'm evaluating the params lazily while invoking the lambda, not before
       // does it matter?
       for (std::size_t index = 0; index < parameter_names_list.size(); ++index) {
-        new_context.objects.emplace_back(std::get<Identifier>(std::get<Atom>(parameter_names_list[index].value)).value,
-          engine.eval(context, parameters[index]));
+        new_scope.emplace_back(std::get<Identifier>(std::get<Atom>(parameter_names_list[index].value)).value,
+          engine.eval(scope, parameters[index]));
       }
 
-      return engine.sequence(new_context, engine.values[statements]);
+      return engine.sequence(new_scope, engine.values[statements]);
     }
   };
 
@@ -516,70 +605,70 @@ struct cons_expr
 
   consteval cons_expr()
   {
-    add("+", SExpr{ binary_left_fold<adds> });
-    add("*", SExpr{ binary_left_fold<multiplies> });
-    add("-", SExpr{ binary_left_fold<subtracts> });
-    add("/", SExpr{ binary_left_fold<divides> });
-    add("<", SExpr{ binary_boolean_apply_pairwise<less_than> });
-    add(">", SExpr{ binary_boolean_apply_pairwise<greater_than> });
-    add("<=", SExpr{ binary_boolean_apply_pairwise<less_than_equal> });
-    add(">=", SExpr{ binary_boolean_apply_pairwise<greater_than_equal> });
-    add("and", SExpr{ logical_and });
-    add("or", SExpr{ logical_or });
-    add("if", SExpr{ ifer });
-    add("not", SExpr{ make_evaluator<logical_not>() });
-    add("==", SExpr{ binary_boolean_apply_pairwise<equal> });
-    add("!=", SExpr{ binary_boolean_apply_pairwise<not_equal> });
-    add("for-each", SExpr{ for_each });
-    add("list", SExpr{ list });
-    add("lambda", SExpr{ lambda });
-    add("do", SExpr{ doer });
-    add("define", SExpr{ definer });
-    add("let", SExpr{ letter });
+    add("+", SExpr{ FunctionPtr{binary_left_fold<adds>} });
+    add("*", SExpr{ FunctionPtr{binary_left_fold<multiplies> }});
+    add("-", SExpr{ FunctionPtr{binary_left_fold<subtracts>} });
+    add("/", SExpr{ FunctionPtr{binary_left_fold<divides>} });
+    add("<", SExpr{ FunctionPtr{binary_boolean_apply_pairwise<less_than> }});
+    add(">", SExpr{ FunctionPtr{binary_boolean_apply_pairwise<greater_than> }});
+    add("<=", SExpr{ FunctionPtr{binary_boolean_apply_pairwise<less_than_equal> }});
+    add(">=", SExpr{ FunctionPtr{binary_boolean_apply_pairwise<greater_than_equal> }});
+    add("and", SExpr{ FunctionPtr{logical_and }});
+    add("or", SExpr{ FunctionPtr{logical_or }});
+    add("if", SExpr{ FunctionPtr{ifer }});
+    add("not", SExpr{ FunctionPtr{make_evaluator<logical_not>() }});
+    add("==", SExpr{ FunctionPtr{binary_boolean_apply_pairwise<equal> }});
+    add("!=", SExpr{ FunctionPtr{binary_boolean_apply_pairwise<not_equal> }});
+    add("for-each", SExpr{ FunctionPtr{for_each }});
+    add("list", SExpr{ FunctionPtr{list} });
+    add("lambda", SExpr{ FunctionPtr{lambda }});
+    add("do", SExpr{ FunctionPtr{doer }});
+    add("define", SExpr{ FunctionPtr{definer }});
+    add("let", SExpr{ FunctionPtr{letter} });
   }
 
-  [[nodiscard]] constexpr SExpr sequence(Context &context, std::span<const SExpr> statements)
+  [[nodiscard]] constexpr SExpr sequence(LexicalScope &scope, std::span<const SExpr> statements)
   {
     if (!statements.empty()) {
       for (const auto &statement : statements.subspan(0, statements.size() - 1)) {
-        [[maybe_unused]] const auto result = eval(context, statement);
+        [[maybe_unused]] const auto result = eval(scope, statement);
       }
-      return eval(context, statements.back());
+      return eval(scope, statements.back());
     } else {
       return SExpr{ Atom{ std::monostate{} } };
     }
   }
 
   [[nodiscard]] constexpr SExpr
-    invoke_function(Context &context, const SExpr &function, std::span<const SExpr> parameters)
+    invoke_function(LexicalScope &scope, const SExpr &function, std::span<const SExpr> parameters)
   {
-    const SExpr resolved_function = eval(context, function);
+    const SExpr resolved_function = eval(scope, function);
 
     if (auto *lambda = get_if<Closure>(&resolved_function); lambda != nullptr) {
-      return lambda->invoke(*this, context, parameters);
+      return lambda->invoke(*this, scope, parameters);
     } else {
-      return get_function(resolved_function)(*this, context, parameters);
+      return get_function(resolved_function)(*this, scope, parameters);
     }
   }
 
   [[nodiscard]] constexpr function_ptr get_function(const SExpr &expr)
   {
-    if (const auto *func = get_if<function_ptr>(&expr); func != nullptr) { return *func; }
+    if (const auto *func = get_if<FunctionPtr>(&expr); func != nullptr) { return func->ptr; }
     throw std::runtime_error("Does not evaluate to a function");
   }
 
   template<auto Func, typename Ret, typename... Param>
   [[nodiscard]] constexpr static function_ptr make_evaluator(Ret (*)(Param...))
   {
-    return function_ptr{ [](cons_expr &engine, Context &context, std::span<const SExpr> params) -> SExpr {
+    return function_ptr{ [](cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params) -> SExpr {
       if (params.size() != sizeof...(Param)) { throw std::runtime_error("wrong param count"); }
 
       auto impl = [&]<std::size_t... Idx>(std::index_sequence<Idx...>) {
         if constexpr (std::is_same_v<void, Ret>) {
-          Func(engine.eval_to<std::remove_cvref_t<Param>>(context, params[Idx])...);
+          Func(engine.eval_to<std::remove_cvref_t<Param>>(scope, params[Idx])...);
           return SExpr{ Atom{ std::monostate{} } };
         } else {
-          return SExpr{ Func(engine.eval_to<Param>(context, params[Idx])...) };
+          return SExpr{ Func(engine.eval_to<Param>(scope, params[Idx])...) };
         }
       };
 
@@ -594,39 +683,30 @@ struct cons_expr
 
   template<auto Func> constexpr void add(std::string_view name)
   {
-    symbols.emplace_back(strings.insert_or_find(name), SExpr{ make_evaluator<Func>() });
+    global_scope.emplace_back(strings.insert_or_find(name), SExpr{ make_evaluator<Func>() });
   }
 
   constexpr void add(std::string_view name, SExpr value)
   {
-    symbols.insert(std::pair<IndexedString, SExpr>(strings.insert_or_find(name), std::move(value)));
+    global_scope.insert(std::pair<IndexedString, SExpr>(strings.insert_or_find(name), std::move(value)));
   }
 
   template<typename Value> constexpr void add(std::string_view name, Value &&value)
   {
-    symbols.insert(
+    global_scope.insert(
       std::pair<IndexedString, SExpr>(strings.insert_or_find(name), SExpr{ Atom{ std::forward<Value>(value) } }));
   }
 
 
-  [[nodiscard]] constexpr SExpr eval(Context &context, const SExpr &expr)
+  [[nodiscard]] constexpr SExpr eval(LexicalScope &scope, const SExpr &expr)
   {
     if (const auto *indexedlist = get_if<IndexedList>(&expr); indexedlist != nullptr) {
       // if it's a non-empty list, then I need to evaluate it as a function
       auto list = values[*indexedlist];
-      if (!list.empty()) { return invoke_function(context, list[0], { std::next(list.begin()), list.end() }); }
+      if (!list.empty()) { return invoke_function(scope, list[0], { std::next(list.begin()), list.end() }); }
     } else if (const auto *id = get_if<Identifier>(&expr); id != nullptr) {
-      for (auto itr = context.objects.crbegin(); itr != context.objects.crend(); ++itr) {
-        if (itr->first == id->value) { return itr->second; }
-      }
-
-      // add a lookup function for this?
-      for (const auto &object : symbols.rest) {
-        if (object.first == id->value) { return object.second; }
-      }
-
-      for (const auto &object : symbols.small) {
-        if (object.first == id->value) { return object.second; }
+      for (const auto &[key, value] : scope.view() | std::ranges::views::reverse) {
+        if (key == id->value) { return value; }
       }
 
       throw std::runtime_error("id not found");
@@ -634,12 +714,12 @@ struct cons_expr
     return expr;
   }
 
-  template<typename Type> [[nodiscard]] constexpr Type eval_to(Context &context, const SExpr &expr)
+  template<typename Type> [[nodiscard]] constexpr Type eval_to(LexicalScope &scope, const SExpr &expr)
   {
     if constexpr (std::is_same_v<Type, SExpr>) {
       return expr;
     } else if constexpr (std::is_same_v<Type, LiteralList> || std::is_same_v<Type, IndexedList>
-                         || std::is_same_v<Type, Closure> || std::is_same_v<Type, function_ptr>) {
+                         || std::is_same_v<Type, Closure> || std::is_same_v<Type, FunctionPtr>) {
       if (const auto *obj = std::get_if<Type>(&expr.value); obj != nullptr) { return *obj; }
     } else {
       if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
@@ -650,14 +730,14 @@ struct cons_expr
         }
       }
     }
-    return eval_to<Type>(context, eval(context, expr));
+    return eval_to<Type>(scope, eval(scope, expr));
   }
 
-  [[nodiscard]] static constexpr SExpr list(cons_expr &engine, Context &context, std::span<const SExpr> params)
+  [[nodiscard]] static constexpr SExpr list(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
   {
     std::vector<SExpr> result;
 
-    for (const auto &param : params) { result.push_back(engine.eval(context, param)); }
+    for (const auto &param : params) { result.push_back(engine.eval(scope, param)); }
 
     return SExpr{ LiteralList{ engine.values.insert(result) } };
   }
@@ -673,7 +753,7 @@ struct cons_expr
     return retval;
   }
 
-  [[nodiscard]] static constexpr SExpr lambda(cons_expr &engine, Context &context, std::span<const SExpr> params)
+  [[nodiscard]] static constexpr SExpr lambda(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
   {
     if (params.size() < 2) { throw std::runtime_error("Wrong number of parameters to lambda expression"); }
 
@@ -683,24 +763,25 @@ struct cons_expr
     auto locals = engine.get_lambda_parameter_names(params[0]);
 
     for (const auto &statement : params.subspan(1)) {
-      fixed_statements.push_back(engine.fix_identifiers(statement, locals, context.objects));
+      // all of current scope is const and capturable
+      fixed_statements.push_back(engine.fix_identifiers(statement, locals, scope));
     }
 
     return SExpr{ Closure{
       std::get<IndexedList>(params[0].value), { engine.values.insert_or_find(fixed_statements) } } };
   }
 
-  [[nodiscard]] static constexpr SExpr definer(cons_expr &engine, Context &context, std::span<const SExpr> params)
+  [[nodiscard]] static constexpr SExpr definer(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
   {
     if (params.size() != 2) { throw std::runtime_error("Wrong number of parameters to define expression"); }
-    engine.add(engine.strings[engine.eval_to<Identifier>(context, params[0]).value],
-      engine.fix_identifiers(engine.eval(context, params[1]), {}, context.objects));
+    engine.add(engine.strings[engine.eval_to<Identifier>(scope, params[0]).value],
+      engine.fix_identifiers(engine.eval(scope, params[1]), {}, scope));
     return SExpr{ Atom{ std::monostate{} } };
   }
 
   [[nodiscard]] constexpr SExpr fix_identifiers(const SExpr &input,
     std::span<const IndexedString> local_identifiers,
-    std::span<const std::pair<IndexedString, SExpr>> local_constants)
+    const LexicalScope &local_constants)
   {
     if (auto *list = get_if<IndexedList>(&input); list != nullptr) {
       if (list->size != 0) {
@@ -714,7 +795,8 @@ struct cons_expr
             new_locals.insert(new_locals.end(), lambda_locals.begin(), lambda_locals.end());
 
             std::vector<SExpr> new_lambda;
-            new_lambda.push_back(values[first_index]);
+            // fixup pointer to "lambda" function
+            new_lambda.push_back(fix_identifiers(values[first_index], new_locals, local_constants));
             new_lambda.push_back(values[first_index + 1]);
 
             for (auto index = first_index + 2; index < list->size + list->start; ++index) {
@@ -737,7 +819,8 @@ struct cons_expr
             }
 
             std::vector<SExpr> new_let;
-            new_let.push_back(values[first_index]);
+            // fixup pointer to "let" function
+            new_let.push_back(fix_identifiers(values[first_index], new_locals, local_constants));
             new_let.push_back(SExpr{ values.insert_or_find(new_parameters) });
 
             for (auto index = first_index + 2; index < list->size + list->start; ++index) {
@@ -760,42 +843,36 @@ struct cons_expr
     } else if (auto *id = get_if<Identifier>(&input); id != nullptr) {
       for (const auto &local : local_identifiers) {
         if (local == id->value) {
-          // do something smarter later, but abort for now because it's in the variable context
+          // do something smarter later, but abort for now because it's in the variable scope
           return input;
         }
       }
 
       // we're hoping it's a global, which we will treat as a constant
-      for (const auto &object : local_constants) {
+      for (const auto &object : local_constants.view() | std::ranges::views::reverse) {
         if (object.first == id->value) { return object.second; }
       }
 
-      for (const auto &object : this->symbols.small) {
-        if (object.first == id->value) { return object.second; }
-      }
-      for (const auto &object : this->symbols.rest) {
-        if (object.first == id->value) { return object.second; }
-      }
       return input;
     }
 
     return input;
   }
 
-  [[nodiscard]] static constexpr SExpr letter(cons_expr &engine, Context &context, std::span<const SExpr> params)
+  [[nodiscard]] static constexpr SExpr letter(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
   {
     if (params.empty()) { throw std::runtime_error("Wrong number of parameters to let expression"); }
 
     std::vector<std::pair<std::size_t, SExpr>> variables;
 
-    auto new_context = context;
+    auto new_scope = scope;
 
     const auto setup_variable = [&](const auto &expr) {
       auto elements = expr.to_list(engine);
       if (elements.size() != 2) { throw std::runtime_error(""); }
 
-      new_context.objects.emplace_back(
-        engine.eval_to<Identifier>(context, elements[0]).value, engine.eval(context, elements[1]));
+      new_scope.emplace_back(
+        engine.eval_to<Identifier>(scope, elements[0]).value, engine.eval(scope, elements[1]));
     };
 
     const auto setup_variables = [&](const auto &expr) {
@@ -806,11 +883,11 @@ struct cons_expr
     setup_variables(params[0]);
 
     // evaluate body
-    return engine.sequence(new_context, params.subspan(1));
+    return engine.sequence(new_scope, params.subspan(1));
   }
 
 
-  [[nodiscard]] static constexpr SExpr doer(cons_expr &engine, Context &context, std::span<const SExpr> params)
+  [[nodiscard]] static constexpr SExpr doer(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
   {
     if (params.size() < 2) { throw std::runtime_error("Wrong number of parameters to do expression"); }
 
@@ -818,15 +895,15 @@ struct cons_expr
 
     std::vector<IndexedString> variable_names;
 
-    auto new_context = context;
+    auto new_scope = scope;
 
     const auto setup_variable = [&](const auto &expr) {
       auto elements = expr.to_list(engine);
       if (elements.size() != 3) { throw std::runtime_error(""); }
 
-      const auto index = new_context.objects.size();
-      new_context.objects.emplace_back(
-        engine.eval_to<Identifier>(new_context, elements[0]).value, engine.eval(new_context, elements[1]));
+      const auto index = new_scope.max_index();
+      new_scope.emplace_back(
+        engine.eval_to<Identifier>(scope, elements[0]).value, engine.eval(scope, elements[1]));
       variables.emplace_back(index, elements[2]);
     };
 
@@ -839,8 +916,8 @@ struct cons_expr
 
     for (auto &variable : variables) { variable.second = engine.fix_identifiers(variable.second, variable_names, {}); }
 
-    // make copy of context first, then build this from entire context
-    for (const auto &local : new_context.objects) { variable_names.push_back(local.first); }
+    // make copy of scope first, then build this from entire scope
+    for (const auto &local : new_scope.view()) { variable_names.push_back(local.first); }
 
     const auto terminators = params[1].to_list(engine);
 
@@ -849,31 +926,31 @@ struct cons_expr
     auto fixed_up_terminator = engine.fix_identifiers(terminators[0], variable_names, {});
 
     // continue while terminator test is false
-    while (!engine.eval_to<bool>(new_context, fixed_up_terminator)) {
+    while (!engine.eval_to<bool>(new_scope, fixed_up_terminator)) {
       // evaluate body
-      [[maybe_unused]] const auto result = engine.sequence(new_context, params.subspan(2));
+      [[maybe_unused]] const auto result = engine.sequence(new_scope, params.subspan(2));
 
       // iterate loop variables
-      for (const auto &[index, expr] : variables) { new_values.emplace_back(index, engine.eval(new_context, expr)); }
+      for (const auto &[index, expr] : variables) { new_values.emplace_back(index, engine.eval(new_scope, expr)); }
 
       // update values
-      for (auto &&[index, value] : new_values) { new_context.objects[index].second = std::move(value); }
+      for (auto &&[index, value] : new_values) { new_scope[index].second = std::move(value); }
 
       new_values.clear();
     }
 
     // evaluate sequence of termination expressions
-    return engine.sequence(new_context, terminators.subspan(1));
+    return engine.sequence(new_scope, terminators.subspan(1));
   }
 
-  [[nodiscard]] static constexpr SExpr ifer(cons_expr &engine, Context &context, std::span<const SExpr> params)
+  [[nodiscard]] static constexpr SExpr ifer(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
   {
     if (params.size() != 3) { throw std::runtime_error("Wrong number of parameters to if expression"); }
 
-    if (engine.eval_to<bool>(context, params[0])) {
-      return engine.eval(context, params[1]);
+    if (engine.eval_to<bool>(scope, params[0])) {
+      return engine.eval(scope, params[1]);
     } else {
-      return engine.eval(context, params[2]);
+      return engine.eval(scope, params[2]);
     }
   }
 
@@ -883,13 +960,11 @@ struct cons_expr
   {
     auto impl = [this, function]<typename Ret, typename... Params>(Ret (*)(Params...)) {
       // this is fragile, we need to check parsing better
-      Context temp_ctx;
 
-      return [callable = eval(temp_ctx, values[std::get<IndexedList>(parse(function).first.value)][0]), this](
+      return [callable = eval(global_scope, values[std::get<IndexedList>(parse(function).first.value)][0]), this](
                Params... params) {
-        Context ctx;
         std::array<SExpr, sizeof...(Params)> args{ SExpr{ Atom{ params } }... };
-        return eval_to<Ret>(ctx, invoke_function(ctx, callable, args));
+        return eval_to<Ret>(global_scope, invoke_function(global_scope, callable, args));
       };
     };
 
@@ -898,11 +973,11 @@ struct cons_expr
 
   template<auto Op>
   [[nodiscard]] static constexpr SExpr
-    binary_left_fold(cons_expr &engine, Context &context, std::span<const SExpr> params)
+    binary_left_fold(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
   {
-    auto sum = [&engine, &context, params]<typename Param>(Param first) -> SExpr {
+    auto sum = [&engine, &scope, params]<typename Param>(Param first) -> SExpr {
       if constexpr (requires(Param p1, Param p2) { Op(p1, p2); }) {
-        for (const auto &next : params.subspan(1)) { first = Op(first, engine.eval_to<Param>(context, next)); }
+        for (const auto &next : params.subspan(1)) { first = Op(first, engine.eval_to<Param>(scope, next)); }
 
         return SExpr{ Atom{ first } };
       } else {
@@ -910,24 +985,25 @@ struct cons_expr
       }
     };
 
-    if (params.size() > 1) { return std::visit(sum, std::get<Atom>(engine.eval(context, params[0]).value)); }
+    if (params.size() > 1) { return std::visit(sum, std::get<Atom>(engine.eval(scope, params[0]).value)); }
 
     throw std::runtime_error("Not enough params");
   }
 
-  [[nodiscard]] static constexpr SExpr logical_and(cons_expr &engine, Context &context, std::span<const SExpr> params)
+  [[nodiscard]] static constexpr SExpr
+    logical_and(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
   {
     for (const auto &next : params) {
-      if (!engine.eval_to<bool>(context, next)) { return SExpr{ Atom{ false } }; }
+      if (!engine.eval_to<bool>(scope, next)) { return SExpr{ Atom{ false } }; }
     }
 
     return SExpr{ Atom{ true } };
   }
 
-  [[nodiscard]] static constexpr SExpr logical_or(cons_expr &engine, Context &context, std::span<const SExpr> params)
+  [[nodiscard]] static constexpr SExpr logical_or(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
   {
     for (const auto &next : params) {
-      if (engine.eval_to<bool>(context, next)) { return SExpr{ Atom{ true } }; }
+      if (engine.eval_to<bool>(scope, next)) { return SExpr{ Atom{ true } }; }
     }
 
     return SExpr{ Atom{ false } };
@@ -935,21 +1011,21 @@ struct cons_expr
 
   template<auto Op>
   [[nodiscard]] static constexpr SExpr
-    binary_boolean_apply_pairwise(cons_expr &engine, Context &context, std::span<const SExpr> params)
+    binary_boolean_apply_pairwise(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
   {
-    auto sum = [&engine, &context, params]<typename Param>(Param first) -> SExpr {
+    auto sum = [&engine, &scope, params]<typename Param>(Param first) -> SExpr {
       if constexpr (requires(Param p1, Param p2) { Op(p1, p2); }) {
-        auto second = engine.eval_to<Param>(context, params[1]);
+        auto second = engine.eval_to<Param>(scope, params[1]);
         bool result = Op(first, second);
         bool odd = true;
         for (const auto &next : params.subspan(2)) {
           if (!result) { return SExpr{ Atom{ false } }; }
 
           if (odd) {
-            first = engine.eval_to<Param>(context, next);
+            first = engine.eval_to<Param>(scope, next);
             result = result && Op(second, first);
           } else {
-            second = engine.eval_to<Param>(context, next);
+            second = engine.eval_to<Param>(scope, next);
             result = result && Op(first, second);
           }
 
@@ -962,7 +1038,7 @@ struct cons_expr
       }
     };
 
-    if (params.size() > 1) { return std::visit(sum, std::get<Atom>(engine.eval(context, params[0]).value)); }
+    if (params.size() > 1) { return std::visit(sum, std::get<Atom>(engine.eval(scope, params[0]).value)); }
 
     throw std::runtime_error("Not enough params");
   }

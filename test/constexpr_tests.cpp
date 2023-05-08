@@ -16,13 +16,11 @@ consteval auto build_cons_expr()
 }
 
 
-
 constexpr auto evaluate(std::string_view input)
 {
   lefticus::cons_expr<> evaluator;
-  lefticus::cons_expr<>::Context context;
 
-  return evaluator.sequence(context, evaluator.parse(input).first.to_list(evaluator));
+  return evaluator.sequence(evaluator.global_scope, evaluator.parse(input).first.to_list(evaluator));
 }
 
 template<typename Result> constexpr Result evaluate_to(std::string_view input)
@@ -30,12 +28,14 @@ template<typename Result> constexpr Result evaluate_to(std::string_view input)
   return std::get<Result>(std::get<lefticus::cons_expr<>::Atom>(evaluate(input).value));
 }
 
-TEST_CASE("test constexpr construction") {
+TEST_CASE("test constexpr construction")
+{
   auto eval = build_cons_expr();
-  //CHECK(eval.eval_to<int>("x") == 42);
+  // CHECK(eval.eval_to<int>("x") == 42);
 }
 
-TEST_CASE("Operator identifiers", "[operators]") {
+TEST_CASE("Operator identifiers", "[operators]")
+{
   STATIC_CHECK(evaluate_to<int>("((if false + *) 3 4)") == 12);
   STATIC_CHECK(evaluate_to<int>("((if true + *) 3 4)") == 7);
 }
@@ -48,7 +48,8 @@ TEST_CASE("basic float operators", "[operators]")
 }
 
 
-TEST_CASE("basic string_view operators", "[operators]") {
+TEST_CASE("basic string_view operators", "[operators]")
+{
   STATIC_CHECK(evaluate_to<bool>(R"((== "hello" "hello"))") == true);
 }
 
@@ -92,7 +93,7 @@ TEST_CASE("basic lambda usage", "[lambdas]")
 }
 
 TEST_CASE("nested lambda usage", "[lambdas]")
-{                     
+{
   STATIC_CHECK(evaluate_to<int>("(define l (lambda (x) (lambda () x))) ((l 1))") == 1);
   STATIC_CHECK(evaluate_to<int>("(define l (lambda (x) (lambda (y) (lambda () (+ x y))))) (((l 1) 3))") == 4);
   STATIC_CHECK(evaluate_to<int>("(define l (lambda (x) (lambda (y) (let ((z (+ x y))) z)))) ((l 1) 3)") == 4);
