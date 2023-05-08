@@ -139,6 +139,9 @@ TEST_CASE("let variables", "[let variables]")
   STATIC_CHECK(evaluate_to<int>("(let ((x 3)(y 14)) (* x y))") == 42);
   STATIC_CHECK(evaluate_to<int>("(let ((x (* 3 1))(y (- 18 4))) (* x y))") == 42);
   STATIC_CHECK(evaluate_to<int>("(define x 42) (let ((l (lambda (x)(+ x 4)))) (l 10))") == 14);
+  // let variable initial values are scoped to the outer scope, not to previously
+  // declared variables in scope
+  STATIC_CHECK(evaluate_to<int>("(define x 42) (let ((x 10)(y x)) y)") == 42);
 }
 
 

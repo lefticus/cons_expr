@@ -809,11 +809,16 @@ struct cons_expr
 
             std::vector<SExpr> new_parameters;
 
+            // collect all locals
+            for (const auto &param : values[first_index + 1].to_list(*this)) {
+              auto param_list = param.to_list(*this);
+              new_locals.push_back(get_if<Identifier>(&param_list[0])->value);
+            }
+
             for (const auto &param : values[first_index + 1].to_list(*this)) {
               auto param_list = param.to_list(*this);
               std::vector<SExpr> new_param;
               new_param.push_back(param_list[0]);
-              new_locals.push_back(get_if<Identifier>(&param_list[0])->value);
               new_param.push_back(fix_identifiers(param_list[1], local_identifiers, local_constants));
               new_parameters.push_back(SExpr{ values.insert_or_find(new_param) });
             }
@@ -837,7 +842,7 @@ struct cons_expr
             new_define.push_back(values[first_index + 1]);
             new_define.push_back(fix_identifiers(values[first_index + 2], new_locals, local_constants));
             return SExpr{ values.insert_or_find(new_define) };
-          } else if (string == "define" || string == "do") {
+          } else if (string == "do") {
             // we don't want to fix up things that set their own scope (yet)
             return input;
           }
@@ -1056,7 +1061,6 @@ struct cons_expr
 
 
 /// TODO
-// * add the ability to let things
 // * add cons car cdr eval apply
 // * remove exceptions I guess?
 // * check propogation of lambda constants down into do/lambda/whatever below it
