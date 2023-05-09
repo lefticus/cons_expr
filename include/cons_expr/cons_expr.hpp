@@ -709,7 +709,7 @@ struct cons_expr
 
   template<auto Func> constexpr void add(std::string_view name)
   {
-    global_scope.emplace_back(strings.insert_or_find(name), SExpr{ make_evaluator<Func>() });
+    global_scope.emplace_back(strings.insert_or_find(name), SExpr{ FunctionPtr{ make_evaluator<Func>() } });
   }
 
   constexpr void add(std::string_view name, SExpr value)
@@ -738,9 +738,7 @@ struct cons_expr
 
       const auto string = strings[id->value];
 
-      if (string.starts_with('\'')) {
-        return SExpr{Atom{id->substr(1)}};
-      }
+      if (string.starts_with('\'')) { return SExpr{ Atom{ id->substr(1) } }; }
 
       throw std::runtime_error("id not found");
     }
@@ -1042,7 +1040,7 @@ struct cons_expr
     std::vector<SExpr> result;
 
     if (const auto *list_front = std::get_if<LiteralList>(&front.value); list_front != nullptr) {
-      result.push_back(SExpr{list_front->items});
+      result.push_back(SExpr{ list_front->items });
     } else {
       result.push_back(front);
     }
@@ -1076,7 +1074,7 @@ struct cons_expr
   {
     if (params.size() != 2) { throw std::runtime_error("Expected exactly 2 params for apply"); }
 
-    return engine.invoke_function(scope, params[0], engine.values[ engine.eval_to<LiteralList>(scope, params[1]).items]);
+    return engine.invoke_function(scope, params[0], engine.values[engine.eval_to<LiteralList>(scope, params[1]).items]);
   }
 
   [[nodiscard]] static constexpr SExpr evaler(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
@@ -1084,7 +1082,7 @@ struct cons_expr
     if (params.size() != 1) { throw std::runtime_error("Expected exactly 1 param for eval"); }
 
 
-    return engine.eval(engine.global_scope, SExpr{engine.eval_to<LiteralList>(scope, params[0]).items});
+    return engine.eval(engine.global_scope, SExpr{ engine.eval_to<LiteralList>(scope, params[0]).items });
   }
 
   [[nodiscard]] static constexpr SExpr ifer(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
@@ -1099,7 +1097,26 @@ struct cons_expr
   }
 
   template<typename Signature>
-  [[nodiscard]] auto make_callable(auto function)
+  [[nodiscard]] constexpr auto make_standalone_callable(std::string_view function)
+    requires std::is_function_v<Signature>
+  {
+    auto impl = [this, function]<typename Ret, typename... Params>(Ret (*)(Params...)) {
+      // this is fragile, we need to check parsing better
+
+      return
+        [engine = *this, callable = eval(global_scope, values[std::get<IndexedList>(parse(function).first.value)][0])](
+          Params... params) mutable {
+          std::array<SExpr, sizeof...(Params)> args{ SExpr{ Atom{ params } }... };
+          return engine.template eval_to<Ret>(
+            engine.global_scope, engine.invoke_function(engine.global_scope, callable, args));
+        };
+    };
+
+    return impl(std::add_pointer_t<Signature>{ nullptr });
+  }
+
+  template<typename Signature>
+  [[nodiscard]] constexpr auto make_callable(std::string_view function)
     requires std::is_function_v<Signature>
   {
     auto impl = [this, function]<typename Ret, typename... Params>(Ret (*)(Params...)) {
