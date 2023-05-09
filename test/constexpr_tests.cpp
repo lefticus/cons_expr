@@ -155,8 +155,9 @@ TEST_CASE("simple cdr expression", "[builtins]")
 
 TEST_CASE("simple cons expression", "[builtins]")
 {
-  STATIC_CHECK(evaluate_to<bool>("(== ( cons '(1 2 3 4) '(5) ) '('(1 2 3 4) 5))") == true);
+  STATIC_CHECK(evaluate_to<bool>("(== ( cons '(1 2 3 4) '(5) ) '((1 2 3 4) 5))") == true);
   STATIC_CHECK(evaluate_to<bool>("(== ( cons 1 '(5) ) '(1 5))") == true);
+  STATIC_CHECK(evaluate_to<bool>("(== ( cons 'x '(5) ) '(x 5))") == true);
 }
 
 TEST_CASE("simple append expression", "[builtins]")

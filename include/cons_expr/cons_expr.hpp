@@ -435,6 +435,11 @@ struct IndexedString
 {
   std::size_t start;
   std::size_t size;
+  [[nodiscard]] constexpr auto front() const noexcept { return start; }
+  [[nodiscard]] constexpr auto substr(const std::size_t from) const noexcept
+  {
+    return IndexedString{ start + from, size - from };
+  }
   [[nodiscard]] constexpr bool operator==(const IndexedString &) const noexcept = default;
 };
 
@@ -464,6 +469,11 @@ struct LiteralList
 struct Identifier
 {
   IndexedString value;
+  [[nodiscard]] constexpr auto front() const noexcept { return value.front(); }
+  [[nodiscard]] constexpr auto substr(const std::size_t from) const noexcept
+  {
+    return Identifier{ value.substr(from) };
+  }
   [[nodiscard]] constexpr bool operator==(const Identifier &) const noexcept = default;
 };
 
@@ -719,8 +729,15 @@ struct cons_expr
       auto list = values[*indexedlist];
       if (!list.empty()) { return invoke_function(scope, list[0], { std::next(list.begin()), list.end() }); }
     } else if (const auto *id = get_if<Identifier>(&expr); id != nullptr) {
+
       for (const auto &[key, value] : scope.view() | std::ranges::views::reverse) {
         if (key == id->value) { return value; }
+      }
+
+      const auto string = strings[id->value];
+
+      if (string.starts_with('\'')) {
+        return SExpr{Atom{id->substr(1)}};
       }
 
       throw std::runtime_error("id not found");
@@ -1021,7 +1038,12 @@ struct cons_expr
     auto list = engine.eval_to<LiteralList>(scope, params[1]);
 
     std::vector<SExpr> result;
-    result.push_back(front);
+
+    if (const auto *list_front = std::get_if<LiteralList>(&front.value); list_front != nullptr) {
+      result.push_back(SExpr{list_front->items});
+    } else {
+      result.push_back(front);
+    }
 
     for (const auto &value : engine.values[list.items]) { result.push_back(value); }
 
