@@ -66,6 +66,8 @@ TEST_CASE("basic integer operators", "[operators]")
   STATIC_CHECK(evaluate_to<int>("(* 2 2 2 2 2)") == 32);
 }
 
+TEST_CASE("list comparisons", "[operators]") { STATIC_CHECK(evaluate_to<bool>("(== '(1) '(1))") == true); }
+
 TEST_CASE("basic integer comparisons", "[operators]")
 {
   STATIC_CHECK(evaluate_to<bool>("(== 12 12)") == true);
@@ -142,6 +144,24 @@ TEST_CASE("let variables", "[let variables]")
   // let variable initial values are scoped to the outer scope, not to previously
   // declared variables in scope
   STATIC_CHECK(evaluate_to<int>("(define x 42) (let ((x 10)(y x)) y)") == 42);
+}
+
+TEST_CASE("simple car expression", "[builtins]") { STATIC_CHECK(evaluate_to<int>("(car '(1 2 3 4))") == 1); }
+
+TEST_CASE("simple cdr expression", "[builtins]")
+{
+  STATIC_CHECK(evaluate_to<bool>("(== (cdr '(1 2 3 4)) '(2 3 4))") == true);
+}
+
+TEST_CASE("simple cons expression", "[builtins]")
+{
+  STATIC_CHECK(evaluate_to<bool>("(== ( cons '(1 2 3 4) '(5) ) '('(1 2 3 4) 5))") == true);
+  STATIC_CHECK(evaluate_to<bool>("(== ( cons 1 '(5) ) '(1 5))") == true);
+}
+
+TEST_CASE("simple append expression", "[builtins]")
+{
+  STATIC_CHECK(evaluate_to<bool>("(== (append '(1 2 3 4) '(5)) '(1 2 3 4 5))") == true);
 }
 
 

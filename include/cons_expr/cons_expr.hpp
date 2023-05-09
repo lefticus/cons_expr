@@ -442,12 +442,22 @@ struct IndexedList
 {
   std::size_t start;
   std::size_t size;
+  [[nodiscard]] constexpr auto front() const noexcept { return start; }
+  [[nodiscard]] constexpr auto sublist(const std::size_t from) const noexcept
+  {
+    return IndexedList{ start + from, size - from };
+  }
   [[nodiscard]] constexpr bool operator==(const IndexedList &) const noexcept = default;
 };
 
 struct LiteralList
 {
   IndexedList items;
+  [[nodiscard]] constexpr auto front() const noexcept { return items.front(); }
+  [[nodiscard]] constexpr auto sublist(const std::size_t from) const noexcept
+  {
+    return LiteralList{ items.sublist(from) };
+  }
   [[nodiscard]] constexpr bool operator==(const LiteralList &) const noexcept = default;
 };
 
@@ -609,10 +619,10 @@ struct cons_expr
     add("*", SExpr{ FunctionPtr{ binary_left_fold<multiplies> } });
     add("-", SExpr{ FunctionPtr{ binary_left_fold<subtracts> } });
     add("/", SExpr{ FunctionPtr{ binary_left_fold<divides> } });
-    add("<", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<less_than> } });
-    add(">", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<greater_than> } });
     add("<=", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<less_than_equal> } });
     add(">=", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<greater_than_equal> } });
+    add("<", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<less_than> } });
+    add(">", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<greater_than> } });
     add("and", SExpr{ FunctionPtr{ logical_and } });
     add("or", SExpr{ FunctionPtr{ logical_or } });
     add("if", SExpr{ FunctionPtr{ ifer } });
@@ -625,6 +635,10 @@ struct cons_expr
     add("do", SExpr{ FunctionPtr{ doer } });
     add("define", SExpr{ FunctionPtr{ definer } });
     add("let", SExpr{ FunctionPtr{ letter } });
+    add("car", SExpr{ FunctionPtr{ car } });
+    add("cdr", SExpr{ FunctionPtr{ cdr } });
+    add("cons", SExpr{ FunctionPtr{ cons } });
+    add("append", SExpr{ FunctionPtr{ append } });
   }
 
   [[nodiscard]] constexpr SExpr sequence(LexicalScope &scope, std::span<const SExpr> statements)
@@ -870,7 +884,7 @@ struct cons_expr
             // add parameter setup
             new_do.push_back(SExpr{ values.insert_or_find(new_parameters) });
 
-            
+
             for (auto index = first_index + 2; index < list->size + list->start; ++index) {
               new_do.push_back(fix_identifiers(values[index], new_locals, local_constants));
             }
@@ -986,6 +1000,54 @@ struct cons_expr
     return engine.sequence(new_scope, terminators.subspan(1));
   }
 
+  [[nodiscard]] static constexpr SExpr append(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
+  {
+    auto first = engine.eval_to<LiteralList>(scope, params[0]);
+    auto second = engine.eval_to<LiteralList>(scope, params[1]);
+
+    std::vector<SExpr> result;
+
+    for (const auto &value : engine.values[first.items]) { result.push_back(value); }
+    for (const auto &value : engine.values[second.items]) { result.push_back(value); }
+
+    return SExpr{ LiteralList{ engine.values.insert_or_find(result) } };
+  }
+
+  [[nodiscard]] static constexpr SExpr cons(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
+  {
+    if (params.size() != 2) { throw std::runtime_error("2 parameters expected for cons"); }
+
+    auto front = engine.eval(scope, params[0]);
+    auto list = engine.eval_to<LiteralList>(scope, params[1]);
+
+    std::vector<SExpr> result;
+    result.push_back(front);
+
+    for (const auto &value : engine.values[list.items]) { result.push_back(value); }
+
+    return SExpr{ LiteralList{ engine.values.insert_or_find(result) } };
+  }
+
+  [[nodiscard]] static constexpr SExpr cdr(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
+  {
+    if (params.size() != 1) { throw std::runtime_error("1 parameter expected for cdr"); }
+
+    auto list = engine.eval_to<LiteralList>(scope, params[0]);
+    if (list.items.size > 0) { return SExpr{ list.sublist(1) }; }
+
+    throw std::runtime_error("cdr not valid on empty list");
+  }
+
+  [[nodiscard]] static constexpr SExpr car(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
+  {
+    if (params.size() != 1) { throw std::runtime_error("1 parameter expected for car"); }
+
+    auto list = engine.eval_to<LiteralList>(scope, params[0]);
+    if (list.items.size > 0) { return engine.values[list.front()]; }
+
+    throw std::runtime_error("car not valid on empty list");
+  }
+
   [[nodiscard]] static constexpr SExpr ifer(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
   {
     if (params.size() != 3) { throw std::runtime_error("Wrong number of parameters to if expression"); }
@@ -1081,7 +1143,13 @@ struct cons_expr
       }
     };
 
-    if (params.size() > 1) { return std::visit(sum, std::get<Atom>(engine.eval(scope, params[0]).value)); }
+    auto first_param = engine.eval(scope, params[0]).value;
+
+    if (params.size() > 1 && std::holds_alternative<LiteralList>(first_param)) {
+      return sum(std::get<LiteralList>(first_param));
+    }
+
+    if (params.size() > 1) { return std::visit(sum, std::get<Atom>(first_param)); }
 
     throw std::runtime_error("Not enough params");
   }
@@ -1092,8 +1160,7 @@ struct cons_expr
 
 
 /// TODO
-// * add cons car cdr eval apply
+// * add eval apply
 // * remove exceptions I guess?
-// * check propogation of lambda constants down into do/lambda/whatever below it
 // * make allocator aware
 #endif
