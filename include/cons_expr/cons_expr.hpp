@@ -649,6 +649,8 @@ struct cons_expr
     add("cdr", SExpr{ FunctionPtr{ cdr } });
     add("cons", SExpr{ FunctionPtr{ cons } });
     add("append", SExpr{ FunctionPtr{ append } });
+    add("eval", SExpr{ FunctionPtr{ evaler } });
+    add("apply", SExpr{ FunctionPtr{ applier } });
   }
 
   [[nodiscard]] constexpr SExpr sequence(LexicalScope &scope, std::span<const SExpr> statements)
@@ -1070,6 +1072,21 @@ struct cons_expr
     throw std::runtime_error("car not valid on empty list");
   }
 
+  [[nodiscard]] static constexpr SExpr applier(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
+  {
+    if (params.size() != 2) { throw std::runtime_error("Expected exactly 2 params for apply"); }
+
+    return engine.invoke_function(scope, params[0], engine.values[ engine.eval_to<LiteralList>(scope, params[1]).items]);
+  }
+
+  [[nodiscard]] static constexpr SExpr evaler(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
+  {
+    if (params.size() != 1) { throw std::runtime_error("Expected exactly 1 param for eval"); }
+
+
+    return engine.eval(engine.global_scope, SExpr{engine.eval_to<LiteralList>(scope, params[0]).items});
+  }
+
   [[nodiscard]] static constexpr SExpr ifer(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
   {
     if (params.size() != 3) { throw std::runtime_error("Wrong number of parameters to if expression"); }
@@ -1182,7 +1199,8 @@ struct cons_expr
 
 
 /// TODO
-// * add eval apply
+// * never pass around span - it's too dangerous in this code
+// * parse ; comments
 // * remove exceptions I guess?
 // * make allocator aware
 #endif

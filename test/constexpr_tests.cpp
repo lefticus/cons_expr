@@ -160,6 +160,26 @@ TEST_CASE("simple cons expression", "[builtins]")
   STATIC_CHECK(evaluate_to<bool>("(== ( cons 'x '(5) ) '(x 5))") == true);
 }
 
+TEST_CASE("apply expression", "[builtins]") { STATIC_CHECK(evaluate_to<int>("(apply * '(2 3))") == 6);
+
+STATIC_CHECK(evaluate_to<int>(
+R"(
+(define x 10)
+
+(define add-x (lambda (y) (+ x y)))
+
+(let ((x 20))
+  (apply add-x (list 5)))
+)") == 15);
+
+}
+
+
+TEST_CASE("eval expression", "[builtins]")
+{
+  STATIC_CHECK(evaluate_to<int>("(eval '(+ 3 4))") == 7);
+}
+
 TEST_CASE("simple append expression", "[builtins]")
 {
   STATIC_CHECK(evaluate_to<bool>("(== (append '(1 2 3 4) '(5)) '(1 2 3 4 5))") == true);
