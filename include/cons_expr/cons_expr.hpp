@@ -125,30 +125,24 @@ struct SmallOptimizedVector
     const SmallOptimizedVector *container;
     std::size_t index;
 
-    constexpr bool operator==(const Iterator &) const noexcept = default;
+    constexpr bool operator==(const Iterator &other) const noexcept { return index == other.index; }
     constexpr bool operator!=(const Iterator &) const noexcept = default;
 
-    constexpr const auto &operator*() const { return (*container)[index]; }
+    constexpr const auto &operator*() const noexcept { return (*container)[index]; }
     constexpr auto &operator++()
     {
       ++index;
       if (index == container->small_size_used && !container->rest.empty()) { index = SmallSize; }
       return *this;
     }
-    [[nodiscard]] constexpr auto operator++(int)
+    [[nodiscard]] constexpr auto operator++(int) noexcept
     {
       auto result = *this;
       ++(*this);
       return result;
     }
-    [[nodiscard]] constexpr auto operator--(int)
-    {
-      auto result = *this;
-      --(*this);
-      return result;
-    }
 
-    constexpr auto &operator--()
+    constexpr auto &operator--() noexcept
     {
       if (index == SmallSize) {
         index = container->small_size_used - 1;
@@ -157,27 +151,32 @@ struct SmallOptimizedVector
       }
       return *this;
     }
+    [[nodiscard]] constexpr auto operator--(int) noexcept
+    {
+      auto result = *this;
+      --(*this);
+      return result;
+    }
   };
 
-  [[nodiscard]] constexpr auto view(KeyType span) const noexcept
+  struct View
   {
-    struct View
-    {
-      KeyType span;
-      const SmallOptimizedVector *container;
-      constexpr auto begin() const { return Iterator{ container, span.start }; }
-      constexpr auto end() const { return Iterator{ container, span.start + span.size }; }
-    };
+    KeyType span;
+    const SmallOptimizedVector *container;
+    [[nodiscard]] constexpr auto begin() const noexcept { return Iterator{ container, span.start }; }
+    [[nodiscard]] constexpr auto end() const noexcept { return Iterator{ container, span.start + span.size }; }
+  };
 
-    return View{ span, this };
-  }
+  [[nodiscard]] constexpr auto view(KeyType span) const noexcept { return View{ span, this }; }
 
-  constexpr auto view() const
+  [[nodiscard]] constexpr auto begin() const noexcept { return Iterator{ this, 0 }; }
+
+  [[nodiscard]] constexpr auto end() const noexcept
   {
     if (rest.empty()) {
-      return view(KeyType{ 0, small_size_used });
+      return Iterator{ this, small_size_used };
     } else {
-      return view(KeyType{ 0, rest.size() + SmallSize });
+      return Iterator{ this, rest.size() + SmallSize };
     }
   }
 
@@ -205,67 +204,37 @@ struct SmallOptimizedVector
 
 template<typename T>
 concept not_bool_or_ptr = !std::same_as<std::remove_cvref_t<T>, bool> && !std::is_pointer_v<std::remove_cvref_t<T>>;
+template<typename T>
+concept addable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs + rhs; };
+template<typename T>
+concept multipliable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs *rhs; };
+template<typename T>
+concept dividable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs / rhs; };
+template<typename T>
+concept subtractable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs - rhs; };
+template<typename T>
+concept lt_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs < rhs; };
+template<typename T>
+concept gt_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs > rhs; };
+template<typename T>
+concept lt_eq_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs <= rhs; };
+template<typename T>
+concept gt_eq_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs >= rhs; };
+template<typename T>
+concept eq_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs == rhs; };
+template<typename T>
+concept not_eq_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs != rhs; };
 
-static constexpr auto adds = []<not_bool_or_ptr T>(const T &lhs, const T &rhs)
-  requires requires { lhs + rhs; }
-{
-  return lhs + rhs;
-};
-
-static constexpr auto multiplies = []<not_bool_or_ptr T>(const T &lhs, const T &rhs)
-  requires requires { lhs *rhs; }
-{
-  return lhs * rhs;
-};
-
-static constexpr auto divides = []<not_bool_or_ptr T>(const T &lhs, const T &rhs)
-  requires requires { lhs / rhs; }
-{
-  return lhs / rhs;
-};
-
-static constexpr auto subtracts = []<not_bool_or_ptr T>(const T &lhs, const T &rhs)
-  requires requires { lhs - rhs; }
-{
-  return lhs - rhs;
-};
-
-static constexpr auto less_than = []<not_bool_or_ptr T>(const T &lhs, const T &rhs)
-  requires requires { lhs < rhs; }
-{
-  return lhs < rhs;
-};
-static constexpr auto greater_than = []<not_bool_or_ptr T>(const T &lhs, const T &rhs)
-  requires requires { lhs > rhs; }
-{
-  return lhs > rhs;
-};
-
-static constexpr auto less_than_equal = []<not_bool_or_ptr T>(const T &lhs, const T &rhs)
-  requires requires { lhs <= rhs; }
-{
-  return lhs <= rhs;
-};
-
-static constexpr auto greater_than_equal = []<not_bool_or_ptr T>(const T &lhs, const T &rhs)
-  requires requires { lhs >= rhs; }
-{
-  return lhs >= rhs;
-};
-
-
-static constexpr auto equal = []<typename T>(const T &lhs, const T &rhs) -> bool
-  requires requires { lhs == rhs; }
-{
-  return lhs == rhs;
-};
-
-static constexpr auto not_equal = []<typename T>(const T &lhs, const T &rhs) -> bool
-  requires requires { lhs != rhs; }
-{
-  return lhs != rhs;
-};
-
+static constexpr auto adds = []<addable T>(const T &lhs, const T &rhs) { return lhs + rhs; };
+static constexpr auto multiplies = []<multipliable T>(const T &lhs, const T &rhs) { return lhs * rhs; };
+static constexpr auto divides = []<dividable T>(const T &lhs, const T &rhs) { return lhs / rhs; };
+static constexpr auto subtracts = []<subtractable T>(const T &lhs, const T &rhs) { return lhs - rhs; };
+static constexpr auto less_than = []<lt_comparable T>(const T &lhs, const T &rhs) { return lhs < rhs; };
+static constexpr auto greater_than = []<gt_comparable T>(const T &lhs, const T &rhs) { return lhs > rhs; };
+static constexpr auto lt_equal = []<lt_eq_comparable T>(const T &lhs, const T &rhs) { return lhs <= rhs; };
+static constexpr auto gt_equal = []<gt_eq_comparable T>(const T &lhs, const T &rhs) { return lhs >= rhs; };
+static constexpr auto equal = []<eq_comparable T>(const T &lhs, const T &rhs) -> bool { return lhs == rhs; };
+static constexpr auto not_equal = []<not_eq_comparable T>(const T &lhs, const T &rhs) -> bool { return lhs != rhs; };
 static constexpr bool logical_not(bool lhs) { return !lhs; }
 
 struct Token
@@ -404,10 +373,13 @@ template<typename T> [[nodiscard]] constexpr std::pair<bool, T> parse_float(std:
 
   input = consume(input, is_whitespace);
 
+  // list
   if (input.starts_with('(') || input.starts_with(')')) { return make_token(input, 1); }
 
+  // literal list
   if (input.starts_with("'(")) { return make_token(input, 2); }
 
+  // quoted string
   if (input.starts_with('"')) {
     bool in_escape = false;
     auto location = std::next(input.begin());
@@ -426,27 +398,30 @@ template<typename T> [[nodiscard]] constexpr std::pair<bool, T> parse_float(std:
     return make_token(input, static_cast<std::size_t>(std::distance(input.begin(), location)));
   }
 
+  // everything else
   const auto value =
     consume(input, [=](char character) { return !is_whitespace(character) && character != ')' && character != '('; });
+
   return make_token(input, static_cast<std::size_t>(std::distance(input.begin(), value.begin())));
 }
 
 struct IndexedString
 {
-  std::size_t start;
-  std::size_t size;
+  std::size_t start{ 0 };
+  std::size_t size{ 0 };
   [[nodiscard]] constexpr auto front() const noexcept { return start; }
   [[nodiscard]] constexpr auto substr(const std::size_t from) const noexcept
   {
     return IndexedString{ start + from, size - from };
   }
-  [[nodiscard]] constexpr bool operator==(const IndexedString &) const noexcept = default;
+  [[nodiscard]] constexpr bool operator==(const IndexedString &other) const noexcept = default;
 };
 
 struct IndexedList
 {
-  std::size_t start;
-  std::size_t size;
+  std::size_t start{ 0 };
+  std::size_t size{ 0 };
+  [[nodiscard]] constexpr bool empty() const noexcept { return size == 0; }
   [[nodiscard]] constexpr auto front() const noexcept { return start; }
   [[nodiscard]] constexpr auto sublist(const std::size_t from) const noexcept
   {
@@ -484,35 +459,17 @@ template<std::size_t BuiltInSymbolsSize = 64,
 struct cons_expr
 {
   struct SExpr;
+  struct Closure;
 
   using LexicalScope = SmallOptimizedVector<std::pair<IndexedString, SExpr>, BuiltInSymbolsSize, IndexedList>;
-
-
   using function_ptr = SExpr (*)(cons_expr &, LexicalScope &, std::span<const SExpr>);
+  using Atom = std::variant<std::monostate, bool, int, double, IndexedString, Identifier, UserTypes...>;
 
   struct FunctionPtr
   {
     function_ptr ptr;
     [[nodiscard]] constexpr bool operator==(const FunctionPtr &) const noexcept { return false; }
   };
-
-  [[nodiscard]] static constexpr SExpr for_each(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
-  {
-    if (params.size() != 2) { throw std::runtime_error("Wrong number of parameters to for-each expression"); }
-
-    const auto &list = engine.values[engine.eval_to<LiteralList>(scope, params[1]).items];
-
-    for (auto itr = list.begin(); itr != list.end(); ++itr) {
-      [[maybe_unused]] const auto result =
-        engine.invoke_function(scope, params[0], std::span<const SExpr>{ itr, std::next(itr) });
-    }
-
-    return SExpr{ Atom{ std::monostate{} } };
-  }
-
-  using Atom = std::variant<std::monostate, bool, int, double, IndexedString, Identifier, UserTypes...>;
-
-  struct Closure;
 
   struct SExpr
   {
@@ -565,16 +522,13 @@ struct cons_expr
         throw std::runtime_error("Incorrect number of parameters for lambda");
       }
 
+      // Closures contain all of their own scope
       LexicalScope new_scope;
 
-      const auto parameter_names_list = engine.values[parameter_names];
-
       // set up params
-      // technically I'm evaluating the params lazily while invoking the lambda, not before
-      // does it matter?
-      for (std::size_t index = 0; index < parameter_names_list.size(); ++index) {
-        new_scope.emplace_back(std::get<Identifier>(std::get<Atom>(parameter_names_list[index].value)).value,
-          engine.eval(scope, parameters[index]));
+      // technically I'm evaluating the params lazily while invoking the lambda, not before. Does it matter?
+      for (const auto [name, parameter] : std::views::zip(engine.values.view(parameter_names), parameters)) {
+        new_scope.emplace_back(engine.get_if<Identifier>(&name)->value, engine.eval(scope, parameter));
       }
 
       return engine.sequence(new_scope, engine.values[statements]);
@@ -622,15 +576,15 @@ struct cons_expr
     return std::pair<SExpr, Token>(SExpr{ values.insert_or_find(retval) }, token);
   }
 
-
+  // Guaranteed to be initialized at compile time
   consteval cons_expr()
   {
     add("+", SExpr{ FunctionPtr{ binary_left_fold<adds> } });
     add("*", SExpr{ FunctionPtr{ binary_left_fold<multiplies> } });
     add("-", SExpr{ FunctionPtr{ binary_left_fold<subtracts> } });
     add("/", SExpr{ FunctionPtr{ binary_left_fold<divides> } });
-    add("<=", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<less_than_equal> } });
-    add(">=", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<greater_than_equal> } });
+    add("<=", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<lt_equal> } });
+    add(">=", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<gt_equal> } });
     add("<", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<less_than> } });
     add(">", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<greater_than> } });
     add("and", SExpr{ FunctionPtr{ logical_and } });
@@ -670,8 +624,8 @@ struct cons_expr
   {
     const SExpr resolved_function = eval(scope, function);
 
-    if (auto *lambda = get_if<Closure>(&resolved_function); lambda != nullptr) {
-      return lambda->invoke(*this, scope, parameters);
+    if (auto *closure = get_if<Closure>(&resolved_function); closure != nullptr) {
+      return closure->invoke(*this, scope, parameters);
     } else {
       return get_function(resolved_function)(*this, scope, parameters);
     }
@@ -723,21 +677,20 @@ struct cons_expr
       std::pair<IndexedString, SExpr>(strings.insert_or_find(name), SExpr{ Atom{ std::forward<Value>(value) } }));
   }
 
-
   [[nodiscard]] constexpr SExpr eval(LexicalScope &scope, const SExpr &expr)
   {
-    if (const auto *indexedlist = get_if<IndexedList>(&expr); indexedlist != nullptr) {
+    if (const auto *indexed_list = get_if<IndexedList>(&expr); indexed_list != nullptr) {
       // if it's a non-empty list, then I need to evaluate it as a function
-      auto list = values[*indexedlist];
+      auto list = values[*indexed_list];
       if (!list.empty()) { return invoke_function(scope, list[0], { std::next(list.begin()), list.end() }); }
     } else if (const auto *id = get_if<Identifier>(&expr); id != nullptr) {
-
-      for (const auto &[key, value] : scope.view() | std::ranges::views::reverse) {
+      for (const auto &[key, value] : scope | std::ranges::views::reverse) {
         if (key == id->value) { return value; }
       }
 
       const auto string = strings[id->value];
 
+      // is quoted identifier, handle appropriately
       if (string.starts_with('\'')) { return SExpr{ Atom{ id->substr(1) } }; }
 
       throw std::runtime_error("id not found");
@@ -767,6 +720,7 @@ struct cons_expr
   [[nodiscard]] static constexpr SExpr list(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
   {
     std::vector<SExpr> result;
+    result.reserve(params.size());
 
     for (const auto &param : params) { result.push_back(engine.eval(scope, param)); }
 
@@ -777,6 +731,7 @@ struct cons_expr
   {
     std::vector<IndexedString> retval;
     if (auto *parameter_list = get_if<IndexedList>(&sexpr); parameter_list != nullptr) {
+      retval.reserve(parameter_list->size);
       for (const auto &expr : values[*parameter_list]) {
         if (auto *local_id = get_if<Identifier>(&expr); local_id != nullptr) { retval.push_back(local_id->value); }
       }
@@ -788,11 +743,11 @@ struct cons_expr
   {
     if (params.size() < 2) { throw std::runtime_error("Wrong number of parameters to lambda expression"); }
 
-    // replace all references to captured values with constant copies
-    std::vector<SExpr> fixed_statements;
-
     auto locals = engine.get_lambda_parameter_names(params[0]);
 
+    // replace all references to captured values with constant copies
+    std::vector<SExpr> fixed_statements;
+    fixed_statements.reserve(params.size());
     for (const auto &statement : params.subspan(1)) {
       // all of current scope is const and capturable
       fixed_statements.push_back(engine.fix_identifiers(statement, locals, scope));
@@ -800,14 +755,6 @@ struct cons_expr
 
     return SExpr{ Closure{
       std::get<IndexedList>(params[0].value), { engine.values.insert_or_find(fixed_statements) } } };
-  }
-
-  [[nodiscard]] static constexpr SExpr definer(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
-  {
-    if (params.size() != 2) { throw std::runtime_error("Wrong number of parameters to define expression"); }
-    scope.emplace_back(engine.eval_to<Identifier>(scope, params[0]).value,
-      engine.fix_identifiers(engine.eval(scope, params[1]), {}, scope));
-    return SExpr{ Atom{ std::monostate{} } };
   }
 
   [[nodiscard]] constexpr SExpr fix_identifiers(const SExpr &input,
@@ -925,7 +872,7 @@ struct cons_expr
       }
 
       // we're hoping it's a constant
-      for (const auto &object : local_constants.view() | std::ranges::views::reverse) {
+      for (const auto &object : local_constants | std::ranges::views::reverse) {
         if (object.first == id->value) { return object.second; }
       }
 
@@ -935,6 +882,9 @@ struct cons_expr
     return input;
   }
 
+  //
+  // built-ins
+  //
   [[nodiscard]] static constexpr SExpr letter(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
   {
     if (params.empty()) { throw std::runtime_error("Wrong number of parameters to let expression"); }
@@ -974,11 +924,14 @@ struct cons_expr
 
     const auto setup_variable = [&](const auto &expr) {
       auto elements = expr.to_list(engine);
-      if (elements.size() != 3) { throw std::runtime_error(""); }
+      if (elements.size() != 2 && elements.size() != 3) {
+        throw std::runtime_error("Unexpected number of elements to do binding expression");
+      }
 
       const auto index = new_scope.max_index();
       new_scope.emplace_back(engine.eval_to<Identifier>(scope, elements[0]).value, engine.eval(scope, elements[1]));
-      variables.emplace_back(index, elements[2]);
+
+      if (elements.size() == 3) { variables.emplace_back(index, elements[2]); }
     };
 
     const auto setup_variables = [&](const auto &expr) {
@@ -990,8 +943,8 @@ struct cons_expr
 
     for (auto &variable : variables) { variable.second = engine.fix_identifiers(variable.second, variable_names, {}); }
 
-    // make copy of scope first, then build this from entire scope
-    for (const auto &local : new_scope.view()) { variable_names.push_back(local.first); }
+    // make copy of scope first, then build set of variable_names
+    for (const auto &local : new_scope) { variable_names.push_back(local.first); }
 
     const auto terminators = params[1].to_list(engine);
 
@@ -1094,6 +1047,28 @@ struct cons_expr
     } else {
       return engine.eval(scope, params[2]);
     }
+  }
+
+  [[nodiscard]] static constexpr SExpr for_each(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
+  {
+    if (params.size() != 2) { throw std::runtime_error("Wrong number of parameters to for-each expression"); }
+
+    const auto &list = engine.values[engine.eval_to<LiteralList>(scope, params[1]).items];
+
+    for (auto itr = list.begin(); itr != list.end(); ++itr) {
+      [[maybe_unused]] const auto result =
+        engine.invoke_function(scope, params[0], std::span<const SExpr>{ itr, std::next(itr) });
+    }
+
+    return SExpr{ Atom{ std::monostate{} } };
+  }
+
+  [[nodiscard]] static constexpr SExpr definer(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
+  {
+    if (params.size() != 2) { throw std::runtime_error("Wrong number of parameters to define expression"); }
+    scope.emplace_back(engine.eval_to<Identifier>(scope, params[0]).value,
+      engine.fix_identifiers(engine.eval(scope, params[1]), {}, scope));
+    return SExpr{ Atom{ std::monostate{} } };
   }
 
   template<typename Signature>
