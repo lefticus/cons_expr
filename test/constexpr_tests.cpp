@@ -153,6 +153,33 @@ TEST_CASE("simple cdr expression", "[builtins]")
   STATIC_CHECK(evaluate_to<bool>("(== (cdr '(1 2 3 4)) '(2 3 4))") == true);
 }
 
+TEST_CASE("comments", "[parsing]")
+{
+  STATIC_CHECK(evaluate_to<int>(
+                 R"(
+15
+)") == 15);
+
+  STATIC_CHECK(evaluate_to<int>(
+                 R"(
+; a comment
+15
+)") == 15);
+
+  STATIC_CHECK(evaluate_to<int>(
+                 R"(
+15 ; a comment
+)") == 15);
+
+  STATIC_CHECK(evaluate_to<int>(
+                 R"(
+; a comment
+
+15
+)") == 15);
+}
+
+
 TEST_CASE("simple cons expression", "[builtins]")
 {
   STATIC_CHECK(evaluate_to<bool>("(== ( cons '(1 2 3 4) '(5) ) '((1 2 3 4) 5))") == true);
@@ -160,10 +187,12 @@ TEST_CASE("simple cons expression", "[builtins]")
   STATIC_CHECK(evaluate_to<bool>("(== ( cons 'x '(5) ) '(x 5))") == true);
 }
 
-TEST_CASE("apply expression", "[builtins]") { STATIC_CHECK(evaluate_to<int>("(apply * '(2 3))") == 6);
+TEST_CASE("apply expression", "[builtins]")
+{
+  STATIC_CHECK(evaluate_to<int>("(apply * '(2 3))") == 6);
 
-STATIC_CHECK(evaluate_to<int>(
-R"(
+  STATIC_CHECK(evaluate_to<int>(
+                 R"(
 (define x 10)
 
 (define add-x (lambda (y) (+ x y)))
@@ -175,10 +204,7 @@ R"(
 }
 
 
-TEST_CASE("eval expression", "[builtins]")
-{
-  STATIC_CHECK(evaluate_to<int>("(eval '(+ 3 4))") == 7);
-}
+TEST_CASE("eval expression", "[builtins]") { STATIC_CHECK(evaluate_to<int>("(eval '(+ 3 4))") == 7); }
 
 TEST_CASE("simple append expression", "[builtins]")
 {

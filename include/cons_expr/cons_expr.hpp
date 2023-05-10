@@ -357,8 +357,11 @@ template<typename T> [[nodiscard]] constexpr std::pair<bool, T> parse_float(std:
 
 [[nodiscard]] constexpr Token next_token(std::string_view input)
 {
-  constexpr auto is_whitespace = [](auto character) {
-    return character == ' ' || character == '\t' || character == '\n';
+  constexpr auto is_eol = [](auto character) {
+    return character == '\n' || character == '\r';
+  };
+  constexpr auto is_whitespace = [is_eol](auto character) {
+    return character == ' ' || character == '\t' || is_eol(character);
   };
 
   constexpr auto consume = [=](auto ws_input, auto predicate) {
@@ -372,6 +375,12 @@ template<typename T> [[nodiscard]] constexpr std::pair<bool, T> parse_float(std:
   };
 
   input = consume(input, is_whitespace);
+
+  // comment
+  if (input.starts_with(';')) {
+    input = consume(input, [=](char character) { return not is_eol(character); });
+    input = consume(input, is_whitespace);
+  }
 
   // list
   if (input.starts_with('(') || input.starts_with(')')) { return make_token(input, 1); }
@@ -624,7 +633,7 @@ struct cons_expr
   {
     const SExpr resolved_function = eval(scope, function);
 
-    if (auto *closure = get_if<Closure>(&resolved_function); closure != nullptr) {
+    if (auto *closure = get_if<Closure>(&resolved_function); closure != nullptr) [[unlikely]] {
       return closure->invoke(*this, scope, parameters);
     } else {
       return get_function(resolved_function)(*this, scope, parameters);
@@ -941,7 +950,9 @@ struct cons_expr
 
     setup_variables(params[0]);
 
-    for (auto &variable : variables) { variable.second = engine.fix_identifiers(variable.second, variable_names, scope); }
+    for (auto &variable : variables) {
+      variable.second = engine.fix_identifiers(variable.second, variable_names, scope);
+    }
 
     // make copy of scope first, then build set of variable_names
     for (const auto &local : new_scope) { variable_names.push_back(local.first); }
