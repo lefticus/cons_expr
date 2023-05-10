@@ -941,7 +941,7 @@ struct cons_expr
 
     setup_variables(params[0]);
 
-    for (auto &variable : variables) { variable.second = engine.fix_identifiers(variable.second, variable_names, {}); }
+    for (auto &variable : variables) { variable.second = engine.fix_identifiers(variable.second, variable_names, scope); }
 
     // make copy of scope first, then build set of variable_names
     for (const auto &local : new_scope) { variable_names.push_back(local.first); }
@@ -950,7 +950,7 @@ struct cons_expr
 
     std::vector<std::pair<std::size_t, SExpr>> new_values;
 
-    auto fixed_up_terminator = engine.fix_identifiers(terminators[0], variable_names, {});
+    auto fixed_up_terminator = engine.fix_identifiers(terminators[0], variable_names, scope);
 
     // continue while terminator test is false
     while (!engine.eval_to<bool>(new_scope, fixed_up_terminator)) {
