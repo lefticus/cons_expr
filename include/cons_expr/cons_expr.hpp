@@ -35,9 +35,11 @@
 // └─────────────────────────┘└─────────────────────────┘└──────────────────────────┘
 //  originally from: https://xkcd.com/297/  https://xkcd.com/license.html
 
+/// Why?
+// I (Jason Turner / lefticus) failed to complete my LISP project in Comparative Languages in CS at Virginia Tech
+// in approximately Spring 1999. This is my revenge.
 
 /// Goals
-//
 // * always stay small and hackable. At most 1,000 lines, total, ever, with comments
 // * s-expression based, Scheme-inspired embedded language for C++
 // * constexpr evaluation of script possible
@@ -50,8 +52,30 @@
 // * C++23 as a minimum
 // * never thread safe
 
+/// Notes
+// it's a scheme-like language with a few caveats:
+// * Once an object is captured or used, it's immutable
+// * `==` `true` and `false` stray from `=` `#t` and `#f` of scheme
+// * Pair types don't exist, only lists
+
+/// To do
+// * We probably want some sort of "defragment" at some point
+// * Consider removing exceptions and return first-class error objects instead
+// * Stop passing around `span` objects.
+//   * The spans are often pointers into the global scope object
+//   * Evaluation can change the size of the global scope
+//   * Changing the size invalidates the pointers!
+// * Add constant folding capability
+// * Allow functions to be registered as "pure" so they can be folded!
+// * Consider adding a second header that has the defrag utilities
 
 namespace lefticus {
+
+inline constexpr int cons_expr_version_major{ 0 };
+inline constexpr int cons_expr_version_minor{ 0 };
+inline constexpr int cons_expr_version_patch{ 1 };
+inline constexpr int cons_expr_version_tweak{};
+
 
 template<typename Contained, std::size_t SmallSize, typename KeyType, typename SpanType = std::span<const Contained>>
 struct SmallOptimizedVector
@@ -1201,9 +1225,4 @@ struct cons_expr
 }// namespace lefticus
 
 
-/// TODO
-// * never pass around span - it's too dangerous in this code
-// * parse ; comments
-// * remove exceptions I guess?
-// * make allocator aware
 #endif

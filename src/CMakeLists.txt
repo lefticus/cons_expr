@@ -1,2 +1,2 @@
-add_subdirectory(sample_library)
-add_subdirectory(ftxui_sample)
+add_subdirectory(ccons_expr)
+add_subdirectory(cons_expr_cli)

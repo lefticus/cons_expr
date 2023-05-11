@@ -48,6 +48,11 @@ string(
 
 target_compile_features(cons_expr_options INTERFACE cxx_std_${CMAKE_CXX_STANDARD})
 
+add_library(cons_expr INTERFACE)
+add_library(cons_expr::cons_expr ALIAS cons_expr)
+
+target_include_directories(cons_expr INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
 add_library(cons_expr::cons_expr_options ALIAS cons_expr_options)
 add_library(cons_expr::cons_expr_warnings ALIAS cons_expr_warnings)
 
@@ -60,6 +65,8 @@ add_subdirectory(configured_files)
 # Adding the src:
 add_subdirectory(src)
 
+add_subdirectory(examples)
+
 # Don't even look at tests if we're not top level
 if(NOT PROJECT_IS_TOP_LEVEL)
   return()
@@ -69,7 +76,6 @@ endif()
 include(CTest)
 
 if(BUILD_TESTING)
-  message(AUTHOR_WARNING "Building Tests. Be sure to check out test/constexpr_tests.cpp for constexpr testing")
   add_subdirectory(test)
 endif()
 

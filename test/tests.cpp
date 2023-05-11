@@ -1,17 +1,21 @@
 #include <catch2/catch_test_macros.hpp>
+#include <iostream>
 
 
 #include <cons_expr/cons_expr.hpp>
 
+void display(int i) { std::cout << i << '\n'; }
+
 auto evaluate(std::string_view input)
 {
   lefticus::cons_expr<> evaluator;
-  lefticus::cons_expr<>::Context context;
+
+  evaluator.add<display>("display");
 
   auto parse_result = evaluator.parse(input);
   auto list = parse_result.first.to_list(evaluator);
 
-  return evaluator.sequence(context, list);
+  return evaluator.sequence(evaluator.global_scope, list);
 }
 
 template<typename Result> Result evaluate_to(std::string_view input)
@@ -28,12 +32,13 @@ TEST_CASE("basic callable usage", "[c++ api]")
 
   auto func2 = evaluator.make_callable<int(int)>("(lambda (x) (* x x))");
   CHECK(func2(10) == 100);
+
 }
 
-//TEST_CASE("basic for-each usage", "[builtins]")
-//{
-//  CHECK_NOTHROW(evaluate_to<std::monostate>("(for-each display '(1 2 3 4))"));
-//}
+TEST_CASE("basic for-each usage", "[builtins]")
+{
+  CHECK_NOTHROW(evaluate_to<std::monostate>("(for-each display '(1 2 3 4))"));
+}
 
 /*
 struct UDT

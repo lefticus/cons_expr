@@ -12,6 +12,8 @@
 
 #include <cons_expr/cons_expr.hpp>
 
+#include <internal_use_only/config.hpp>
+
 
 std::string to_string(const lefticus::cons_expr<> &, bool annotate, const lefticus::cons_expr<>::SExpr &input);
 std::string to_string(const lefticus::cons_expr<> &, bool annotate, const bool input);
@@ -26,7 +28,8 @@ std::string to_string(const lefticus::cons_expr<> &, bool annotate, const leftic
 std::string to_string(const lefticus::cons_expr<> &, bool annotate, const lefticus::IndexedString &string);
 
 
-std::string to_string([[maybe_unused]] const lefticus::cons_expr<> &, bool, const lefticus::cons_expr<>::Closure &closure)
+std::string
+  to_string([[maybe_unused]] const lefticus::cons_expr<> &, bool, const lefticus::cons_expr<>::Closure &closure)
 {
   return std::format("[closure parameters {{{}, {}}} statements {{{}, {}}}]",
     closure.parameter_names.start,
@@ -165,8 +168,9 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
     content_2 += "\n> " + content_1 + "\n";
 
     try {
-      content_2 +=
-        to_string(evaluator, false, evaluator.sequence(evaluator.global_scope, evaluator.parse(content_1).first.to_list(evaluator)));
+      content_2 += to_string(evaluator,
+        false,
+        evaluator.sequence(evaluator.global_scope, evaluator.parse(content_1).first.to_list(evaluator)));
     } catch (const std::exception &e) {
       content_2 += std::string("Error: ") + e.what();
     }
@@ -197,7 +201,9 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
         evaluator.global_scope.small_size_used,
         evaluator.global_scope.rest.size(),
         evaluator.values.small_size_used,
-        evaluator.values.rest.size())) });
+        evaluator.values.rest.size())),
+      ftxui::text(std::format(
+        "GIT SHA: {}  version string: {}", cons_expr::cmake::git_sha, cons_expr::cmake::project_version)) });
   };
 
   auto component = ftxui::Renderer(layout, [&] {

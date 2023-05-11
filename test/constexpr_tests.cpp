@@ -1,7 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
-
 #include <cons_expr/cons_expr.hpp>
+#include <internal_use_only/config.hpp>
+
 
 static_assert(std::is_trivially_copyable_v<lefticus::cons_expr<>::SExpr>);
 
@@ -203,6 +204,12 @@ TEST_CASE("apply expression", "[builtins]")
 
 }
 
+TEST_CASE("check version number", "[system]") {
+  STATIC_CHECK(lefticus::cons_expr_version_major == cons_expr::cmake::project_version_major);
+  STATIC_CHECK(lefticus::cons_expr_version_minor == cons_expr::cmake::project_version_minor);
+  STATIC_CHECK(lefticus::cons_expr_version_patch == cons_expr::cmake::project_version_patch);
+  STATIC_CHECK(lefticus::cons_expr_version_tweak == cons_expr::cmake::project_version_tweak);
+}
 
 TEST_CASE("eval expression", "[builtins]") { STATIC_CHECK(evaluate_to<int>("(eval '(+ 3 4))") == 7); }
 

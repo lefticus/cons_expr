@@ -8,10 +8,6 @@ function(cons_expr_setup_dependencies)
   # For each dependency, see if it's
   # already been provided to us by a parent project
 
-  if(NOT TARGET fmtlib::fmtlib)
-    cpmaddpackage("gh:fmtlib/fmt#9.1.0")
-  endif()
-
   if(NOT TARGET spdlog::spdlog)
     cpmaddpackage(
       NAME
@@ -21,7 +17,7 @@ function(cons_expr_setup_dependencies)
       GITHUB_REPOSITORY
       "gabime/spdlog"
       OPTIONS
-      "SPDLOG_FMT_EXTERNAL ON")
+      "SPDLOG_USE_STD_FORMAT ON")
   endif()
 
   if(NOT TARGET Catch2::Catch2WithMain)
@@ -34,10 +30,6 @@ function(cons_expr_setup_dependencies)
 
   if(NOT TARGET ftxui::screen)
     cpmaddpackage("gh:ArthurSonzogni/FTXUI#main")
-  endif()
-
-  if(NOT TARGET tools::tools)
-    cpmaddpackage("gh:lefticus/tools#update_build_system")
   endif()
 
 endfunction()
