@@ -1,7 +1,6 @@
-#include <memory>// for allocator, __shared_ptr_access, shared_ptr
-#include <string>// for string
-
+#include <string>
 #include <format>
+#include <vector>
 
 #include "ftxui/component/captured_mouse.hpp"// for ftxui
 #include "ftxui/component/component.hpp"// for Input, Renderer, ResizableSplitLeft
@@ -11,115 +10,10 @@
 #include "ftxui/dom/table.hpp"// for operator|, separator, text, Element, flex, vbox, border
 
 #include <cons_expr/cons_expr.hpp>
+#include <cons_expr/utility.hpp>
 
 #include <internal_use_only/config.hpp>
 
-
-std::string to_string(const lefticus::cons_expr<> &, bool annotate, const lefticus::cons_expr<>::SExpr &input);
-std::string to_string(const lefticus::cons_expr<> &, bool annotate, const bool input);
-std::string to_string(const lefticus::cons_expr<> &, bool annotate, const double input);
-std::string to_string(const lefticus::cons_expr<> &, bool annotate, const int input);
-std::string to_string(const lefticus::cons_expr<> &, bool annotate, const lefticus::cons_expr<>::Closure &);
-std::string to_string(const lefticus::cons_expr<> &, bool annotate, const std::monostate &);
-std::string to_string(const lefticus::cons_expr<> &, bool annotate, const lefticus::cons_expr<>::Atom &input);
-std::string to_string(const lefticus::cons_expr<> &, bool annotate, const lefticus::cons_expr<>::function_ptr &);
-std::string to_string(const lefticus::cons_expr<> &, bool annotate, const lefticus::IndexedList &list);
-std::string to_string(const lefticus::cons_expr<> &, bool annotate, const lefticus::LiteralList &list);
-std::string to_string(const lefticus::cons_expr<> &, bool annotate, const lefticus::IndexedString &string);
-
-
-std::string
-  to_string([[maybe_unused]] const lefticus::cons_expr<> &, bool, const lefticus::cons_expr<>::Closure &closure)
-{
-  return std::format("[closure parameters {{{}, {}}} statements {{{}, {}}}]",
-    closure.parameter_names.start,
-    closure.parameter_names.size,
-    closure.statements.start,
-    closure.statements.size);
-}
-
-std::string to_string([[maybe_unused]] const lefticus::cons_expr<> &, bool, const std::monostate &) { return "[nil]"; }
-
-std::string to_string(const lefticus::cons_expr<> &engine, bool annotate, const lefticus::Identifier &id)
-{
-  if (annotate) {
-    return std::format("[identifier] {{{}, {}}} {}", id.value.start, id.value.size, engine.strings[id.value]);
-  } else {
-    return std::string{ engine.strings[id.value] };
-  }
-}
-
-
-std::string to_string(const lefticus::cons_expr<> &, bool annotate, const bool input)
-{
-  std::string result;
-  if (annotate) { result = "[bool] "; }
-  if (input) {
-    return result + "true";
-  } else {
-    return result + "false";
-  }
-}
-
-std::string to_string(const lefticus::cons_expr<> &engine, bool annotate, const lefticus::cons_expr<>::Atom &input)
-{
-  return std::visit([&](const auto &value) { return to_string(engine, annotate, value); }, input);
-}
-
-std::string to_string(const lefticus::cons_expr<> &, bool annotate, const double input)
-{
-  std::string result;
-  if (annotate) { result = "[double] "; }
-
-  return result + std::format("{}", input);
-}
-std::string to_string(const lefticus::cons_expr<> &, bool annotate, const int input)
-{
-  std::string result;
-  if (annotate) { result = "[int] "; }
-  return result + std::format("{}", input);
-}
-
-std::string to_string(const lefticus::cons_expr<> &, bool, const lefticus::cons_expr<>::FunctionPtr &func)
-{
-  return std::format("[function_ptr {}]", reinterpret_cast<const void *>(func.ptr));
-}
-std::string to_string(const lefticus::cons_expr<> &engine, bool annotate, const lefticus::IndexedList &list)
-{
-  std::string result;
-
-  if (annotate) { result += std::format("[list] {{{}, {}}} ", list.start, list.size); }
-  result += "(";
-  const auto span = engine.values[list];
-
-  if (!span.empty()) {
-    for (const auto &item : span.subspan(0, span.size() - 1)) { result += to_string(engine, false, item) + ' '; }
-    result += to_string(engine, false, span.back());
-  }
-  result += ")";
-  return result;
-}
-
-std::string to_string(const lefticus::cons_expr<> &engine, bool annotate, const lefticus::LiteralList &list)
-{
-  std::string result;
-  if (annotate) { result += std::format("[literal list] {{{}, {}}} ", list.items.start, list.items.size); }
-  return result + "'" + to_string(engine, false, list.items);
-}
-
-std::string to_string(const lefticus::cons_expr<> &engine, bool annotate, const lefticus::IndexedString &string)
-{
-  if (annotate) {
-    return std::format("[identifier] {{{}, {}}} \"{}\"", string.start, string.size, engine.strings[string]);
-  } else {
-    return std::format("\"{}\"", engine.strings[string]);
-  }
-}
-
-std::string to_string(const lefticus::cons_expr<> &engine, bool annotate, const lefticus::cons_expr<>::SExpr &input)
-{
-  return std::visit([&](const auto &value) { return to_string(engine, annotate, value); }, input.value);
-}
 
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])

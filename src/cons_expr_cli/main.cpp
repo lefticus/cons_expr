@@ -4,6 +4,7 @@
 #include <format>
 
 #include <cons_expr/cons_expr.hpp>
+#include <cons_expr/utility.hpp>
 
 #include <internal_use_only/config.hpp>
 
@@ -32,7 +33,8 @@ int main(int argc, const char **argv)
     evaluator.add<display>("display");
 
     if (script) {
-      [[maybe_unused]] const auto result = evaluator.sequence(evaluator.global_scope, evaluator.parse(*script).first.to_list(evaluator));
+      std::cout << lefticus::to_string(evaluator, false, evaluator.sequence(evaluator.global_scope, evaluator.parse(*script).first.to_list(evaluator)));
+      std::cout << '\n';
     }
   } catch (const std::exception &e) {
     spdlog::error("Unhandled exception in main: {}", e.what());
