@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -67,7 +68,6 @@
 //   * Changing the size invalidates the pointers!
 // * Add constant folding capability
 // * Allow functions to be registered as "pure" so they can be folded!
-// * Consider adding a second header that has the defrag utilities
 
 namespace lefticus {
 
@@ -559,13 +559,10 @@ struct cons_expr
       // Closures contain all of their own scope
       LexicalScope new_scope;
 
-      //std::vector<IndexedString> local_identifiers;
-
       // set up params
       // technically I'm evaluating the params lazily while invoking the lambda, not before. Does it matter?
       for (const auto [name, parameter] : std::views::zip(engine.values.view(parameter_names), parameters)) {
         new_scope.emplace_back(engine.get_if<Identifier>(&name)->value, engine.eval(scope, parameter));
-        //local_identifiers.push_back(engine.get_if<Identifier>(&name)->value);
       }
 
       std::vector<SExpr> fixed_statements;
@@ -576,7 +573,6 @@ struct cons_expr
       return engine.sequence(new_scope, fixed_statements);
     }
   };
-
 
   [[nodiscard]] constexpr std::pair<SExpr, Token> parse(std::string_view input)
   {
@@ -651,7 +647,7 @@ struct cons_expr
 
   [[nodiscard]] constexpr SExpr sequence(LexicalScope &scope, std::span<const SExpr> statements)
   {
-    if (!statements.empty()) {
+    if (!statements.empty()) [[likely]] {
       for (const auto &statement : statements.subspan(0, statements.size() - 1)) {
         [[maybe_unused]] const auto result = eval(scope, statement);
       }
@@ -690,7 +686,7 @@ struct cons_expr
           Func(engine.eval_to<std::remove_cvref_t<Param>>(scope, params[Idx])...);
           return SExpr{ Atom{ std::monostate{} } };
         } else {
-          return SExpr{ Func(engine.eval_to<Param>(scope, params[Idx])...) };
+          return SExpr{ Func(engine.eval_to<std::remove_cvref_t<Param>>(scope, params[Idx])...) };
         }
       };
 
@@ -710,13 +706,12 @@ struct cons_expr
 
   constexpr void add(std::string_view name, SExpr value)
   {
-    global_scope.insert(std::pair<IndexedString, SExpr>(strings.insert_or_find(name), std::move(value)));
+    global_scope.emplace_back(strings.insert_or_find(name), std::move(value));
   }
 
   template<typename Value> constexpr void add(std::string_view name, Value &&value)
   {
-    global_scope.insert(
-      std::pair<IndexedString, SExpr>(strings.insert_or_find(name), SExpr{ Atom{ std::forward<Value>(value) } }));
+    global_scope.emplace_back(strings.insert_or_find(name), SExpr{ Atom{ std::forward<Value>(value) } });
   }
 
   [[nodiscard]] constexpr SExpr eval(LexicalScope &scope, const SExpr &expr)
@@ -766,7 +761,7 @@ struct cons_expr
 
     for (const auto &param : params) { result.push_back(engine.eval(scope, param)); }
 
-    return SExpr{ LiteralList{ engine.values.insert(result) } };
+    return SExpr{ LiteralList{ engine.values.insert_or_find(result) } };
   }
 
   constexpr std::vector<IndexedString> get_lambda_parameter_names(const SExpr &sexpr)
@@ -798,7 +793,7 @@ struct cons_expr
     return SExpr{ Closure{
       std::get<IndexedList>(params[0].value), { engine.values.insert_or_find(fixed_statements) } } };
   }
-  
+
   [[nodiscard]] constexpr SExpr fix_do_identifiers(IndexedList list,
     std::size_t first_index,
     std::span<const IndexedString> local_identifiers,
@@ -819,8 +814,8 @@ struct cons_expr
       std::vector<SExpr> new_param;
       new_param.push_back(param_list[0]);
       new_param.push_back(fix_identifiers(param_list[1], local_identifiers, local_constants));
-      // increment thingy
-      new_param.push_back(fix_identifiers(param_list[2], new_locals, local_constants));
+      // increment thingy (optional)
+      if (param_list.size() == 3) { new_param.push_back(fix_identifiers(param_list[2], new_locals, local_constants)); }
       new_parameters.push_back(SExpr{ values.insert_or_find(new_param) });
     }
 
@@ -831,9 +826,8 @@ struct cons_expr
     // add parameter setup
     new_do.push_back(SExpr{ values.insert_or_find(new_parameters) });
 
-
-    for (auto index = first_index + 2; index < list.size + list.start; ++index) {
-      new_do.push_back(fix_identifiers(values[index], new_locals, local_constants));
+    for (auto value : values[list.sublist(2)]) {
+      new_do.push_back(fix_identifiers(value, new_locals, local_constants));
     }
 
     return SExpr{ values.insert_or_find(new_do) };
@@ -842,7 +836,8 @@ struct cons_expr
   [[nodiscard]] constexpr SExpr fix_let_identifiers(IndexedList list,
     std::size_t first_index,
     std::span<const IndexedString> local_identifiers,
-    const LexicalScope &local_constants) {
+    const LexicalScope &local_constants)
+  {
     std::vector<IndexedString> new_locals{ local_identifiers.begin(), local_identifiers.end() };
 
     std::vector<SExpr> new_parameters;
@@ -855,9 +850,8 @@ struct cons_expr
 
     for (const auto &param : values[first_index + 1].to_list(*this)) {
       auto param_list = param.to_list(*this);
-      std::vector<SExpr> new_param;
-      new_param.push_back(param_list[0]);
-      new_param.push_back(fix_identifiers(param_list[1], local_identifiers, local_constants));
+      std::array<SExpr, 2> new_param{ param_list[0],
+        fix_identifiers(param_list[1], local_identifiers, local_constants) };
       new_parameters.push_back(SExpr{ values.insert_or_find(new_param) });
     }
 
@@ -873,22 +867,23 @@ struct cons_expr
     return SExpr{ values.insert_or_find(new_let) };
   }
 
-  [[nodiscard]] constexpr SExpr fix_define_identifiers(
-    std::size_t first_index,
+  [[nodiscard]] constexpr SExpr fix_define_identifiers(std::size_t first_index,
     std::span<const IndexedString> local_identifiers,
-    const LexicalScope &local_constants) {
+    const LexicalScope &local_constants)
+  {
     std::vector<IndexedString> new_locals{ local_identifiers.begin(), local_identifiers.end() };
     new_locals.push_back(get_if<Identifier>(&values[first_index + 1])->value);
 
-    std::vector<SExpr> new_define;
-    new_define.push_back(fix_identifiers(values[first_index], local_identifiers, local_constants));
-    new_define.push_back(values[first_index + 1]);
-    new_define.push_back(fix_identifiers(values[first_index + 2], new_locals, local_constants));
+    std::array<SExpr, 3> new_define{ fix_identifiers(values[first_index], local_identifiers, local_constants),
+      values[first_index + 1],
+      fix_identifiers(values[first_index + 2], new_locals, local_constants) };
     return SExpr{ values.insert_or_find(new_define) };
   }
 
 
-  [[nodiscard]] constexpr SExpr fix_lambda_identifiers(IndexedList list, std::size_t first_index, std::span<const IndexedString> local_identifiers,
+  [[nodiscard]] constexpr SExpr fix_lambda_identifiers(IndexedList list,
+    std::size_t first_index,
+    std::span<const IndexedString> local_identifiers,
     const LexicalScope &local_constants)
   {
     std::vector<IndexedString> new_locals{ local_identifiers.begin(), local_identifiers.end() };
@@ -940,7 +935,6 @@ struct cons_expr
             // let it go do default things
             break;
           }
-
         }
       }
       std::vector<SExpr> result;
@@ -1159,6 +1153,7 @@ struct cons_expr
     return SExpr{ Atom{ std::monostate{} } };
   }
 
+  // make a callable that captures the current engine by value
   template<typename Signature>
   [[nodiscard]] constexpr auto make_standalone_callable(std::string_view function)
     requires std::is_function_v<Signature>
@@ -1178,6 +1173,8 @@ struct cons_expr
     return impl(std::add_pointer_t<Signature>{ nullptr });
   }
 
+  // take a string_view and return a C++ function object
+  // of unspecified type.
   template<typename Signature>
   [[nodiscard]] constexpr auto make_callable(std::string_view function)
     requires std::is_function_v<Signature>
@@ -1237,26 +1234,14 @@ struct cons_expr
   [[nodiscard]] static constexpr SExpr
     binary_boolean_apply_pairwise(cons_expr &engine, LexicalScope &scope, std::span<const SExpr> params)
   {
-    auto sum = [&engine, &scope, params]<typename Param>(Param first) -> SExpr {
+    auto sum = [&engine, &scope, params]<typename Param>(Param next) -> SExpr {
       if constexpr (requires(Param p1, Param p2) { Op(p1, p2); }) {
-        auto second = engine.eval_to<Param>(scope, params[1]);
-        bool result = Op(first, second);
-        bool odd = true;
-        for (const auto &next : params.subspan(2)) {
-          if (!result) { return SExpr{ Atom{ false } }; }
-
-          if (odd) {
-            first = engine.eval_to<Param>(scope, next);
-            result = result && Op(second, first);
-          } else {
-            second = engine.eval_to<Param>(scope, next);
-            result = result && Op(first, second);
-          }
-
-          odd = !odd;
+        for (const auto &next_sexpr : params.subspan(1)) {
+          const auto prev = std::exchange(next, engine.eval_to<Param>(scope, next_sexpr));
+          if (!Op(prev, next)) { return SExpr{ Atom{ false } }; }
         }
 
-        return SExpr{ Atom{ result } };
+        return SExpr{ Atom{ true } };
       } else {
         throw std::runtime_error("Operator not supported for types");
       }
@@ -1264,6 +1249,7 @@ struct cons_expr
 
     auto first_param = engine.eval(scope, params[0]).value;
 
+    // For working directly on "LiteralList" objects
     if (params.size() > 1 && std::holds_alternative<LiteralList>(first_param)) {
       return sum(std::get<LiteralList>(first_param));
     }
@@ -1276,6 +1262,5 @@ struct cons_expr
 
 
 }// namespace lefticus
-
 
 #endif
