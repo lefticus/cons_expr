@@ -381,9 +381,7 @@ template<typename T> [[nodiscard]] constexpr std::pair<bool, T> parse_float(std:
 
 [[nodiscard]] constexpr Token next_token(std::string_view input)
 {
-  constexpr auto is_eol = [](auto character) {
-    return character == '\n' || character == '\r';
-  };
+  constexpr auto is_eol = [](auto character) { return character == '\n' || character == '\r'; };
   constexpr auto is_whitespace = [is_eol](auto character) {
     return character == ' ' || character == '\t' || is_eol(character);
   };
@@ -500,7 +498,10 @@ struct cons_expr
 
   struct FunctionPtr
   {
-    function_ptr ptr;
+    enum struct Type { other, do_expr, let_expr, lambda_expr, define_expr };
+    function_ptr ptr{ nullptr };
+    Type type{ Type::other };
+
     [[nodiscard]] constexpr bool operator==(const FunctionPtr &) const noexcept { return false; }
   };
 
@@ -558,13 +559,21 @@ struct cons_expr
       // Closures contain all of their own scope
       LexicalScope new_scope;
 
+      //std::vector<IndexedString> local_identifiers;
+
       // set up params
       // technically I'm evaluating the params lazily while invoking the lambda, not before. Does it matter?
       for (const auto [name, parameter] : std::views::zip(engine.values.view(parameter_names), parameters)) {
         new_scope.emplace_back(engine.get_if<Identifier>(&name)->value, engine.eval(scope, parameter));
+        //local_identifiers.push_back(engine.get_if<Identifier>(&name)->value);
       }
 
-      return engine.sequence(new_scope, engine.values[statements]);
+      std::vector<SExpr> fixed_statements;
+      for (const auto &statement : engine.values[statements]) {
+        fixed_statements.push_back(engine.fix_identifiers(statement, {}, new_scope));
+      }
+
+      return engine.sequence(new_scope, fixed_statements);
     }
   };
 
@@ -612,32 +621,32 @@ struct cons_expr
   // Guaranteed to be initialized at compile time
   consteval cons_expr()
   {
-    add("+", SExpr{ FunctionPtr{ binary_left_fold<adds> } });
-    add("*", SExpr{ FunctionPtr{ binary_left_fold<multiplies> } });
-    add("-", SExpr{ FunctionPtr{ binary_left_fold<subtracts> } });
-    add("/", SExpr{ FunctionPtr{ binary_left_fold<divides> } });
-    add("<=", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<lt_equal> } });
-    add(">=", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<gt_equal> } });
-    add("<", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<less_than> } });
-    add(">", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<greater_than> } });
-    add("and", SExpr{ FunctionPtr{ logical_and } });
-    add("or", SExpr{ FunctionPtr{ logical_or } });
-    add("if", SExpr{ FunctionPtr{ ifer } });
-    add("not", SExpr{ FunctionPtr{ make_evaluator<logical_not>() } });
-    add("==", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<equal> } });
-    add("!=", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<not_equal> } });
-    add("for-each", SExpr{ FunctionPtr{ for_each } });
-    add("list", SExpr{ FunctionPtr{ list } });
-    add("lambda", SExpr{ FunctionPtr{ lambda } });
-    add("do", SExpr{ FunctionPtr{ doer } });
-    add("define", SExpr{ FunctionPtr{ definer } });
-    add("let", SExpr{ FunctionPtr{ letter } });
-    add("car", SExpr{ FunctionPtr{ car } });
-    add("cdr", SExpr{ FunctionPtr{ cdr } });
-    add("cons", SExpr{ FunctionPtr{ cons } });
-    add("append", SExpr{ FunctionPtr{ append } });
-    add("eval", SExpr{ FunctionPtr{ evaler } });
-    add("apply", SExpr{ FunctionPtr{ applier } });
+    add("+", SExpr{ FunctionPtr{ binary_left_fold<adds>, FunctionPtr::Type::other } });
+    add("*", SExpr{ FunctionPtr{ binary_left_fold<multiplies>, FunctionPtr::Type::other } });
+    add("-", SExpr{ FunctionPtr{ binary_left_fold<subtracts>, FunctionPtr::Type::other } });
+    add("/", SExpr{ FunctionPtr{ binary_left_fold<divides>, FunctionPtr::Type::other } });
+    add("<=", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<lt_equal>, FunctionPtr::Type::other } });
+    add(">=", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<gt_equal>, FunctionPtr::Type::other } });
+    add("<", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<less_than>, FunctionPtr::Type::other } });
+    add(">", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<greater_than>, FunctionPtr::Type::other } });
+    add("and", SExpr{ FunctionPtr{ logical_and, FunctionPtr::Type::other } });
+    add("or", SExpr{ FunctionPtr{ logical_or, FunctionPtr::Type::other } });
+    add("if", SExpr{ FunctionPtr{ ifer, FunctionPtr::Type::other } });
+    add("not", SExpr{ FunctionPtr{ make_evaluator<logical_not>(), FunctionPtr::Type::other } });
+    add("==", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<equal>, FunctionPtr::Type::other } });
+    add("!=", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<not_equal>, FunctionPtr::Type::other } });
+    add("for-each", SExpr{ FunctionPtr{ for_each, FunctionPtr::Type::other } });
+    add("list", SExpr{ FunctionPtr{ list, FunctionPtr::Type::other } });
+    add("lambda", SExpr{ FunctionPtr{ lambda, FunctionPtr::Type::lambda_expr } });
+    add("do", SExpr{ FunctionPtr{ doer, FunctionPtr::Type::do_expr } });
+    add("define", SExpr{ FunctionPtr{ definer, FunctionPtr::Type::define_expr } });
+    add("let", SExpr{ FunctionPtr{ letter, FunctionPtr::Type::let_expr } });
+    add("car", SExpr{ FunctionPtr{ car, FunctionPtr::Type::other } });
+    add("cdr", SExpr{ FunctionPtr{ cdr, FunctionPtr::Type::other } });
+    add("cons", SExpr{ FunctionPtr{ cons, FunctionPtr::Type::other } });
+    add("append", SExpr{ FunctionPtr{ append, FunctionPtr::Type::other } });
+    add("eval", SExpr{ FunctionPtr{ evaler, FunctionPtr::Type::other } });
+    add("apply", SExpr{ FunctionPtr{ applier, FunctionPtr::Type::other } });
   }
 
   [[nodiscard]] constexpr SExpr sequence(LexicalScope &scope, std::span<const SExpr> statements)
@@ -789,6 +798,114 @@ struct cons_expr
     return SExpr{ Closure{
       std::get<IndexedList>(params[0].value), { engine.values.insert_or_find(fixed_statements) } } };
   }
+  
+  [[nodiscard]] constexpr SExpr fix_do_identifiers(IndexedList list,
+    std::size_t first_index,
+    std::span<const IndexedString> local_identifiers,
+    const LexicalScope &local_constants)
+  {
+    std::vector<IndexedString> new_locals{ local_identifiers.begin(), local_identifiers.end() };
+
+    std::vector<SExpr> new_parameters;
+
+    // collect all locals
+    for (const auto &param : values[first_index + 1].to_list(*this)) {
+      auto param_list = param.to_list(*this);
+      new_locals.push_back(get_if<Identifier>(&param_list[0])->value);
+    }
+
+    for (const auto &param : values[first_index + 1].to_list(*this)) {
+      auto param_list = param.to_list(*this);
+      std::vector<SExpr> new_param;
+      new_param.push_back(param_list[0]);
+      new_param.push_back(fix_identifiers(param_list[1], local_identifiers, local_constants));
+      // increment thingy
+      new_param.push_back(fix_identifiers(param_list[2], new_locals, local_constants));
+      new_parameters.push_back(SExpr{ values.insert_or_find(new_param) });
+    }
+
+    std::vector<SExpr> new_do;
+    // fixup pointer to "let" function
+    new_do.push_back(fix_identifiers(values[first_index], new_locals, local_constants));
+
+    // add parameter setup
+    new_do.push_back(SExpr{ values.insert_or_find(new_parameters) });
+
+
+    for (auto index = first_index + 2; index < list.size + list.start; ++index) {
+      new_do.push_back(fix_identifiers(values[index], new_locals, local_constants));
+    }
+
+    return SExpr{ values.insert_or_find(new_do) };
+  }
+
+  [[nodiscard]] constexpr SExpr fix_let_identifiers(IndexedList list,
+    std::size_t first_index,
+    std::span<const IndexedString> local_identifiers,
+    const LexicalScope &local_constants) {
+    std::vector<IndexedString> new_locals{ local_identifiers.begin(), local_identifiers.end() };
+
+    std::vector<SExpr> new_parameters;
+
+    // collect all locals
+    for (const auto &param : values[first_index + 1].to_list(*this)) {
+      auto param_list = param.to_list(*this);
+      new_locals.push_back(get_if<Identifier>(&param_list[0])->value);
+    }
+
+    for (const auto &param : values[first_index + 1].to_list(*this)) {
+      auto param_list = param.to_list(*this);
+      std::vector<SExpr> new_param;
+      new_param.push_back(param_list[0]);
+      new_param.push_back(fix_identifiers(param_list[1], local_identifiers, local_constants));
+      new_parameters.push_back(SExpr{ values.insert_or_find(new_param) });
+    }
+
+    std::vector<SExpr> new_let;
+    // fixup pointer to "let" function
+    new_let.push_back(fix_identifiers(values[first_index], new_locals, local_constants));
+    new_let.push_back(SExpr{ values.insert_or_find(new_parameters) });
+
+    for (auto index = first_index + 2; index < list.size + list.start; ++index) {
+      new_let.push_back(fix_identifiers(values[index], new_locals, local_constants));
+    }
+
+    return SExpr{ values.insert_or_find(new_let) };
+  }
+
+  [[nodiscard]] constexpr SExpr fix_define_identifiers(
+    std::size_t first_index,
+    std::span<const IndexedString> local_identifiers,
+    const LexicalScope &local_constants) {
+    std::vector<IndexedString> new_locals{ local_identifiers.begin(), local_identifiers.end() };
+    new_locals.push_back(get_if<Identifier>(&values[first_index + 1])->value);
+
+    std::vector<SExpr> new_define;
+    new_define.push_back(fix_identifiers(values[first_index], local_identifiers, local_constants));
+    new_define.push_back(values[first_index + 1]);
+    new_define.push_back(fix_identifiers(values[first_index + 2], new_locals, local_constants));
+    return SExpr{ values.insert_or_find(new_define) };
+  }
+
+
+  [[nodiscard]] constexpr SExpr fix_lambda_identifiers(IndexedList list, std::size_t first_index, std::span<const IndexedString> local_identifiers,
+    const LexicalScope &local_constants)
+  {
+    std::vector<IndexedString> new_locals{ local_identifiers.begin(), local_identifiers.end() };
+    auto lambda_locals = get_lambda_parameter_names(values[first_index + 1]);
+    new_locals.insert(new_locals.end(), lambda_locals.begin(), lambda_locals.end());
+
+    std::vector<SExpr> new_lambda;
+    // fixup pointer to "lambda" function
+    new_lambda.push_back(fix_identifiers(values[first_index], new_locals, local_constants));
+    new_lambda.push_back(values[first_index + 1]);
+
+    for (auto index = first_index + 2; index < list.size + list.start; ++index) {
+      new_lambda.push_back(fix_identifiers(values[index], new_locals, local_constants));
+    }
+
+    return SExpr{ values.insert_or_find(new_lambda) };
+  }
 
   [[nodiscard]] constexpr SExpr fix_identifiers(const SExpr &input,
     std::span<const IndexedString> local_identifiers,
@@ -801,93 +918,29 @@ struct cons_expr
         if (auto *id = get_if<Identifier>(&elem); id != nullptr) {
           auto string = strings[id->value];
           if (string == "lambda") {
-            std::vector<IndexedString> new_locals{ local_identifiers.begin(), local_identifiers.end() };
-            auto lambda_locals = get_lambda_parameter_names(values[first_index + 1]);
-            new_locals.insert(new_locals.end(), lambda_locals.begin(), lambda_locals.end());
-
-            std::vector<SExpr> new_lambda;
-            // fixup pointer to "lambda" function
-            new_lambda.push_back(fix_identifiers(values[first_index], new_locals, local_constants));
-            new_lambda.push_back(values[first_index + 1]);
-
-            for (auto index = first_index + 2; index < list->size + list->start; ++index) {
-              new_lambda.push_back(fix_identifiers(values[index], new_locals, local_constants));
-            }
-
-            return SExpr{ values.insert_or_find(new_lambda) };
+            return fix_lambda_identifiers(*list, first_index, local_identifiers, local_constants);
           } else if (string == "let") {
-            std::vector<IndexedString> new_locals{ local_identifiers.begin(), local_identifiers.end() };
-
-            std::vector<SExpr> new_parameters;
-
-            // collect all locals
-            for (const auto &param : values[first_index + 1].to_list(*this)) {
-              auto param_list = param.to_list(*this);
-              new_locals.push_back(get_if<Identifier>(&param_list[0])->value);
-            }
-
-            for (const auto &param : values[first_index + 1].to_list(*this)) {
-              auto param_list = param.to_list(*this);
-              std::vector<SExpr> new_param;
-              new_param.push_back(param_list[0]);
-              new_param.push_back(fix_identifiers(param_list[1], local_identifiers, local_constants));
-              new_parameters.push_back(SExpr{ values.insert_or_find(new_param) });
-            }
-
-            std::vector<SExpr> new_let;
-            // fixup pointer to "let" function
-            new_let.push_back(fix_identifiers(values[first_index], new_locals, local_constants));
-            new_let.push_back(SExpr{ values.insert_or_find(new_parameters) });
-
-            for (auto index = first_index + 2; index < list->size + list->start; ++index) {
-              new_let.push_back(fix_identifiers(values[index], new_locals, local_constants));
-            }
-
-            return SExpr{ values.insert_or_find(new_let) };
+            return fix_let_identifiers(*list, first_index, local_identifiers, local_constants);
           } else if (string == "define") {
-            std::vector<IndexedString> new_locals{ local_identifiers.begin(), local_identifiers.end() };
-            new_locals.push_back(get_if<Identifier>(&values[first_index + 1])->value);
-
-            std::vector<SExpr> new_define;
-            new_define.push_back(fix_identifiers(values[first_index], local_identifiers, local_constants));
-            new_define.push_back(values[first_index + 1]);
-            new_define.push_back(fix_identifiers(values[first_index + 2], new_locals, local_constants));
-            return SExpr{ values.insert_or_find(new_define) };
+            return fix_define_identifiers(first_index, local_identifiers, local_constants);
           } else if (string == "do") {
-            std::vector<IndexedString> new_locals{ local_identifiers.begin(), local_identifiers.end() };
-
-            std::vector<SExpr> new_parameters;
-
-            // collect all locals
-            for (const auto &param : values[first_index + 1].to_list(*this)) {
-              auto param_list = param.to_list(*this);
-              new_locals.push_back(get_if<Identifier>(&param_list[0])->value);
-            }
-
-            for (const auto &param : values[first_index + 1].to_list(*this)) {
-              auto param_list = param.to_list(*this);
-              std::vector<SExpr> new_param;
-              new_param.push_back(param_list[0]);
-              new_param.push_back(fix_identifiers(param_list[1], local_identifiers, local_constants));
-              // increment thingy
-              new_param.push_back(fix_identifiers(param_list[2], new_locals, local_constants));
-              new_parameters.push_back(SExpr{ values.insert_or_find(new_param) });
-            }
-
-            std::vector<SExpr> new_do;
-            // fixup pointer to "let" function
-            new_do.push_back(fix_identifiers(values[first_index], new_locals, local_constants));
-
-            // add parameter setup
-            new_do.push_back(SExpr{ values.insert_or_find(new_parameters) });
-
-
-            for (auto index = first_index + 2; index < list->size + list->start; ++index) {
-              new_do.push_back(fix_identifiers(values[index], new_locals, local_constants));
-            }
-
-            return SExpr{ values.insert_or_find(new_do) };
+            return fix_do_identifiers(*list, first_index, local_identifiers, local_constants);
           }
+        } else if (auto *fp = get_if<FunctionPtr>(&elem); fp != nullptr) {
+          switch (fp->type) {
+          case FunctionPtr::Type::do_expr:
+            return fix_do_identifiers(*list, first_index, local_identifiers, local_constants);
+          case FunctionPtr::Type::let_expr:
+            return fix_let_identifiers(*list, first_index, local_identifiers, local_constants);
+          case FunctionPtr::Type::lambda_expr:
+            return fix_lambda_identifiers(*list, first_index, local_identifiers, local_constants);
+          case FunctionPtr::Type::define_expr:
+            return fix_define_identifiers(first_index, local_identifiers, local_constants);
+          case FunctionPtr::Type::other:
+            // let it go do default things
+            break;
+          }
+
         }
       }
       std::vector<SExpr> result;
