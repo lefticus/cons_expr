@@ -81,8 +81,10 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
 
   auto radiobox = ftxui::Menu(&entries, &selected);
   auto characterbox = ftxui::Menu(&characters, &character_selected);
+  bool forget_history = false;
+  auto forget_history_check = ftxui::Checkbox("Forget History", &forget_history);
 
-  auto layout = ftxui::Container::Horizontal({ characterbox, radiobox, resizeable_bits, button });
+  auto layout = ftxui::Container::Horizontal({ characterbox, radiobox, resizeable_bits, button, forget_history_check });
 
   auto get_stats = [&]() {
     return ftxui::vbox({ ftxui::text(std::format("Data Sizes: cons_expr<> {} SExpr {} Atom {}",
@@ -108,7 +110,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
                ftxui::separator(),
                resizeable_bits->Render() | ftxui::flex,
                ftxui::separator(),
-               ftxui::hbox({ button->Render(), get_stats() }) })
+               ftxui::hbox({ button->Render(), get_stats(), forget_history_check->Render() }) })
                | ftxui::flex })
            | ftxui::border;
   });

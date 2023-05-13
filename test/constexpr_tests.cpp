@@ -101,7 +101,7 @@ TEST_CASE("nested lambda usage", "[lambdas]")
   STATIC_CHECK(evaluate_to<int>("(define l (lambda (x) (lambda (y) (lambda () (+ x y))))) (((l 1) 3))") == 4);
   STATIC_CHECK(evaluate_to<int>("(define l (lambda (x) (lambda (y) (let ((z (+ x y))) z)))) ((l 1) 3)") == 4);
   STATIC_CHECK(evaluate_to<int>("(define l (lambda (x) (lambda (y) (let ((z 10)) (+ x y z))))) ((l 1) 3)") == 14);
-  STATIC_CHECK(evaluate_to<int>("((lambda(x) (let ((x (+ x 5))) x)) 2)") == 7);
+  STATIC_CHECK(evaluate_to<int>("((lambda (x) (let ((x (+ x 5))) x)) 2)") == 7);
 }
 
 TEST_CASE("basic define usage", "[define]")
@@ -145,6 +145,8 @@ TEST_CASE("let variables", "[let variables]")
   // let variable initial values are scoped to the outer scope, not to previously
   // declared variables in scope
   STATIC_CHECK(evaluate_to<int>("(define x 42) (let ((x 10)(y x)) y)") == 42);
+
+  STATIC_CHECK(evaluate_to<int>("(define x 2) (let ((x (+ x 5))) x)") == 7);
 }
 
 TEST_CASE("simple car expression", "[builtins]") { STATIC_CHECK(evaluate_to<int>("(car '(1 2 3 4))") == 1); }

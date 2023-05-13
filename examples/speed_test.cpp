@@ -27,10 +27,20 @@ template<typename Result> Result evaluate_to(std::string_view input)
 int main()
 {
   evaluate(R"(
-(display (do ((i 1 (+ i 1))
-     (count 0 (add count 1)))
-    ((> i 10000000) count)
-))
+(define count 
+  (lambda (min max)
+    (display
+      (do ((i min (+ i 1))
+           (value 0 (add value 1)))
+          ((> i max) value)
+      )
+    )
+  )
+)
+
+(count 1 1000000)
+(count 10 1000000)
+(count -10 10000)
 )");
 
 }
