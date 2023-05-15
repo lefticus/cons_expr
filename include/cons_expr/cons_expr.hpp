@@ -156,7 +156,6 @@ struct SmallOptimizedVector
     constexpr auto &operator++()
     {
       ++index;
-      if (index == container->small_size_used && !container->rest.empty()) { index = SmallSize; }
       return *this;
     }
     [[nodiscard]] constexpr auto operator++(int) noexcept
@@ -168,11 +167,7 @@ struct SmallOptimizedVector
 
     constexpr auto &operator--() noexcept
     {
-      if (index == SmallSize) {
-        index = container->small_size_used - 1;
-      } else {
-        --index;
-      }
+      --index;
       return *this;
     }
     [[nodiscard]] constexpr auto operator--(int) noexcept
