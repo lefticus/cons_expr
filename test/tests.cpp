@@ -32,7 +32,61 @@ TEST_CASE("basic callable usage", "[c++ api]")
 
   auto func2 = evaluator.make_callable<int(int)>("(lambda (x) (* x x))");
   CHECK(func2(10) == 100);
+}
 
+TEST_CASE("GPT Generated Tests", "[integration tests]")
+{
+  CHECK(evaluate_to<int>(R"(
+(define make-adder-multiplier
+  (lambda (a)
+    (lambda (b)
+      (do ((i 0 (+ i 1))
+           (sum 0 (+ sum (let ((x (+ a i)))
+                            (if (>= x b)
+                                (define y (* x 2))
+                                (define y (* x 3)))
+                            (do ((j 0 (+ j 1))
+                                 (inner-sum 0 (+ inner-sum y)))
+                                ((>= j i) inner-sum))))))
+          ((>= i 5) sum)))))
+
+((make-adder-multiplier 2) 3)
+)") == 100);
+}
+
+TEST_CASE("member functions", "[function]")
+{
+  struct Test
+  {
+    void set(int i) { m_i = i; }
+
+    int get() const { return m_i; }
+
+    int m_i{ 0 };
+  };
+
+  lefticus::cons_expr<100, 100, 100, Test *> evaluator;
+  evaluator.add<&Test::set>("set");
+  evaluator.add<&Test::get>("get");
+
+
+  auto eval = [&](const std::string_view input) {
+    return evaluator.sequence(evaluator.global_scope, evaluator.parse(input).first.to_list());
+  };
+
+  Test myobj;
+
+  myobj.m_i = 42;
+
+  evaluator.add("myobj", &myobj);
+
+  CHECK(myobj.m_i == 42);
+  eval("(set myobj 10)");
+  CHECK(myobj.m_i == 10);
+  eval("(set myobj (+ (get myobj) 12)");
+  CHECK(myobj.m_i == 22);
+
+  CHECK(evaluator.template eval_to<int>(evaluator.global_scope, eval("(get myobj)")) == 22);
 }
 
 TEST_CASE("basic for-each usage", "[builtins]")

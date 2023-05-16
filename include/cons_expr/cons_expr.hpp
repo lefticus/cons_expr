@@ -508,7 +508,15 @@ struct cons_expr
     function_ptr ptr{ nullptr };
     Type type{ Type::other };
 
-    [[nodiscard]] constexpr bool operator==(const FunctionPtr &) const noexcept { return false; }
+    [[nodiscard]] constexpr bool operator==(const FunctionPtr &other) const noexcept {
+      // this pointer comparison is giving me a problem in constexpr context
+      // it feels like a bug in GCC, but not sure
+      if consteval {
+        return type != Type::other && type == other.type;
+      } else {
+        return ptr == other.ptr;
+      }
+    }
   };
 
   struct SExpr
@@ -678,23 +686,40 @@ struct cons_expr
   }
 
   template<auto Func, typename Ret, typename... Param>
-  [[nodiscard]] constexpr static function_ptr make_evaluator(Ret (*)(Param...))
+  [[nodiscard]] constexpr static function_ptr make_evaluator()
   {
     return function_ptr{ [](cons_expr &engine, LexicalScope &scope, IndexedList params) -> SExpr {
       if (params.size != sizeof...(Param)) { throw std::runtime_error("wrong param count"); }
 
-
       auto impl = [&]<std::size_t... Idx>(std::index_sequence<Idx...>) {
         if constexpr (std::is_same_v<void, Ret>) {
-          Func(engine.eval_to<std::remove_cvref_t<Param>>(scope, engine.values[params[Idx]])...);
+          std::invoke(Func, engine.eval_to<std::remove_cvref_t<Param>>(scope, engine.values[params[Idx]])...);
           return SExpr{ Atom{ std::monostate{} } };
         } else {
-          return SExpr{ Func(engine.eval_to<std::remove_cvref_t<Param>>(scope, engine.values[params[Idx]])...) };
+          return SExpr{ std::invoke(
+            Func, engine.eval_to<std::remove_cvref_t<Param>>(scope, engine.values[params[Idx]])...) };
         }
       };
 
       return impl(std::make_index_sequence<sizeof...(Param)>{});
     } };
+  }
+
+  template<auto Func, typename Ret, typename... Param>
+  [[nodiscard]] constexpr static function_ptr make_evaluator(Ret (*)(Param...))
+  {
+    return make_evaluator<Func, Ret, Param...>();
+  }
+  template<auto Func, typename Ret, typename Type, typename... Param>
+  [[nodiscard]] constexpr static function_ptr make_evaluator(Ret (Type::*)(Param...) const)
+  {
+    return make_evaluator<Func, Ret, Type *, Param...>();
+  }
+
+  template<auto Func, typename Ret, typename Type, typename... Param>
+  [[nodiscard]] constexpr static function_ptr make_evaluator(Ret (Type::*)(Param...))
+  {
+    return make_evaluator<Func, Ret, Type *, Param...>();
   }
 
   template<auto Func> [[nodiscard]] constexpr static function_ptr make_evaluator()

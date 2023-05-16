@@ -11,9 +11,9 @@ static_assert(sizeof(lefticus::cons_expr<>) == 16384);
 
 consteval auto build_cons_expr()
 {
-  lefticus::cons_expr<> result;
-  result.add("x", 42);
-  return result;
+ 
+
+
 }
 
 
@@ -29,11 +29,7 @@ template<typename Result> constexpr Result evaluate_to(std::string_view input)
   return std::get<Result>(std::get<lefticus::cons_expr<>::Atom>(evaluate(input).value));
 }
 
-TEST_CASE("test constexpr construction")
-{
-  auto eval = build_cons_expr();
-  // CHECK(eval.eval_to<int>("x") == 42);
-}
+
 
 TEST_CASE("Operator identifiers", "[operators]")
 {
@@ -128,6 +124,40 @@ TEST_CASE("define scoping", "[define]")
 )") == 24);
 }
 
+
+TEST_CASE("GPT Generated Tests", "[integration tests]")
+{
+  STATIC_CHECK(evaluate_to<int>(R"(
+(define square (lambda (x) (* x x)))
+(square 5)
+)") == 25);
+
+  STATIC_CHECK(evaluate_to<int>(R"(
+(define make-adder (lambda (x) (lambda (y) (+ x y))))
+((make-adder 5) 3)
+)") == 8);
+
+  STATIC_CHECK(evaluate_to<int>(R"(
+(let ((x 2) (y 3))
+  (define adder (lambda (a b) (+ a b)))
+  (adder x y))
+)") == 5);
+
+
+  STATIC_CHECK(evaluate_to<int>(R"(
+(let ((x 2))
+  (let ((y 3))
+    (+ x y)))
+)") == 5);
+
+
+//  STATIC_CHECK(evaluate_to<int>(R"(
+//(if (>= 5 3) 'true 'false)
+//
+//)") == 5);
+
+  
+}
 
 TEST_CASE("binary short circuiting", "[short circuiting]")
 {
