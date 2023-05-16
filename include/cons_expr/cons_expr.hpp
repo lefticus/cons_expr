@@ -1,6 +1,7 @@
 #ifndef CONS_EXPR_HPP
 #define CONS_EXPR_HPP
 
+#include <algorithm>
 #include <charconv>
 #include <functional>
 #include <limits>
@@ -83,7 +84,7 @@ struct SmallOptimizedVector
   std::vector<Contained> rest;
   static constexpr auto small_capacity = SmallSize;
 
-  [[nodiscard]] constexpr auto max_index() const noexcept
+  [[nodiscard]] constexpr auto size() const noexcept
   {
     if (!rest.empty()) {
       return rest.size() + SmallSize;
@@ -194,14 +195,7 @@ struct SmallOptimizedVector
 
   [[nodiscard]] constexpr auto begin() const noexcept { return Iterator{ this, 0 }; }
 
-  [[nodiscard]] constexpr auto end() const noexcept
-  {
-    if (rest.empty()) {
-      return Iterator{ this, small_size_used };
-    } else {
-      return Iterator{ this, rest.size() + SmallSize };
-    }
-  }
+  [[nodiscard]] constexpr auto end() const noexcept { return Iterator{ this, size() }; }
 
   constexpr KeyType insert_or_find(SpanType values)
   {
@@ -218,7 +212,7 @@ struct SmallOptimizedVector
 
   constexpr KeyType insert(SpanType values)
   {
-    const bool force_rest = (values.size() + small_size_used) > SmallSize;
+    const bool force_rest = !rest.empty() || ((values.size() + small_size_used) > SmallSize);
     std::size_t last = 0;
     for (const auto &value : values) { last = insert(value, force_rest); }
     return KeyType{ last - values.size() + 1, values.size() };
@@ -265,7 +259,6 @@ struct Token
   std::string_view parsed;
   std::string_view remaining;
 };
-
 
 [[nodiscard]] constexpr std::pair<bool, int> parse_int(std::string_view input)
 {
@@ -508,7 +501,8 @@ struct cons_expr
     function_ptr ptr{ nullptr };
     Type type{ Type::other };
 
-    [[nodiscard]] constexpr bool operator==(const FunctionPtr &other) const noexcept {
+    [[nodiscard]] constexpr bool operator==(const FunctionPtr &other) const noexcept
+    {
       // this pointer comparison is giving me a problem in constexpr context
       // it feels like a bug in GCC, but not sure
       if consteval {
@@ -686,7 +680,7 @@ struct cons_expr
   }
 
   template<auto Func, typename Ret, typename... Param>
-  [[nodiscard]] constexpr static function_ptr make_evaluator()
+  [[nodiscard]] constexpr static function_ptr make_evaluator() noexcept
   {
     return function_ptr{ [](cons_expr &engine, LexicalScope &scope, IndexedList params) -> SExpr {
       if (params.size != sizeof...(Param)) { throw std::runtime_error("wrong param count"); }
@@ -706,23 +700,23 @@ struct cons_expr
   }
 
   template<auto Func, typename Ret, typename... Param>
-  [[nodiscard]] constexpr static function_ptr make_evaluator(Ret (*)(Param...))
+  [[nodiscard]] constexpr static function_ptr make_evaluator(Ret (*)(Param...)) noexcept
   {
     return make_evaluator<Func, Ret, Param...>();
   }
   template<auto Func, typename Ret, typename Type, typename... Param>
-  [[nodiscard]] constexpr static function_ptr make_evaluator(Ret (Type::*)(Param...) const)
+  [[nodiscard]] constexpr static function_ptr make_evaluator(Ret (Type::*)(Param...) const) noexcept
   {
     return make_evaluator<Func, Ret, Type *, Param...>();
   }
 
   template<auto Func, typename Ret, typename Type, typename... Param>
-  [[nodiscard]] constexpr static function_ptr make_evaluator(Ret (Type::*)(Param...))
+  [[nodiscard]] constexpr static function_ptr make_evaluator(Ret (Type::*)(Param...)) noexcept
   {
     return make_evaluator<Func, Ret, Type *, Param...>();
   }
 
-  template<auto Func> [[nodiscard]] constexpr static function_ptr make_evaluator()
+  template<auto Func> [[nodiscard]] constexpr static function_ptr make_evaluator() noexcept
   {
     return make_evaluator<Func>(Func);
   }
@@ -1037,7 +1031,7 @@ struct cons_expr
         throw std::runtime_error("Unexpected number of elements to do binding expression");
       }
 
-      const auto index = new_scope.max_index();
+      const auto index = new_scope.size();
       new_scope.emplace_back(engine.eval_to<Identifier>(scope, elements[0]).value, engine.eval(scope, elements[1]));
 
       if (elements.size() == 3) { variables.emplace_back(index, elements[2]); }
@@ -1146,7 +1140,6 @@ struct cons_expr
   {
     if (params.size != 1) { throw std::runtime_error("Expected exactly 1 param for eval"); }
 
-
     return engine.eval(
       engine.global_scope, SExpr{ engine.eval_to<LiteralList>(scope, engine.values[params[0]]).items });
   }
@@ -1196,8 +1189,8 @@ struct cons_expr
         [engine = *this, callable = eval(global_scope, values[std::get<IndexedList>(parse(function).first.value)][0])](
           Params... params) mutable {
           std::array<SExpr, sizeof...(Params)> args{ SExpr{ Atom{ params } }... };
-          return engine.template eval_to<Ret>(
-            engine.global_scope, engine.invoke_function(engine.global_scope, callable, engine.values.insert_or_find(args)));
+          return engine.template eval_to<Ret>(engine.global_scope,
+            engine.invoke_function(engine.global_scope, callable, engine.values.insert_or_find(args)));
         };
     };
 
