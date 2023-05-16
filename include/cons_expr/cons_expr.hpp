@@ -1077,6 +1077,8 @@ struct cons_expr
 
   [[nodiscard]] static constexpr SExpr append(cons_expr &engine, LexicalScope &scope, IndexedList params)
   {
+    if (params.size != 2) { throw std::runtime_error("Expected exactly 2 params for append"); }
+
     auto first = engine.eval_to<LiteralList>(scope, engine.values[params[0]]);
     auto second = engine.eval_to<LiteralList>(scope, engine.values[params[1]]);
 
@@ -1162,7 +1164,7 @@ struct cons_expr
     const auto list = engine.eval_to<LiteralList>(scope, engine.values[params[1]]).items;
 
     const auto func = engine.values[params[0]];
-    for (std::size_t index = 0; index < params.size; ++index) {
+    for (std::size_t index = 0; index < list.size; ++index) {
       [[maybe_unused]] const auto result = engine.invoke_function(scope, func, list.sublist(index, 1));
     }
 
@@ -1219,7 +1221,7 @@ struct cons_expr
   template<auto Op>
   [[nodiscard]] static constexpr SExpr binary_left_fold(cons_expr &engine, LexicalScope &scope, IndexedList params)
   {
-    auto sum = [&engine, &scope, params]<typename Param>(Param first) -> SExpr {
+    auto fold = [&engine, &scope, params]<typename Param>(Param first) -> SExpr {
       if constexpr (requires(Param p1, Param p2) { Op(p1, p2); }) {
         for (const auto &next : engine.values[params.sublist(1)]) {
           first = Op(first, engine.eval_to<Param>(scope, next));
@@ -1231,7 +1233,9 @@ struct cons_expr
       }
     };
 
-    if (params.size > 1) { return std::visit(sum, std::get<Atom>(engine.eval(scope, engine.values[params[0]]).value)); }
+    if (params.size > 1) {
+      return std::visit(fold, std::get<Atom>(engine.eval(scope, engine.values[params[0]]).value));
+    }
 
     throw std::runtime_error("Not enough params");
   }
