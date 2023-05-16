@@ -21,7 +21,7 @@ constexpr auto evaluate(std::string_view input)
 {
   lefticus::cons_expr<> evaluator;
 
-  return evaluator.sequence(evaluator.global_scope, evaluator.parse(input).first.to_list(evaluator));
+  return evaluator.sequence(evaluator.global_scope, evaluator.parse(input).first.to_list());
 }
 
 template<typename Result> constexpr Result evaluate_to(std::string_view input)

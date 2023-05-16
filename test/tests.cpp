@@ -13,7 +13,7 @@ auto evaluate(std::string_view input)
   evaluator.add<display>("display");
 
   auto parse_result = evaluator.parse(input);
-  auto list = parse_result.first.to_list(evaluator);
+  auto list = parse_result.first.to_list();
 
   return evaluator.sequence(evaluator.global_scope, list);
 }

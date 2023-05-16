@@ -64,7 +64,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
     try {
       content_2 += to_string(evaluator,
         false,
-        evaluator.sequence(evaluator.global_scope, evaluator.parse(content_1).first.to_list(evaluator)));
+        evaluator.sequence(evaluator.global_scope, evaluator.parse(content_1).first.to_list()));
     } catch (const std::exception &e) {
       content_2 += std::string("Error: ") + e.what();
     }

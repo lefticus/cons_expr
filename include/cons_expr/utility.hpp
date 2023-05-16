@@ -50,9 +50,9 @@ template<ConsExpr Eval> std::string to_string([[maybe_unused]] const Eval &, boo
 template<ConsExpr Eval> std::string to_string(const Eval &engine, bool annotate, const lefticus::Identifier &id)
 {
   if (annotate) {
-    return std::format("[identifier] {{{}, {}}} {}", id.value.start, id.value.size, engine.strings[id.value]);
+    return std::format("[identifier] {{{}, {}}} {}", id.value.start, id.value.size, engine.strings.view(id.value));
   } else {
-    return std::string{ engine.strings[id.value] };
+    return std::string{ engine.strings.view(id.value) };
   }
 }
 
@@ -99,11 +99,10 @@ template<ConsExpr Eval> std::string to_string(const Eval &engine, bool annotate,
 
   if (annotate) { result += std::format("[list] {{{}, {}}} ", list.start, list.size); }
   result += "(";
-  const auto span = engine.values[list];
 
-  if (!span.empty()) {
-    for (const auto &item : span.subspan(0, span.size() - 1)) { result += to_string(engine, false, item) + ' '; }
-    result += to_string(engine, false, span.back());
+  if (!list.empty()) {
+    for (const auto &item : engine.values[list.sublist(0, list.size - 1)]) { result += to_string(engine, false, item) + ' '; }
+    result += to_string(engine, false, engine.values[list.back()]);
   }
   result += ")";
   return result;
@@ -119,9 +118,9 @@ template<ConsExpr Eval> std::string to_string(const Eval &engine, bool annotate,
 template<ConsExpr Eval> std::string to_string(const Eval &engine, bool annotate, const lefticus::IndexedString &string)
 {
   if (annotate) {
-    return std::format("[identifier] {{{}, {}}} \"{}\"", string.start, string.size, engine.strings[string]);
+    return std::format("[identifier] {{{}, {}}} \"{}\"", string.start, string.size, engine.strings.view(string));
   } else {
-    return std::format("\"{}\"", engine.strings[string]);
+    return std::format("\"{}\"", engine.strings.view(string));
   }
 }
 

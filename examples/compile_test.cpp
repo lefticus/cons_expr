@@ -22,7 +22,7 @@ consteval auto make_scripted_function()
     )";
 
   [[maybe_unused]] const auto result =
-    evaluator.sequence(evaluator.global_scope, evaluator.parse(input).first.to_list(evaluator));
+    evaluator.sequence(evaluator.global_scope, evaluator.parse(input).first.to_list());
 
   return evaluator.make_standalone_callable<int(int, int)>("sum");
 }

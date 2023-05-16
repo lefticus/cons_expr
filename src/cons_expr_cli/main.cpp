@@ -1,7 +1,7 @@
 
 #include <CLI/CLI.hpp>
-#include <spdlog/spdlog.h>
 #include <format>
+#include <spdlog/spdlog.h>
 
 #include <cons_expr/cons_expr.hpp>
 #include <cons_expr/utility.hpp>
@@ -33,7 +33,8 @@ int main(int argc, const char **argv)
     evaluator.add<display>("display");
 
     if (script) {
-      std::cout << lefticus::to_string(evaluator, false, evaluator.sequence(evaluator.global_scope, evaluator.parse(*script).first.to_list(evaluator)));
+      std::cout << lefticus::to_string(
+        evaluator, false, evaluator.sequence(evaluator.global_scope, evaluator.parse(*script).first.to_list()));
       std::cout << '\n';
     }
   } catch (const std::exception &e) {

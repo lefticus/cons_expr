@@ -16,7 +16,7 @@ auto evaluate(std::string_view input)
   evaluator.add<&add>("add");
   evaluator.add<&display>("display");
 
-  return evaluator.sequence(evaluator.global_scope, evaluator.parse(input).first.to_list(evaluator));
+  return evaluator.sequence(evaluator.global_scope, evaluator.parse(input).first.to_list());
 }
 
 template<typename Result> Result evaluate_to(std::string_view input)
