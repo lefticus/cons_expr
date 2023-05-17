@@ -61,6 +61,7 @@
 // * `==` `true` and `false` stray from `=` `#t` and `#f` of scheme
 // * Pair types don't exist, only lists
 // * only indices and values are passed, for safety during resize of `values` object
+// Triviality of types is critical to design and structure of this system
 
 /// To do
 // * We probably want some sort of "defragment" at some point
@@ -148,11 +149,11 @@ struct SmallOptimizedVector
     const SmallOptimizedVector *container;
     std::size_t index;
 
-    constexpr bool operator==(const Iterator &other) const noexcept { return index == other.index; }
-    constexpr bool operator!=(const Iterator &) const noexcept = default;
+    [[nodiscard]] constexpr bool operator==(const Iterator &other) const noexcept { return index == other.index; }
+    [[nodiscard]] constexpr bool operator!=(const Iterator &) const noexcept = default;
 
     constexpr const auto &operator*() const noexcept { return (*container)[index]; }
-    constexpr auto &operator++()
+    constexpr auto &operator++() noexcept
     {
       ++index;
       return *this;
@@ -169,6 +170,7 @@ struct SmallOptimizedVector
       --index;
       return *this;
     }
+
     [[nodiscard]] constexpr auto operator--(int) noexcept
     {
       auto result = *this;
@@ -192,9 +194,7 @@ struct SmallOptimizedVector
   };
 
   [[nodiscard]] constexpr auto operator[](KeyType span) const noexcept { return View{ span, this }; }
-
   [[nodiscard]] constexpr auto begin() const noexcept { return Iterator{ this, 0 }; }
-
   [[nodiscard]] constexpr auto end() const noexcept { return Iterator{ this, size() }; }
 
   constexpr KeyType insert_or_find(SpanType values)
@@ -373,10 +373,8 @@ template<typename T> [[nodiscard]] constexpr std::pair<bool, T> parse_float(std:
 
 [[nodiscard]] constexpr Token next_token(std::string_view input)
 {
-  constexpr auto is_eol = [](auto character) { return character == '\n' || character == '\r'; };
-  constexpr auto is_whitespace = [is_eol](auto character) {
-    return character == ' ' || character == '\t' || is_eol(character);
-  };
+  constexpr auto is_eol = [](auto ch) { return ch == '\n' || ch == '\r'; };
+  constexpr auto is_whitespace = [=](auto ch) { return ch == ' ' || ch == '\t' || is_eol(ch); };
 
   constexpr auto consume = [=](auto ws_input, auto predicate) {
     auto begin = ws_input.begin();
@@ -392,7 +390,7 @@ template<typename T> [[nodiscard]] constexpr std::pair<bool, T> parse_float(std:
 
   // comment
   if (input.starts_with(';')) {
-    input = consume(input, [=](char character) { return not is_eol(character); });
+    input = consume(input, [=](char ch) { return not is_eol(ch); });
     input = consume(input, is_whitespace);
   }
 
@@ -422,8 +420,7 @@ template<typename T> [[nodiscard]] constexpr std::pair<bool, T> parse_float(std:
   }
 
   // everything else
-  const auto value =
-    consume(input, [=](char character) { return !is_whitespace(character) && character != ')' && character != '('; });
+  const auto value = consume(input, [=](char ch) { return !is_whitespace(ch) && ch != ')' && ch != '('; });
 
   return make_token(input, static_cast<std::size_t>(std::distance(input.begin(), value.begin())));
 }
@@ -432,18 +429,19 @@ struct IndexedString
 {
   std::size_t start{ 0 };
   std::size_t size{ 0 };
+  [[nodiscard]] constexpr bool operator==(const IndexedString &) const noexcept = default;
   [[nodiscard]] constexpr auto front() const noexcept { return start; }
   [[nodiscard]] constexpr auto substr(const std::size_t from) const noexcept
   {
     return IndexedString{ start + from, size - from };
   }
-  [[nodiscard]] constexpr bool operator==(const IndexedString &other) const noexcept = default;
 };
 
 struct IndexedList
 {
   std::size_t start{ 0 };
   std::size_t size{ 0 };
+  [[nodiscard]] constexpr bool operator==(const IndexedList &) const noexcept = default;
   [[nodiscard]] constexpr bool empty() const noexcept { return size == 0; }
   [[nodiscard]] constexpr auto front() const noexcept { return start; }
   [[nodiscard]] constexpr std::size_t operator[](std::size_t index) const noexcept { return start + index; }
@@ -457,7 +455,6 @@ struct IndexedList
       return IndexedList{ start + from, distance };
     };
   }
-  [[nodiscard]] constexpr bool operator==(const IndexedList &) const noexcept = default;
 };
 
 struct LiteralList
@@ -516,6 +513,7 @@ struct cons_expr
   struct SExpr
   {
     std::variant<Atom, IndexedList, LiteralList, Closure, FunctionPtr> value;
+
     [[nodiscard]] constexpr bool operator==(const SExpr &) const noexcept = default;
 
     [[nodiscard]] constexpr IndexedList to_list() const
@@ -652,14 +650,10 @@ struct cons_expr
 
   [[nodiscard]] constexpr SExpr sequence(LexicalScope &scope, IndexedList statements)
   {
-    if (!statements.empty()) [[likely]] {
-      for (const auto &statement : values[statements.sublist(0, statements.size - 1)]) {
-        [[maybe_unused]] const auto result = eval(scope, statement);
-      }
-      return eval(scope, values[statements.back()]);
-    } else {
-      return SExpr{ Atom{ std::monostate{} } };
-    }
+    auto result = SExpr{ Atom{ std::monostate{} } };
+    std::ranges::for_each(
+      values[statements], [&result, &scope, this](auto statement) { result = eval(scope, statement); });
+    return result;
   }
 
   [[nodiscard]] constexpr SExpr invoke_function(LexicalScope &scope, const SExpr function, IndexedList params)
@@ -668,14 +662,9 @@ struct cons_expr
 
     if (auto *closure = get_if<Closure>(&resolved_function); closure != nullptr) [[unlikely]] {
       return closure->invoke(*this, scope, params);
-    } else {
-      return get_function(resolved_function)(*this, scope, params);
+    } else if (auto *func = get_if<FunctionPtr>(&resolved_function); func != nullptr) {
+      return (func->ptr)(*this, scope, params);
     }
-  }
-
-  [[nodiscard]] constexpr function_ptr get_function(const SExpr &expr)
-  {
-    if (const auto *func = get_if<FunctionPtr>(&expr); func != nullptr) { return func->ptr; }
     throw std::runtime_error("Does not evaluate to a function");
   }
 
@@ -704,6 +693,7 @@ struct cons_expr
   {
     return make_evaluator<Func, Ret, Param...>();
   }
+
   template<auto Func, typename Ret, typename Type, typename... Param>
   [[nodiscard]] constexpr static function_ptr make_evaluator(Ret (Type::*)(Param...) const) noexcept
   {
@@ -739,7 +729,7 @@ struct cons_expr
   [[nodiscard]] constexpr SExpr eval(LexicalScope &scope, const SExpr expr)
   {
     if (const auto *indexed_list = get_if<IndexedList>(&expr); indexed_list != nullptr) {
-      // if it's a non-empty list, then I need to evaluate it as a function
+      // if it's a non-empty list, then we need to evaluate it as a function
       if (!indexed_list->empty()) {
         return invoke_function(scope, values[(*indexed_list)[0]], indexed_list->sublist(1));
       }
@@ -932,6 +922,7 @@ struct cons_expr
       if (list->size != 0) {
         auto first_index = list->start;
         const auto &elem = values[first_index];
+
         if (auto *id = get_if<Identifier>(&elem); id != nullptr) {
           // a fix might resize the string container, so
           // we have to be conservative here
