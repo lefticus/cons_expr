@@ -922,33 +922,19 @@ struct cons_expr
       if (list->size != 0) {
         auto first_index = list->start;
         const auto &elem = values[first_index];
+        std::string_view id = "";
+        auto fp_type = FunctionPtr::Type::other;
+        if (auto *id_atom = get_if<Identifier>(&elem); id_atom != nullptr) { id = strings.view(id_atom->value); }
+        if (auto *fp = get_if<FunctionPtr>(&elem); fp != nullptr) { fp_type = fp->type; }
 
-        if (auto *id = get_if<Identifier>(&elem); id != nullptr) {
-          // a fix might resize the string container, so
-          // we have to be conservative here
-          if (strings.view(id->value) == "lambda") {
-            return fix_lambda_identifiers(*list, first_index, local_identifiers, local_constants);
-          } else if (strings.view(id->value) == "let") {
-            return fix_let_identifiers(*list, first_index, local_identifiers, local_constants);
-          } else if (strings.view(id->value) == "define") {
-            return fix_define_identifiers(first_index, local_identifiers, local_constants);
-          } else if (strings.view(id->value) == "do") {
-            return fix_do_identifiers(*list, first_index, local_identifiers, local_constants);
-          }
-        } else if (auto *fp = get_if<FunctionPtr>(&elem); fp != nullptr) {
-          switch (fp->type) {
-          case FunctionPtr::Type::do_expr:
-            return fix_do_identifiers(*list, first_index, local_identifiers, local_constants);
-          case FunctionPtr::Type::let_expr:
-            return fix_let_identifiers(*list, first_index, local_identifiers, local_constants);
-          case FunctionPtr::Type::lambda_expr:
-            return fix_lambda_identifiers(*list, first_index, local_identifiers, local_constants);
-          case FunctionPtr::Type::define_expr:
-            return fix_define_identifiers(first_index, local_identifiers, local_constants);
-          case FunctionPtr::Type::other:
-            // let it go do default things
-            break;
-          }
+        if (fp_type == FunctionPtr::Type::lambda_expr || id == "lambda"  ) {
+          return fix_lambda_identifiers(*list, first_index, local_identifiers, local_constants);
+        } else if (fp_type == FunctionPtr::Type::let_expr || id == "let"  ) {
+          return fix_let_identifiers(*list, first_index, local_identifiers, local_constants);
+        } else if (fp_type == FunctionPtr::Type::define_expr || id == "define" ) {
+          return fix_define_identifiers(first_index, local_identifiers, local_constants);
+        } else if (fp_type == FunctionPtr::Type::do_expr || id == "do"  ) {
+          return fix_do_identifiers(*list, first_index, local_identifiers, local_constants);
         }
       }
       std::vector<SExpr> result;
