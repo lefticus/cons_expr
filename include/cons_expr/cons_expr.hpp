@@ -764,7 +764,6 @@ struct cons_expr
                          || std::is_same_v<Type, Error>) {
       if (const auto *obj = std::get_if<Type>(&expr.value); obj != nullptr) { return *obj; }
     } else {
-      if (const auto *err = std::get_if<Error>(&expr.value); err != nullptr) { return std::unexpected(expr); }
       if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
         if (const auto *value = std::get_if<Type>(atom); value != nullptr) {
           return *value;
@@ -773,6 +772,7 @@ struct cons_expr
         }
       }
     }
+    if (const auto *err = std::get_if<Error>(&expr.value); err != nullptr) { return std::unexpected(expr); }
     return eval_to<Type>(scope, eval(scope, expr));
   }
 

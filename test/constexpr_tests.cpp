@@ -273,6 +273,12 @@ TEST_CASE("simple error handling", "[errors]")
   evaluate_to<lefticus::Error>(R"(
 (+ 1 2.3)
 )");
+
+  evaluate_to<lefticus::Error>(R"(
+(define x (do (b) (true 0)))
+(eval x)
+)");
+
   evaluate_to<lefticus::Error>(R"(
 (+ 1 (+ 1 2.3))
 )");
