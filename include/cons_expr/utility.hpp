@@ -37,7 +37,7 @@ template<ConsExpr Eval>
 std::string to_string([[maybe_unused]] const Eval &eval, bool, const typename lefticus::Error &error)
 {
   return std::format(
-    "[Expected: {} got: {}]", to_string(eval, false, error.description), to_string(eval, false, error.context));
+    "[Expected: {} got: {}]", to_string(eval, false, error.expected), to_string(eval, false, error.got));
 }
 
 template<ConsExpr Eval>

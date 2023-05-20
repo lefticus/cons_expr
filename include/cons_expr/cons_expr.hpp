@@ -482,8 +482,8 @@ struct Identifier
 
 struct Error
 {
-  IndexedString description;
-  IndexedList context;
+  IndexedString expected;
+  IndexedList got;
   [[nodiscard]] constexpr bool operator==(const Error &) const noexcept = default;
 };
 
@@ -560,7 +560,9 @@ struct cons_expr
 
     [[nodiscard]] constexpr SExpr invoke(cons_expr &engine, LexicalScope &scope, IndexedList params) const
     {
-      if (params.size != parameter_names.size) { return engine.make_error("Incorrect number of params for lambda", params); }
+      if (params.size != parameter_names.size) {
+        return engine.make_error("Incorrect number of params for lambda", params);
+      }
 
       // Closures contain all of their own scope
       LexicalScope new_scope;
@@ -684,7 +686,7 @@ struct cons_expr
           return SExpr{ Atom{ std::monostate{} } };
         } else {
           return SExpr{ std::invoke(
-            Func, engine.eval_to<std::remove_cvref_t<Param>>(scope, engine.values[params[Idx]]).value() ...) };
+            Func, engine.eval_to<std::remove_cvref_t<Param>>(scope, engine.values[params[Idx]]).value()...) };
         }
       };
 
@@ -762,9 +764,7 @@ struct cons_expr
                          || std::is_same_v<Type, Error>) {
       if (const auto *obj = std::get_if<Type>(&expr.value); obj != nullptr) { return *obj; }
     } else {
-      if (const auto *err = std::get_if<Error>(&expr.value); err != nullptr){
-        return std::unexpected(expr);
-      }
+      if (const auto *err = std::get_if<Error>(&expr.value); err != nullptr) { return std::unexpected(expr); }
       if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
         if (const auto *value = std::get_if<Type>(atom); value != nullptr) {
           return *value;
@@ -846,7 +846,9 @@ struct cons_expr
       new_param.push_back(values[(*param_list)[0]]);
       new_param.push_back(fix_identifiers(values[(*param_list)[1]], local_identifiers, local_constants));
       // increment thingy (optional)
-      if (param_list->size == 3) { new_param.push_back(fix_identifiers(values[(*param_list)[2]], new_locals, local_constants)); }
+      if (param_list->size == 3) {
+        new_param.push_back(fix_identifiers(values[(*param_list)[2]], new_locals, local_constants));
+      }
       new_params.push_back(SExpr{ values.insert_or_find(new_param) });
     }
 
@@ -1000,12 +1002,13 @@ struct cons_expr
 
   [[nodiscard]] constexpr SExpr make_error(std::string_view description, IndexedList context) noexcept
   {
-    return SExpr{Error{ strings.insert_or_find(description), context }};
+    return SExpr{ Error{ strings.insert_or_find(description), context } };
   }
 
-  [[nodiscard]] constexpr SExpr make_error(std::string_view description, SExpr context) noexcept
+  template<std::same_as<SExpr> ... Param>
+  [[nodiscard]] constexpr SExpr make_error(std::string_view description, Param ... context) noexcept
   {
-    std::array<SExpr, 1> params{ context };
+    std::array<SExpr, sizeof...(Param)> params{ context ... };
     return make_error(description, values.insert_or_find(params));
   }
 
@@ -1051,7 +1054,9 @@ struct cons_expr
 
     auto *variable_list = engine.get_if<IndexedList>(&engine.values[params[0]]);
 
-    if (variable_list == nullptr) { return engine.make_error("((var1 val1 [iter_expr1]) ...)", engine.values[params[0]]); }
+    if (variable_list == nullptr) {
+      return engine.make_error("((var1 val1 [iter_expr1]) ...)", engine.values[params[0]]);
+    }
 
     auto new_scope = scope;
 
@@ -1098,7 +1103,7 @@ struct cons_expr
     bool end = false;
     while (!end) {
       const auto condition = engine.eval_to<bool>(new_scope, fixed_up_terminator);
-      if (!condition) { return engine.make_error("condition not boolean", condition.error()); }
+      if (!condition) { return engine.make_error("boolean condition", condition.error()); }
       end = *condition;
       if (!end) {
         // evaluate body
@@ -1156,7 +1161,7 @@ struct cons_expr
 
     return SExpr{ LiteralList{ engine.values.insert_or_find(result) } };
   }
-
+                        
   [[nodiscard]] static constexpr SExpr cdr(cons_expr &engine, LexicalScope &scope, IndexedList params) noexcept
   {
     if (params.size != 1) { return engine.make_error("(cdr Non-Empty-LiteralList)", params); }
@@ -1202,7 +1207,7 @@ struct cons_expr
 
     const auto condition = engine.eval_to<bool>(scope, engine.values[params[0]]);
 
-    if (!condition) { return engine.make_error("(if bool-cond then else)", params); }
+    if (!condition) { return engine.make_error("boolean condition", condition->error()); }
 
     if (*condition) {
       return engine.eval(scope, engine.values[params[1]]);
@@ -1282,7 +1287,7 @@ struct cons_expr
       if constexpr (requires(Param p1, Param p2) { Op(p1, p2); }) {
         for (const auto &next : engine.values[params.sublist(1)]) {
           const auto result = engine.eval_to<Param>(scope, next);
-          if (!result) { return engine.make_error("mismatched types for operator", params); }
+          if (!result) { return engine.make_error("same types for operator", SExpr{first}, result.error()); }
           first = Op(first, *result);
         }
 
@@ -1323,24 +1328,24 @@ struct cons_expr
 
   template<auto Op>
   [[nodiscard]] static constexpr SExpr
-    binary_boolean_apply_pairwise(cons_expr &engine, LexicalScope &scope, IndexedList params)
+    binary_boolean_apply_pairwise(cons_expr &engine, LexicalScope &scope, IndexedList params) noexcept
   {
     auto sum = [&engine, &scope, params]<typename Param>(Param next) -> SExpr {
       if constexpr (requires(Param p1, Param p2) { Op(p1, p2); }) {
         for (const auto &next_sexpr : engine.values[params.sublist(1)]) {
           const auto result = engine.eval_to<Param>(scope, next_sexpr);
-          if (!result) { return engine.make_error("Mismatched types for function", result.error()); }
+          if (!result) { return engine.make_error("same types for operator", SExpr{next}, result.error()); }
           const auto prev = std::exchange(next, *result);
           if (!Op(prev, next)) { return SExpr{ Atom{ false } }; }
         }
 
         return SExpr{ Atom{ true } };
       } else {
-        return engine.make_error("Operator not supported for types", params);
+        return engine.make_error("supported types", params);
       }
     };
 
-    if (params.size < 2) { return engine.make_error("function requires at least 2 parameters", params); }
+    if (params.size < 2) { return engine.make_error("at least 2 parameters", params); }
     auto first_param = engine.eval(scope, engine.values[params[0]]).value;
 
     // For working directly on "LiteralList" objects
@@ -1348,7 +1353,7 @@ struct cons_expr
 
     if (const auto *atom = std::get_if<Atom>(&first_param); atom != nullptr) { return std::visit(sum, *atom); }
 
-    return engine.make_error("Operator not supported for types", params);
+    return engine.make_error("supported types", params);
   }
 };
 
