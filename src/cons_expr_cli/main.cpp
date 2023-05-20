@@ -34,7 +34,7 @@ int main(int argc, const char **argv)
 
     if (script) {
       std::cout << lefticus::to_string(
-        evaluator, false, evaluator.sequence(evaluator.global_scope, evaluator.parse(*script).first.to_list()));
+        evaluator, false, evaluator.sequence(evaluator.global_scope, std::get<lefticus::IndexedList>(evaluator.parse(*script).first.value)));
       std::cout << '\n';
     }
   } catch (const std::exception &e) {

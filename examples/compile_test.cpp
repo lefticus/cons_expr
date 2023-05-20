@@ -21,8 +21,9 @@ consteval auto make_scripted_function()
 )
     )";
 
+
   [[maybe_unused]] const auto result =
-    evaluator.sequence(evaluator.global_scope, evaluator.parse(input).first.to_list());
+      evaluator.sequence(evaluator.global_scope, std::get<lefticus::IndexedList>(evaluator.parse(input).first.value));
 
   return evaluator.make_standalone_callable<int(int, int)>("sum");
 }
@@ -35,7 +36,7 @@ int main()
   auto func = make_scripted_function();
 
   auto print_sum = [&](int from, int to) {
-    std::puts(std::format("sum({} to {}) = {}", from, to, func(from, to)).c_str());
+    std::puts(std::format("sum({} to {}) = {}", from, to, func(from, to).value()).c_str());
   };
 
   print_sum(101, 132414);

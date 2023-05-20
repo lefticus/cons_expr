@@ -13,7 +13,7 @@ auto evaluate(std::string_view input)
   evaluator.add<display>("display");
 
   auto parse_result = evaluator.parse(input);
-  auto list = parse_result.first.to_list();
+  auto list = std::get<lefticus::IndexedList>(parse_result.first.value);
 
   return evaluator.sequence(evaluator.global_scope, list);
 }
@@ -71,7 +71,7 @@ TEST_CASE("member functions", "[function]")
 
 
   auto eval = [&](const std::string_view input) {
-    return evaluator.sequence(evaluator.global_scope, evaluator.parse(input).first.to_list());
+    return evaluator.sequence(evaluator.global_scope, std::get<lefticus::IndexedList>(evaluator.parse(input).first.value));
   };
 
   Test myobj;

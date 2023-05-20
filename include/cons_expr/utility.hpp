@@ -33,6 +33,16 @@ template<ConsExpr Eval> std::string to_string(const Eval &, bool annotate, const
 
 
 template<ConsExpr Eval>
+std::string to_string([[maybe_unused]] const Eval &, bool, const typename Eval::Error &error)
+{
+  return std::format("[error description {{{}, {}}} context {{{}, {}}}]",
+    error.description.start,
+    error.description.size,
+    error.context.start,
+    error.context.size);
+}
+
+template<ConsExpr Eval>
 std::string to_string([[maybe_unused]] const Eval &, bool, const typename Eval::Closure &closure)
 {
   return std::format("[closure parameters {{{}, {}}} statements {{{}, {}}}]",
