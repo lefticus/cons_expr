@@ -30,16 +30,14 @@ template<ConsExpr Eval> std::string to_string(const Eval &, bool annotate, const
 template<ConsExpr Eval> std::string to_string(const Eval &, bool annotate, const lefticus::IndexedList &list);
 template<ConsExpr Eval> std::string to_string(const Eval &, bool annotate, const lefticus::LiteralList &list);
 template<ConsExpr Eval> std::string to_string(const Eval &, bool annotate, const lefticus::IndexedString &string);
+template<ConsExpr Eval> std::string to_string(const Eval &, bool, const typename lefticus::Error &);
 
 
 template<ConsExpr Eval>
-std::string to_string([[maybe_unused]] const Eval &, bool, const typename Eval::Error &error)
+std::string to_string([[maybe_unused]] const Eval &eval, bool, const typename lefticus::Error &error)
 {
-  return std::format("[error description {{{}, {}}} context {{{}, {}}}]",
-    error.description.start,
-    error.description.size,
-    error.context.start,
-    error.context.size);
+  return std::format(
+    "[Expected: {} got: {}]", to_string(eval, false, error.description), to_string(eval, false, error.context));
 }
 
 template<ConsExpr Eval>
@@ -111,7 +109,9 @@ template<ConsExpr Eval> std::string to_string(const Eval &engine, bool annotate,
   result += "(";
 
   if (!list.empty()) {
-    for (const auto &item : engine.values[list.sublist(0, list.size - 1)]) { result += to_string(engine, false, item) + ' '; }
+    for (const auto &item : engine.values[list.sublist(0, list.size - 1)]) {
+      result += to_string(engine, false, item) + ' ';
+    }
     result += to_string(engine, false, engine.values[list.back()]);
   }
   result += ")";
@@ -138,6 +138,6 @@ template<ConsExpr Eval> std::string to_string(const Eval &engine, bool annotate,
 {
   return std::visit([&](const auto &value) { return to_string(engine, annotate, value); }, input.value);
 }
-}
+}// namespace lefticus
 
 #endif

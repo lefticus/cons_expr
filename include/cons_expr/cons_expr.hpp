@@ -480,6 +480,14 @@ struct Identifier
   [[nodiscard]] constexpr bool operator==(const Identifier &) const noexcept = default;
 };
 
+struct Error
+{
+  IndexedString description;
+  IndexedList context;
+  [[nodiscard]] constexpr bool operator==(const Error &) const noexcept = default;
+};
+
+
 template<std::size_t BuiltInSymbolsSize = 64,
   std::size_t BuiltInStringsSize = 1540,
   std::size_t BuiltInValuesSize = 279,
@@ -488,7 +496,6 @@ struct cons_expr
 {
   struct SExpr;
   struct Closure;
-  struct Error;
 
   using LexicalScope = SmallOptimizedVector<std::pair<IndexedString, SExpr>, BuiltInSymbolsSize, IndexedList>;
   using function_ptr = SExpr (*)(cons_expr &, LexicalScope &, IndexedList);
@@ -543,12 +550,6 @@ struct cons_expr
   SmallOptimizedVector<char, BuiltInStringsSize, IndexedString, std::string_view> strings{};
   SmallOptimizedVector<SExpr, BuiltInValuesSize, IndexedList> values{};
 
-  struct Error
-  {
-    IndexedString description;
-    IndexedList context;
-    [[nodiscard]] constexpr bool operator==(const Error &) const noexcept = default;
-  };
 
   struct Closure
   {
@@ -761,6 +762,9 @@ struct cons_expr
                          || std::is_same_v<Type, Error>) {
       if (const auto *obj = std::get_if<Type>(&expr.value); obj != nullptr) { return *obj; }
     } else {
+      if (const auto *err = std::get_if<Error>(&expr.value); err != nullptr){
+        return std::unexpected(expr);
+      }
       if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
         if (const auto *value = std::get_if<Type>(atom); value != nullptr) {
           return *value;

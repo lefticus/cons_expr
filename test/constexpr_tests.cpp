@@ -27,7 +27,11 @@ constexpr auto evaluate(std::string_view input)
 
 template<typename Result> constexpr Result evaluate_to(std::string_view input)
 {
-  return std::get<Result>(std::get<lefticus::cons_expr<>::Atom>(evaluate(input).value));
+  if constexpr (std::is_same_v<Result, lefticus::Error>) {
+    return std::get<lefticus::Error>(evaluate(input).value);
+  } else {
+    return std::get<Result>(std::get<lefticus::cons_expr<>::Atom>(evaluate(input).value));
+  }
 }
 
 
@@ -260,6 +264,16 @@ TEST_CASE("simple do expression", "[builtins]")
     ((> i 10) sum)
 )
 )") == 55);
+}
+
+TEST_CASE("simple error handling", "[errors]")
+{
+  evaluate_to<lefticus::Error>(R"(
+(+ 1 2.3)
+)");
+  evaluate_to<lefticus::Error>(R"(
+(+ 1 (+ 1 2.3))
+)");
 }
 
 
