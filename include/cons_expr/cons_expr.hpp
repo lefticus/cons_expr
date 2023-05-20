@@ -671,7 +671,7 @@ struct cons_expr
       return (func->ptr)(*this, scope, params);
     }
 
-    return make_error("Does not evaluate to a function", function);
+    return make_error("Function", function);
   }
 
   template<auto Func, typename Ret, typename... Param>
@@ -1207,7 +1207,7 @@ struct cons_expr
 
     const auto condition = engine.eval_to<bool>(scope, engine.values[params[0]]);
 
-    if (!condition) { return engine.make_error("boolean condition", condition->error()); }
+    if (!condition) { return engine.make_error("boolean condition", condition.error()); }
 
     if (*condition) {
       return engine.eval(scope, engine.values[params[1]]);

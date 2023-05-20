@@ -258,6 +258,8 @@ TEST_CASE("simple append expression", "[builtins]")
 
 TEST_CASE("simple do expression", "[builtins]")
 {
+  STATIC_CHECK(evaluate_to<int>("(do () (true 0))") == 0);
+  
   STATIC_CHECK(evaluate_to<int>(R"(
 (do ((i 1 (+ i 1))
      (sum 0 (+ sum i)))
