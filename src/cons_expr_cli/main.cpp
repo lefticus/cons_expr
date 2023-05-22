@@ -8,7 +8,7 @@
 
 #include <internal_use_only/config.hpp>
 
-void display(int i) { std::cout << i << '\n'; }
+void display(long long i) { std::cout << i << '\n'; }
 
 
 int main(int argc, const char **argv)
@@ -34,7 +34,7 @@ int main(int argc, const char **argv)
 
     if (script) {
       std::cout << lefticus::to_string(
-        evaluator, false, evaluator.sequence(evaluator.global_scope, std::get<lefticus::IndexedList>(evaluator.parse(*script).first.value)));
+        evaluator, false, evaluator.sequence(evaluator.global_scope, std::get<typename lefticus::cons_expr<>::list_type>(evaluator.parse(*script).first.value)));
       std::cout << '\n';
     }
   } catch (const std::exception &e) {

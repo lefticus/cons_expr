@@ -4,7 +4,7 @@
 
 #include <cons_expr/cons_expr.hpp>
 
-void display(int i) { std::cout << i << '\n'; }
+void display(long long i) { std::cout << i << '\n'; }
 
 auto evaluate(std::string_view input)
 {
@@ -13,7 +13,7 @@ auto evaluate(std::string_view input)
   evaluator.add<display>("display");
 
   auto parse_result = evaluator.parse(input);
-  auto list = std::get<lefticus::IndexedList>(parse_result.first.value);
+  auto list = std::get<typename lefticus::cons_expr<>::list_type>(parse_result.first.value);
 
   return evaluator.sequence(evaluator.global_scope, list);
 }
@@ -27,16 +27,16 @@ template<typename Result> Result evaluate_to(std::string_view input)
 TEST_CASE("basic callable usage", "[c++ api]")
 {
   lefticus::cons_expr<> evaluator;
-  auto func = evaluator.make_callable<int(int, int, int)>("+");
+  auto func = evaluator.make_callable<long long (long long , long long, long long)>("+");
   CHECK(func(1, 2, 3) == 6);
 
-  auto func2 = evaluator.make_callable<int(int)>("(lambda (x) (* x x))");
+  auto func2 = evaluator.make_callable<long long(long long)>("(lambda (x) (* x x))");
   CHECK(func2(10) == 100);
 }
 
 TEST_CASE("GPT Generated Tests", "[integration tests]")
 {
-  CHECK(evaluate_to<int>(R"(
+  CHECK(evaluate_to<long long>(R"(
 (define make-adder-multiplier
   (lambda (a)
     (lambda (b)
@@ -65,13 +65,13 @@ TEST_CASE("member functions", "[function]")
     int m_i{ 0 };
   };
 
-  lefticus::cons_expr<100, 100, 100, Test *> evaluator;
+  lefticus::cons_expr<std::uint16_t, char, int, float, 100, 100, 100, Test *> evaluator;
   evaluator.add<&Test::set>("set");
   evaluator.add<&Test::get>("get");
 
 
   auto eval = [&](const std::string_view input) {
-    return evaluator.sequence(evaluator.global_scope, std::get<lefticus::IndexedList>(evaluator.parse(input).first.value));
+    return evaluator.sequence(evaluator.global_scope, std::get<decltype(evaluator)::list_type>(evaluator.parse(input).first.value));
   };
 
   Test myobj;

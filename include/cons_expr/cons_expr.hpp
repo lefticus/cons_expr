@@ -81,7 +81,7 @@ inline constexpr int cons_expr_version_patch{ 1 };
 inline constexpr int cons_expr_version_tweak{};
 
 
-template<typename SizeType,
+template<std::unsigned_integral SizeType,
   typename Contained,
   SizeType SmallSize,
   typename KeyType,
@@ -272,15 +272,17 @@ static constexpr auto equal = []<eq_comparable T>(const T &lhs, const T &rhs) ->
 static constexpr auto not_equal = []<not_eq_comparable T>(const T &lhs, const T &rhs) -> bool { return lhs != rhs; };
 static constexpr bool logical_not(bool lhs) { return !lhs; }
 
-struct Token
+template<typename CharType> struct Token
 {
-  std::string_view parsed;
-  std::string_view remaining;
+  using char_type = CharType;
+  std::basic_string_view<char_type> parsed;
+  std::basic_string_view<char_type> remaining;
 };
 
-[[nodiscard]] constexpr std::pair<bool, int> parse_int(std::string_view input)
+template<std::integral IntType, typename CharType>
+[[nodiscard]] constexpr std::pair<bool, IntType> parse_int(std::basic_string_view<CharType> input)
 {
-  int parsed = 0;
+  IntType parsed = 0;
   auto result = std::from_chars(input.data(), input.data() + input.size(), parsed);
   if (result.ec == std::errc() && result.ptr == input.data() + input.size()) {
     return { true, parsed };
@@ -289,7 +291,8 @@ struct Token
   }
 }
 
-template<typename T> [[nodiscard]] constexpr std::pair<bool, T> parse_float(std::string_view input)
+template<std::floating_point T, typename CharType>
+[[nodiscard]] constexpr std::pair<bool, T> parse_float(std::basic_string_view<CharType> input)
 {
   static constexpr std::pair<bool, T> failure{ false, 0 };
   if (input == "-") { return failure; }
@@ -389,7 +392,7 @@ template<typename T> [[nodiscard]] constexpr std::pair<bool, T> parse_float(std:
 }
 
 
-[[nodiscard]] constexpr Token next_token(std::string_view input)
+template<typename CharType> [[nodiscard]] constexpr Token<CharType> next_token(std::basic_string_view<CharType> input)
 {
   constexpr auto is_eol = [](auto ch) { return ch == '\n' || ch == '\r'; };
   constexpr auto is_whitespace = [=](auto ch) { return ch == ' ' || ch == '\t' || is_eol(ch); };
@@ -397,7 +400,7 @@ template<typename T> [[nodiscard]] constexpr std::pair<bool, T> parse_float(std:
   constexpr auto consume = [=](auto ws_input, auto predicate) {
     auto begin = ws_input.begin();
     while (begin != ws_input.end() && predicate(*begin)) { ++begin; }
-    return std::string_view{ begin, ws_input.end() };
+    return std::basic_string_view<CharType>{ begin, ws_input.end() };
   };
 
   constexpr auto make_token = [=](auto token_input, std::size_t size) {
@@ -443,7 +446,7 @@ template<typename T> [[nodiscard]] constexpr std::pair<bool, T> parse_float(std:
   return make_token(input, static_cast<std::size_t>(std::distance(input.begin(), value.begin())));
 }
 
-template<typename SizeType> struct IndexedString
+template<std::unsigned_integral SizeType> struct IndexedString
 {
   using size_type = SizeType;
   size_type start{ 0 };
@@ -456,7 +459,7 @@ template<typename SizeType> struct IndexedString
   }
 };
 
-template<typename SizeType> struct IndexedList
+template<std::unsigned_integral SizeType> struct IndexedList
 {
   using size_type = SizeType;
   size_type start{ 0 };
@@ -477,7 +480,7 @@ template<typename SizeType> struct IndexedList
   }
 };
 
-template<typename SizeType> struct LiteralList
+template<std::unsigned_integral SizeType> struct LiteralList
 {
   using size_type = SizeType;
   IndexedList<size_type> items;
@@ -489,7 +492,7 @@ template<typename SizeType> struct LiteralList
   [[nodiscard]] constexpr bool operator==(const LiteralList &) const noexcept = default;
 };
 
-template<typename SizeType> struct Identifier
+template<std::unsigned_integral SizeType> struct Identifier
 {
   using size_type = SizeType;
   IndexedString<size_type> value;
@@ -498,7 +501,7 @@ template<typename SizeType> struct Identifier
   [[nodiscard]] constexpr bool operator==(const Identifier &) const noexcept = default;
 };
 
-template<typename SizeType> struct Error
+template<std::unsigned_integral SizeType> struct Error
 {
   using size_type = SizeType;
   IndexedString<size_type> expected;
@@ -507,14 +510,20 @@ template<typename SizeType> struct Error
 };
 
 
-template<typename SizeType = std::uint16_t,
-  std::size_t BuiltInSymbolsSize = 64,
-  std::size_t BuiltInStringsSize = 1540,
-  std::size_t BuiltInValuesSize = 279,
+template<std::unsigned_integral SizeType = std::uint16_t,
+  typename CharType = char,
+  std::signed_integral IntegralType = long long,
+  std::floating_point FloatType = long double,
+  SizeType BuiltInSymbolsSize = 64,
+  SizeType BuiltInStringsSize = 1540,
+  SizeType BuiltInValuesSize = 279,
   typename... UserTypes>
 struct cons_expr
 {
+  using char_type = CharType;
   using size_type = SizeType;
+  using int_type = IntegralType;
+  using float_type = FloatType;
   using string_type = IndexedString<size_type>;
   using identifier_type = Identifier<size_type>;
   using list_type = IndexedList<size_type>;
@@ -526,7 +535,7 @@ struct cons_expr
 
   using LexicalScope = SmallOptimizedVector<size_type, std::pair<string_type, SExpr>, BuiltInSymbolsSize, list_type>;
   using function_ptr = SExpr (*)(cons_expr &, LexicalScope &, list_type);
-  using Atom = std::variant<std::monostate, bool, int, double, string_type, identifier_type, UserTypes...>;
+  using Atom = std::variant<std::monostate, bool, int_type, float_type, string_type, identifier_type, UserTypes...>;
 
   struct FunctionPtr
   {
@@ -574,7 +583,8 @@ struct cons_expr
   }
 
   LexicalScope global_scope{};
-  SmallOptimizedVector<size_type, char, BuiltInStringsSize, string_type, std::string_view> strings{};
+  SmallOptimizedVector<size_type, char_type, BuiltInStringsSize, string_type, std::basic_string_view<char_type>>
+    strings{};
   SmallOptimizedVector<size_type, SExpr, BuiltInValuesSize, list_type> values{};
 
 
@@ -609,7 +619,7 @@ struct cons_expr
     }
   };
 
-  [[nodiscard]] constexpr std::pair<SExpr, Token> parse(std::string_view input)
+  [[nodiscard]] constexpr std::pair<SExpr, Token<CharType>> parse(std::basic_string_view<char_type> input) noexcept
   {
     std::vector<SExpr> retval;
 
@@ -622,7 +632,11 @@ struct cons_expr
         token = remaining;
       } else if (token.parsed == "'(") {
         auto [parsed, remaining] = parse(token.remaining);
-        retval.push_back(SExpr{ LiteralList{ std::get<list_type>(parsed.value) } });
+        if (const auto *list = std::get_if<list_type>(&parsed.value); list != nullptr) {
+          retval.push_back(SExpr{ LiteralList{ *list } });
+        } else {
+          retval.push_back(make_error("parsed list", parsed));
+        }
         token = remaining;
       } else if (token.parsed == ")") {
         break;
@@ -632,13 +646,17 @@ struct cons_expr
         retval.push_back(SExpr{ Atom{ false } });
       } else {
         if (token.parsed.starts_with('"')) {
-          // quoted string
-          if (!token.parsed.ends_with('"')) { throw std::runtime_error("Unterminated string"); }
           // note that this doesn't remove escaped characters like it should yet
-          retval.push_back(SExpr{ Atom(strings.insert_or_find(token.parsed.substr(1, token.parsed.size() - 2))) });
-        } else if (auto [int_did_parse, int_value] = parse_int(token.parsed); int_did_parse) {
+          const auto string = strings.insert_or_find(token.parsed.substr(1, token.parsed.size() - 2));
+          // quoted string
+          if (token.parsed.ends_with('"')) {
+            retval.push_back(SExpr{ Atom(string) });
+          } else {
+            retval.push_back(make_error("terminated string", SExpr{ Atom(string) }));
+          }
+        } else if (auto [int_did_parse, int_value] = parse_int<int_type>(token.parsed); int_did_parse) {
           retval.push_back(SExpr{ Atom(int_value) });
-        } else if (auto [float_did_parse, float_value] = parse_float<double>(token.parsed); float_did_parse) {
+        } else if (auto [float_did_parse, float_value] = parse_float<float_type>(token.parsed); float_did_parse) {
           retval.push_back(SExpr{ Atom(float_value) });
         } else {
           retval.push_back(SExpr{ Atom(Identifier{ strings.insert_or_find(token.parsed) }) });
@@ -646,7 +664,7 @@ struct cons_expr
       }
       token = next_token(token.remaining);
     }
-    return std::pair<SExpr, Token>(SExpr{ values.insert_or_find(retval) }, token);
+    return std::pair<SExpr, Token<CharType>>(SExpr{ values.insert_or_find(retval) }, token);
   }
 
   // Guaranteed to be initialized at compile time
@@ -680,11 +698,10 @@ struct cons_expr
     add("apply", SExpr{ FunctionPtr{ applier, FunctionPtr::Type::other } });
   }
 
-  [[nodiscard]] constexpr SExpr sequence(LexicalScope &scope, list_type statements)
+  [[nodiscard]] constexpr SExpr sequence(LexicalScope &scope, list_type expressions)
   {
     auto result = SExpr{ Atom{ std::monostate{} } };
-    std::ranges::for_each(
-      values[statements], [&result, &scope, this](auto statement) { result = eval(scope, statement); });
+    std::ranges::for_each(values[expressions], [&, engine = this](auto expr) { result = engine->eval(scope, expr); });
     return result;
   }
 
@@ -744,17 +761,17 @@ struct cons_expr
     return make_evaluator<Func>(Func);
   }
 
-  template<auto Func> constexpr void add(std::string_view name)
+  template<auto Func> constexpr void add(std::basic_string_view<char_type> name)
   {
     global_scope.emplace_back(strings.insert_or_find(name), SExpr{ FunctionPtr{ make_evaluator<Func>() } });
   }
 
-  constexpr void add(std::string_view name, SExpr value)
+  constexpr void add(std::basic_string_view<char_type> name, SExpr value)
   {
     global_scope.emplace_back(strings.insert_or_find(name), std::move(value));
   }
 
-  template<typename Value> constexpr void add(std::string_view name, Value &&value)
+  template<typename Value> constexpr void add(std::basic_string_view<char_type> name, Value &&value)
   {
     global_scope.emplace_back(strings.insert_or_find(name), SExpr{ Atom{ std::forward<Value>(value) } });
   }
@@ -987,7 +1004,7 @@ struct cons_expr
       if (list->size != 0) {
         auto first_index = list->start;
         const auto &elem = values[first_index];
-        std::string_view id = "";
+        std::basic_string_view<char_type> id = "";
         auto fp_type = FunctionPtr::Type::other;
         if (auto *id_atom = get_if<identifier_type>(&elem); id_atom != nullptr) { id = strings.view(id_atom->value); }
         if (auto *fp = get_if<FunctionPtr>(&elem); fp != nullptr) { fp_type = fp->type; }
@@ -1027,13 +1044,13 @@ struct cons_expr
     return input;
   }
 
-  [[nodiscard]] constexpr SExpr make_error(std::string_view description, list_type context) noexcept
+  [[nodiscard]] constexpr SExpr make_error(std::basic_string_view<char_type> description, list_type context) noexcept
   {
     return SExpr{ Error{ strings.insert_or_find(description), context } };
   }
 
   template<std::same_as<SExpr>... Param>
-  [[nodiscard]] constexpr SExpr make_error(std::string_view description, Param... context) noexcept
+  [[nodiscard]] constexpr SExpr make_error(std::basic_string_view<char_type> description, Param... context) noexcept
   {
     std::array<SExpr, sizeof...(Param)> params{ context... };
     return make_error(description, values.insert_or_find(params));
@@ -1269,14 +1286,14 @@ struct cons_expr
 
   // make a callable that captures the current engine by value
   template<typename Signature>
-  [[nodiscard]] constexpr auto make_standalone_callable(std::string_view function) noexcept
+  [[nodiscard]] constexpr auto make_standalone_callable(std::basic_string_view<char_type> function) noexcept
     requires std::is_function_v<Signature>
   {
     auto impl = [this, function]<typename Ret, typename... Params>(Ret (*)(Params...)) {
       // this is fragile, we need to check parsing better
 
       return
-        [engine = *this, callable = eval(global_scope, values[std::get<IndexedList>(parse(function).first.value)][0])](
+        [engine = *this, callable = eval(global_scope, values[std::get<list_type>(parse(function).first.value)][0])](
           Params... params) mutable {
           std::array<SExpr, sizeof...(Params)> args{ SExpr{ Atom{ params } }... };
           return engine.template eval_to<Ret>(engine.global_scope,
@@ -1290,13 +1307,13 @@ struct cons_expr
   // take a string_view and return a C++ function object
   // of unspecified type.
   template<typename Signature>
-  [[nodiscard]] constexpr auto make_callable(std::string_view function) noexcept
+  [[nodiscard]] constexpr auto make_callable(std::basic_string_view<char_type> function) noexcept
     requires std::is_function_v<Signature>
   {
     auto impl = [this, function]<typename Ret, typename... Params>(Ret (*)(Params...)) {
       // this is fragile, we need to check parsing better
 
-      return [callable = eval(global_scope, values[std::get<IndexedList>(parse(function).first.value)][0]), this](
+      return [callable = eval(global_scope, values[std::get<list_type>(parse(function).first.value)][0]), this](
                Params... params) {
         std::array<SExpr, sizeof...(Params)> args{ SExpr{ Atom{ params } }... };
         return eval_to<Ret>(global_scope, invoke_function(global_scope, callable, values.insert_or_find(args)));

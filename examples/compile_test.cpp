@@ -1,7 +1,7 @@
 #include <cons_expr/cons_expr.hpp>
 #include <format>
 
-constexpr int add(int x, int y) { return x + y; }
+constexpr long long add(long long x, long long y) { return x + y; }
 
 consteval auto make_scripted_function()
 {
@@ -23,9 +23,9 @@ consteval auto make_scripted_function()
 
 
   [[maybe_unused]] const auto result =
-      evaluator.sequence(evaluator.global_scope, std::get<lefticus::IndexedList>(evaluator.parse(input).first.value));
+      evaluator.sequence(evaluator.global_scope, std::get<typename lefticus::cons_expr<>::list_type>(evaluator.parse(input).first.value));
 
-  return evaluator.make_standalone_callable<int(int, int)>("sum");
+  return evaluator.make_standalone_callable<long long(long long , long long)>("sum");
 }
 
 
