@@ -25,7 +25,7 @@ consteval auto make_scripted_function()
   [[maybe_unused]] const auto result =
       evaluator.sequence(evaluator.global_scope, std::get<typename lefticus::cons_expr<>::list_type>(evaluator.parse(input).first.value));
 
-  return evaluator.make_standalone_callable<long long(long long , long long)>("sum");
+  return std::bind_front(evaluator.make_callable<long long(long long , long long)>("sum"), evaluator);
 }
 
 

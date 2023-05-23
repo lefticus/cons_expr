@@ -28,10 +28,10 @@ TEST_CASE("basic callable usage", "[c++ api]")
 {
   lefticus::cons_expr<> evaluator;
   auto func = evaluator.make_callable<long long (long long , long long, long long)>("+");
-  CHECK(func(1, 2, 3) == 6);
+  CHECK(func(evaluator, 1, 2, 3) == 6);
 
   auto func2 = evaluator.make_callable<long long(long long)>("(lambda (x) (* x x))");
-  CHECK(func2(10) == 100);
+  CHECK(func2(evaluator, 10) == 100);
 }
 
 TEST_CASE("GPT Generated Tests", "[integration tests]")

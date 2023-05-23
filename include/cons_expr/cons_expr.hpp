@@ -67,11 +67,9 @@
 
 /// To do
 // * We probably want some sort of "defragment" at some point
-// * Consider removing exceptions and return first-class error objects instead
 // * Add constant folding capability
 // * Allow functions to be registered as "pure" so they can be folded!
 // * make allocator aware
-// * make char type templatable
 
 namespace lefticus {
 
@@ -94,7 +92,6 @@ struct SmallOptimizedVector
   size_type small_size_used = 0;
   std::vector<Contained> rest;
 
-
   static constexpr auto small_capacity = SmallSize;
 
   [[nodiscard]] constexpr auto size() const noexcept
@@ -105,6 +102,7 @@ struct SmallOptimizedVector
       return small_size_used;
     }
   }
+
   [[nodiscard]] constexpr Contained &operator[](size_type index)
   {
     if (index < SmallSize) {
@@ -496,7 +494,6 @@ template<std::unsigned_integral SizeType> struct Identifier
 {
   using size_type = SizeType;
   IndexedString<size_type> value;
-  [[nodiscard]] constexpr auto front() const noexcept { return value.front(); }
   [[nodiscard]] constexpr auto substr(const size_type from) const noexcept { return Identifier{ value.substr(from) }; }
   [[nodiscard]] constexpr bool operator==(const Identifier &) const noexcept = default;
 };
@@ -652,12 +649,12 @@ struct cons_expr
       } else {
         if (token.parsed.starts_with('"')) {
           // note that this doesn't remove escaped characters like it should yet
-          const auto string = strings.insert_or_find(token.parsed.substr(1, token.parsed.size() - 2));
           // quoted string
           if (token.parsed.ends_with('"')) {
+            const auto string = strings.insert_or_find(token.parsed.substr(1, token.parsed.size() - 2));
             retval.push_back(SExpr{ Atom(string) });
           } else {
-            retval.push_back(make_error("terminated string", SExpr{ Atom(string) }));
+            retval.push_back(make_error("terminated string", SExpr{ Atom(strings.insert_or_find(token.parsed)) }));
           }
         } else if (auto [int_did_parse, int_value] = parse_int<int_type>(token.parsed); int_did_parse) {
           retval.push_back(SExpr{ Atom(int_value) });
@@ -848,7 +845,7 @@ struct cons_expr
 
   [[nodiscard]] static constexpr SExpr lambda(cons_expr &engine, LexicalScope &scope, list_type params)
   {
-    if (params.size < 2) { return engine.make_error("at least 2 parameters to lambda", params); }
+    if (params.size < 2) { return engine.make_error("(lambda ([params...]) [statement...])", params); }
 
     auto locals = engine.get_lambda_parameter_names(engine.values[params[0]]);
 
@@ -860,8 +857,10 @@ struct cons_expr
       fixed_statements.push_back(engine.fix_identifiers(statement, locals, scope));
     }
 
-    return SExpr{ Closure{
-      std::get<list_type>(engine.values[params[0]].value), { engine.values.insert_or_find(fixed_statements) } } };
+    const auto list = engine.get_if<list_type>(&engine.values[params[0]]);
+    if (list) { return SExpr{ Closure{ *list, { engine.values.insert_or_find(fixed_statements) } } }; }
+
+    return engine.make_error("(lambda ([params...]) [statement...])", params);
   }
 
   [[nodiscard]] constexpr std::expected<list_type, SExpr> get_list(SExpr expr,
@@ -1040,10 +1039,8 @@ struct cons_expr
       return SExpr{ this->values.insert_or_find(result) };
     } else if (auto *id = get_if<identifier_type>(&input); id != nullptr) {
       for (const auto &local : local_identifiers | std::ranges::views::reverse) {
-        if (local == id->value) {
-          // do something smarter later, but abort for now because it's in the variable scope
-          return input;
-        }
+        // do something smarter later, but abort for now because it's in the variable scope
+        if (local == id->value) { return input; }
       }
 
       for (const auto &object : local_constants | std::ranges::views::reverse) {
@@ -1072,7 +1069,7 @@ struct cons_expr
   //
   [[nodiscard]] static constexpr SExpr letter(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
-    if (params.empty()) { return engine.make_error("(let ((var1 val1) ...))", params); }
+    if (params.empty()) { return engine.make_error("(let ((var1 val1) ...) [expr...])", params); }
 
     std::vector<std::pair<std::size_t, SExpr>> variables;
 
@@ -1166,7 +1163,7 @@ struct cons_expr
         for (const auto &[index, expr] : variables) { new_values.emplace_back(index, engine.eval(new_scope, expr)); }
 
         // update values
-        for (auto &&[index, value] : new_values) { new_scope[index].second = std::move(value); }
+        for (auto &[index, value] : new_values) { new_scope[index].second = value; }
 
         new_values.clear();
       }
@@ -1234,40 +1231,46 @@ struct cons_expr
 
     return SExpr{ LiteralList{ engine.values.insert_or_find(result) } };
   }
+  template<typename ValueType>
+  [[nodiscard]] static constexpr SExpr error_or_else(const std::expected<ValueType, SExpr> &obj, auto callable)
+  {
+    if (obj) {
+      return callable(*obj);
+    } else {
+      return obj.error();
+    }
+  }
 
 
   [[nodiscard]] static constexpr SExpr cdr(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
-    auto list = engine.eval_to<literal_list_type>(scope, params, "(cdr Non-Empty-LiteralList)");
-    if (!list) { return list.error(); }
-    return SExpr{ list->sublist(1) };
+    return error_or_else(engine.eval_to<literal_list_type>(scope, params, "(cdr Non-Empty-LiteralList)"),
+      [&](const auto &list) { return SExpr{ list.sublist(1) }; });
   }
 
   [[nodiscard]] static constexpr SExpr car(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
-    auto list = engine.eval_to<literal_list_type>(scope, params, "(car Non-Empty-LiteralList)");
-    if (!list) { return list.error(); }
-    return engine.values[list->front()];
+    return error_or_else(engine.eval_to<literal_list_type>(scope, params, "(car Non-Empty-LiteralList)"),
+      [&](const auto &list) { return engine.values[list.front()]; });
   }
 
   [[nodiscard]] static constexpr SExpr applier(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
-    auto evaled_params = engine.eval_to<SExpr, literal_list_type>(scope, params, "(apply Function LiteralList)");
-    if (!evaled_params) { return evaled_params.error(); }
-    const auto &[function, applied_params] = *evaled_params;
-
-    return engine.invoke_function(scope, function, applied_params.items);
+    return error_or_else(engine.eval_to<SExpr, literal_list_type>(scope, params, "(apply Function LiteralList)"),
+      [&](const auto &evaled_params) {
+        return engine.invoke_function(scope, std::get<0>(evaled_params), std::get<1>(evaled_params).items);
+      });
   }
 
   [[nodiscard]] static constexpr SExpr evaler(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
-    auto evaled_params = engine.eval_to<literal_list_type>(scope, params, "(eval LiteralList)");
-    if (!evaled_params) { return evaled_params.error(); }
-    return engine.eval(engine.global_scope, SExpr{ evaled_params->items });
+    return error_or_else(engine.eval_to<literal_list_type>(scope, params, "(eval LiteralList)"),
+      [&](const auto &list) { return engine.eval(engine.global_scope, SExpr{ list.items }); });
   }
 
   [[nodiscard]] static constexpr SExpr ifer(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
+    // need to be careful to not execute unexecuted branches
     if (params.size != 3) { return engine.make_error("(if bool-cond then else)", params); }
 
     const auto condition = engine.eval_to<bool>(scope, engine.values[params[0]]);
@@ -1296,32 +1299,11 @@ struct cons_expr
 
   [[nodiscard]] static constexpr SExpr definer(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
-    auto evaled_params = engine.eval_to<identifier_type, SExpr>(scope, params, "(define Identifier Expression)");
-    if (!evaled_params) { return evaled_params.error(); }
-    const auto &[id, expr] = *evaled_params;
-
-    scope.emplace_back(id.value, engine.fix_identifiers(expr, {}, scope));
-    return SExpr{ Atom{ std::monostate{} } };
-  }
-
-  // make a callable that captures the current engine by value
-  template<typename Signature>
-  [[nodiscard]] constexpr auto make_standalone_callable(std::basic_string_view<char_type> function) noexcept
-    requires std::is_function_v<Signature>
-  {
-    auto impl = [this, function]<typename Ret, typename... Params>(Ret (*)(Params...)) {
-      // this is fragile, we need to check parsing better
-
-      return
-        [engine = *this, callable = eval(global_scope, values[std::get<list_type>(parse(function).first.value)][0])](
-          Params... params) mutable {
-          std::array<SExpr, sizeof...(Params)> args{ SExpr{ Atom{ params } }... };
-          return engine.template eval_to<Ret>(engine.global_scope,
-            engine.invoke_function(engine.global_scope, callable, engine.values.insert_or_find(args)));
-        };
-    };
-
-    return impl(std::add_pointer_t<Signature>{ nullptr });
+    return error_or_else(
+      engine.eval_to<identifier_type, SExpr>(scope, params, "(define Identifier Expression)"), [&](const auto &evaled) {
+        scope.emplace_back(std::get<0>(evaled).value, engine.fix_identifiers(std::get<1>(evaled), {}, scope));
+        return SExpr{ Atom{ std::monostate{} } };
+      });
   }
 
   // take a string_view and return a C++ function object
@@ -1333,14 +1315,20 @@ struct cons_expr
     auto impl = [this, function]<typename Ret, typename... Params>(Ret (*)(Params...)) {
       // this is fragile, we need to check parsing better
 
-      return [callable = eval(global_scope, values[std::get<list_type>(parse(function).first.value)][0]), this](
-               Params... params) {
+      return [callable = eval(global_scope, values[std::get<list_type>(parse(function).first.value)][0])](
+               cons_expr &engine, Params... params) {
         std::array<SExpr, sizeof...(Params)> args{ SExpr{ Atom{ params } }... };
-        return eval_to<Ret>(global_scope, invoke_function(global_scope, callable, values.insert_or_find(args)));
+        return engine.eval_to<Ret>(engine.global_scope,
+          engine.invoke_function(engine.global_scope, callable, engine.values.insert_or_find(args)));
       };
     };
 
     return impl(std::add_pointer_t<Signature>{ nullptr });
+  }
+
+  template<typename T> [[nodiscard]] constexpr auto eval_transform(LexicalScope &scope)
+  {
+    return std::ranges::views::transform([&scope, this](const SExpr param) { return eval_to<T>(scope, param); });
   }
 
   template<auto Op>
@@ -1349,10 +1337,9 @@ struct cons_expr
   {
     auto fold = [&engine, &scope, params]<typename Param>(Param first) -> SExpr {
       if constexpr (requires(Param p1, Param p2) { Op(p1, p2); }) {
-        for (const auto &next : engine.values[params.sublist(1)]) {
-          const auto result = engine.eval_to<Param>(scope, next);
-          if (!result) { return engine.make_error("same types for operator", SExpr{ first }, result.error()); }
-          first = Op(first, *result);
+        for (const auto &next : engine.values[params.sublist(1)] | engine.eval_transform<Param>(scope)) {
+          if (!next) { return engine.make_error("same types for operator", SExpr{ first }, next.error()); }
+          first = Op(first, *next);
         }
 
         return SExpr{ Atom{ first } };
@@ -1362,7 +1349,12 @@ struct cons_expr
     };
 
     if (params.size > 1) {
-      return std::visit(fold, std::get<Atom>(engine.eval(scope, engine.values[params[0]]).value));
+      const auto param1 = engine.eval(scope, engine.values[params[0]]);
+      if (const auto *atom = std::get_if<Atom>(&param1.value); atom != nullptr) {
+        return std::visit(fold, *atom);
+      } else {
+        return engine.make_error("operator not supported for types", params);
+      }
     }
 
     return engine.make_error("operator requires at east two parameters", params);
@@ -1370,10 +1362,9 @@ struct cons_expr
 
   [[nodiscard]] static constexpr SExpr logical_and(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
-    for (const auto &next : engine.values[params]) {
-      const auto result = engine.eval_to<bool>(scope, next);
-      if (!result) { return engine.make_error("parameter not boolean", result.error()); }
-      if (!result.value()) { return SExpr{ Atom{ false } }; }
+    for (const auto &next : engine.values[params] | engine.eval_transform<bool>(scope)) {
+      if (!next) { return engine.make_error("parameter not boolean", next.error()); }
+      if (!next.value()) { return SExpr{ Atom{ false } }; }
     }
 
     return SExpr{ Atom{ true } };
@@ -1381,10 +1372,9 @@ struct cons_expr
 
   [[nodiscard]] static constexpr SExpr logical_or(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
-    for (const auto &next : engine.values[params]) {
-      const auto result = engine.eval_to<bool>(scope, next);
-      if (!result) { return engine.make_error("parameter not boolean", result.error()); }
-      if (result.value()) { return SExpr{ Atom{ true } }; }
+    for (const auto &next : engine.values[params] | engine.eval_transform<bool>(scope)) {
+      if (!next) { return engine.make_error("parameter not boolean", next.error()); }
+      if (next.value()) { return SExpr{ Atom{ true } }; }
     }
 
     return SExpr{ Atom{ false } };
@@ -1396,8 +1386,7 @@ struct cons_expr
   {
     auto sum = [&engine, &scope, params]<typename Param>(Param next) -> SExpr {
       if constexpr (requires(Param p1, Param p2) { Op(p1, p2); }) {
-        for (const auto &next_sexpr : engine.values[params.sublist(1)]) {
-          const auto result = engine.eval_to<Param>(scope, next_sexpr);
+        for (const auto &result : engine.values[params.sublist(1)] | engine.eval_transform<Param>(scope)) {
           if (!result) { return engine.make_error("same types for operator", SExpr{ next }, result.error()); }
           const auto prev = std::exchange(next, *result);
           if (!Op(prev, next)) { return SExpr{ Atom{ false } }; }

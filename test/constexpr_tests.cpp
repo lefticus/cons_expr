@@ -16,7 +16,7 @@ static_assert(std::is_trivially_copyable_v<lefticus::cons_expr<>::SExpr>);
 
 constexpr auto evaluate(std::string_view input)
 {
-  lefticus::cons_expr<> evaluator;
+  lefticus::cons_expr evaluator;
 
   return evaluator.sequence(
     evaluator.global_scope, std::get<typename lefticus::cons_expr<>::list_type>(evaluator.parse(input).first.value));
