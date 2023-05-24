@@ -33,8 +33,10 @@ int main(int argc, const char **argv)
     evaluator.add<display>("display");
 
     if (script) {
-      std::cout << lefticus::to_string(
-        evaluator, false, evaluator.sequence(evaluator.global_scope, std::get<typename lefticus::cons_expr<>::list_type>(evaluator.parse(*script).first.value)));
+      std::cout << lefticus::to_string(evaluator,
+        false,
+        evaluator.sequence(evaluator.global_scope,
+          std::get<typename lefticus::cons_expr<>::list_type>(evaluator.parse(*script).first.value)));
       std::cout << '\n';
     }
   } catch (const std::exception &e) {

@@ -27,7 +27,7 @@ template<typename Result> Result evaluate_to(std::string_view input)
 TEST_CASE("basic callable usage", "[c++ api]")
 {
   lefticus::cons_expr<> evaluator;
-  auto func = evaluator.make_callable<long long (long long , long long, long long)>("+");
+  auto func = evaluator.make_callable<long long(long long, long long, long long)>("+");
   CHECK(func(evaluator, 1, 2, 3) == 6);
 
   auto func2 = evaluator.make_callable<long long(long long)>("(lambda (x) (* x x))");
@@ -71,7 +71,8 @@ TEST_CASE("member functions", "[function]")
 
 
   auto eval = [&](const std::string_view input) {
-    return evaluator.sequence(evaluator.global_scope, std::get<decltype(evaluator)::list_type>(evaluator.parse(input).first.value));
+    return evaluator.sequence(
+      evaluator.global_scope, std::get<decltype(evaluator)::list_type>(evaluator.parse(input).first.value));
   };
 
   Test myobj;

@@ -11,7 +11,7 @@ static_assert(lefticus::is_cons_expr_v<lefticus::cons_expr<>>);
 static_assert(std::is_trivially_copyable_v<lefticus::cons_expr<>::SExpr>);
 
 // we'll be exactly 16k, because we can
-//static_assert(sizeof(lefticus::cons_expr<>) == 16384);
+// static_assert(sizeof(lefticus::cons_expr<>) == 16384);
 
 
 constexpr auto evaluate(std::string_view input)
@@ -30,7 +30,6 @@ template<typename Result> constexpr Result evaluate_to(std::string_view input)
     return std::get<Result>(std::get<lefticus::cons_expr<>::Atom>(evaluate(input).value));
   }
 }
-
 
 
 TEST_CASE("Operator identifiers", "[operators]")
@@ -153,12 +152,10 @@ TEST_CASE("GPT Generated Tests", "[integration tests]")
 )") == 5);
 
 
-//  STATIC_CHECK(evaluate_to<long long>(R"(
-//(if (>= 5 3) 'true 'false)
-//
-//)") == 5);
-
-  
+  //  STATIC_CHECK(evaluate_to<long long>(R"(
+  //(if (>= 5 3) 'true 'false)
+  //
+  //)") == 5);
 }
 
 TEST_CASE("binary short circuiting", "[short circuiting]")
@@ -235,10 +232,10 @@ TEST_CASE("apply expression", "[builtins]")
 (let ((x 20))
   (apply add-x (list 5)))
 )") == 15);
-
 }
 
-TEST_CASE("check version number", "[system]") {
+TEST_CASE("check version number", "[system]")
+{
   STATIC_CHECK(lefticus::cons_expr_version_major == cons_expr::cmake::project_version_major);
   STATIC_CHECK(lefticus::cons_expr_version_minor == cons_expr::cmake::project_version_minor);
   STATIC_CHECK(lefticus::cons_expr_version_patch == cons_expr::cmake::project_version_patch);
@@ -256,7 +253,7 @@ TEST_CASE("simple append expression", "[builtins]")
 TEST_CASE("simple do expression", "[builtins]")
 {
   STATIC_CHECK(evaluate_to<long long>("(do () (true 0))") == 0);
-  
+
   STATIC_CHECK(evaluate_to<long long>(R"(
 (do ((i 1 (+ i 1))
      (sum 0 (+ sum i)))
