@@ -222,25 +222,55 @@ struct SmallOptimizedVector
 template<typename T>
 concept not_bool_or_ptr = !std::same_as<std::remove_cvref_t<T>, bool> && !std::is_pointer_v<std::remove_cvref_t<T>>;
 template<typename T>
-concept addable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs + rhs; };
+concept addable = not_bool_or_ptr<T> && requires(T lhs, T rhs)
+{
+  lhs + rhs;
+};
 template<typename T>
-concept multipliable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs *rhs; };
+concept multipliable = not_bool_or_ptr<T> && requires(T lhs, T rhs)
+{
+  lhs *rhs;
+};
 template<typename T>
-concept dividable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs / rhs; };
+concept dividable = not_bool_or_ptr<T> && requires(T lhs, T rhs)
+{
+  lhs / rhs;
+};
 template<typename T>
-concept subtractable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs - rhs; };
+concept subtractable = not_bool_or_ptr<T> && requires(T lhs, T rhs)
+{
+  lhs - rhs;
+};
 template<typename T>
-concept lt_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs < rhs; };
+concept lt_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs)
+{
+  lhs < rhs;
+};
 template<typename T>
-concept gt_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs > rhs; };
+concept gt_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs)
+{
+  lhs > rhs;
+};
 template<typename T>
-concept lt_eq_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs <= rhs; };
+concept lt_eq_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs)
+{
+  lhs <= rhs;
+};
 template<typename T>
-concept gt_eq_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs >= rhs; };
+concept gt_eq_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs)
+{
+  lhs >= rhs;
+};
 template<typename T>
-concept eq_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs == rhs; };
+concept eq_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs)
+{
+  lhs == rhs;
+};
 template<typename T>
-concept not_eq_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs != rhs; };
+concept not_eq_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs)
+{
+  lhs != rhs;
+};
 
 static constexpr auto adds = []<addable T>(const T &lhs, const T &rhs) { return lhs + rhs; };
 static constexpr auto multiplies = []<multipliable T>(const T &lhs, const T &rhs) { return lhs * rhs; };
@@ -502,9 +532,9 @@ struct cons_expr
     {
       // this pointer comparison is giving me a problem in constexpr context
       // it feels like a bug in GCC, but not sure
-      if consteval {
-        return type != Type::other && type == other.type;
-      } else {
+      if
+        consteval { return type != Type::other && type == other.type; }
+      else {
         return ptr == other.ptr;
       }
     }
@@ -531,9 +561,9 @@ struct cons_expr
   {
     if (sexpr == nullptr) { return nullptr; }
 
-    if constexpr (std::is_same_v<Result, Atom> || std::is_same_v<Result, IndexedList>
-                  || std::is_same_v<Result, LiteralList> || std::is_same_v<Result, Closure>
-                  || std::is_same_v<Result, FunctionPtr>) {
+    if constexpr (
+      std::is_same_v<Result,
+        Atom> || std::is_same_v<Result, IndexedList> || std::is_same_v<Result, LiteralList> || std::is_same_v<Result, Closure> || std::is_same_v<Result, FunctionPtr>) {
       return std::get_if<Result>(&sexpr->value);
     } else {
       if (const auto *atom = std::get_if<Atom>(&sexpr->value)) {
@@ -674,7 +704,8 @@ struct cons_expr
     return function_ptr{ [](cons_expr &engine, LexicalScope &scope, IndexedList params) -> SExpr {
       if (params.size != sizeof...(Param)) { throw std::runtime_error("wrong param count"); }
 
-      auto impl = [&]<std::size_t... Idx>(std::index_sequence<Idx...>) {
+      auto impl = [&]<std::size_t... Idx>(std::index_sequence<Idx...>)
+      {
         if constexpr (std::is_same_v<void, Ret>) {
           std::invoke(Func, engine.eval_to<std::remove_cvref_t<Param>>(scope, engine.values[params[Idx]])...);
           return SExpr{ Atom{ std::monostate{} } };
@@ -752,8 +783,9 @@ struct cons_expr
   {
     if constexpr (std::is_same_v<Type, SExpr>) {
       return expr;
-    } else if constexpr (std::is_same_v<Type, LiteralList> || std::is_same_v<Type, IndexedList>
-                         || std::is_same_v<Type, Closure> || std::is_same_v<Type, FunctionPtr>) {
+    } else if constexpr (
+      std::is_same_v<Type,
+        LiteralList> || std::is_same_v<Type, IndexedList> || std::is_same_v<Type, Closure> || std::is_same_v<Type, FunctionPtr>) {
       if (const auto *obj = std::get_if<Type>(&expr.value); obj != nullptr) { return *obj; }
     } else {
       if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
@@ -927,13 +959,13 @@ struct cons_expr
         if (auto *id_atom = get_if<Identifier>(&elem); id_atom != nullptr) { id = strings.view(id_atom->value); }
         if (auto *fp = get_if<FunctionPtr>(&elem); fp != nullptr) { fp_type = fp->type; }
 
-        if (fp_type == FunctionPtr::Type::lambda_expr || id == "lambda"  ) {
+        if (fp_type == FunctionPtr::Type::lambda_expr || id == "lambda") {
           return fix_lambda_identifiers(*list, first_index, local_identifiers, local_constants);
-        } else if (fp_type == FunctionPtr::Type::let_expr || id == "let"  ) {
+        } else if (fp_type == FunctionPtr::Type::let_expr || id == "let") {
           return fix_let_identifiers(*list, first_index, local_identifiers, local_constants);
-        } else if (fp_type == FunctionPtr::Type::define_expr || id == "define" ) {
+        } else if (fp_type == FunctionPtr::Type::define_expr || id == "define") {
           return fix_define_identifiers(first_index, local_identifiers, local_constants);
-        } else if (fp_type == FunctionPtr::Type::do_expr || id == "do"  ) {
+        } else if (fp_type == FunctionPtr::Type::do_expr || id == "do") {
           return fix_do_identifiers(*list, first_index, local_identifiers, local_constants);
         }
       }
@@ -1158,10 +1190,11 @@ struct cons_expr
 
   // make a callable that captures the current engine by value
   template<typename Signature>
-  [[nodiscard]] constexpr auto make_standalone_callable(std::string_view function)
-    requires std::is_function_v<Signature>
+  [[nodiscard]] constexpr auto make_standalone_callable(
+    std::string_view function) requires std::is_function_v<Signature>
   {
-    auto impl = [this, function]<typename Ret, typename... Params>(Ret (*)(Params...)) {
+    auto impl = [ this, function ]<typename Ret, typename... Params>(Ret(*)(Params...))
+    {
       // this is fragile, we need to check parsing better
 
       return
@@ -1179,10 +1212,10 @@ struct cons_expr
   // take a string_view and return a C++ function object
   // of unspecified type.
   template<typename Signature>
-  [[nodiscard]] constexpr auto make_callable(std::string_view function)
-    requires std::is_function_v<Signature>
+  [[nodiscard]] constexpr auto make_callable(std::string_view function) requires std::is_function_v<Signature>
   {
-    auto impl = [this, function]<typename Ret, typename... Params>(Ret (*)(Params...)) {
+    auto impl = [ this, function ]<typename Ret, typename... Params>(Ret(*)(Params...))
+    {
       // this is fragile, we need to check parsing better
 
       return [callable = eval(global_scope, values[std::get<IndexedList>(parse(function).first.value)][0]), this](

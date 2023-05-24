@@ -1,5 +1,5 @@
-#include <string>
 #include <format>
+#include <string>
 #include <vector>
 
 #include "ftxui/component/captured_mouse.hpp"// for ftxui
@@ -13,7 +13,6 @@
 #include <cons_expr/utility.hpp>
 
 #include <internal_use_only/config.hpp>
-
 
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
@@ -62,9 +61,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
     content_2 += "\n> " + content_1 + "\n";
 
     try {
-      content_2 += to_string(evaluator,
-        false,
-        evaluator.sequence(evaluator.global_scope, evaluator.parse(content_1).first.to_list()));
+      content_2 += to_string(
+        evaluator, false, evaluator.sequence(evaluator.global_scope, evaluator.parse(content_1).first.to_list()));
     } catch (const std::exception &e) {
       content_2 += std::string("Error: ") + e.what();
     }

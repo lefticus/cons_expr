@@ -1,13 +1,9 @@
 #include <cons_expr/cons_expr.hpp>
 #include <iostream>
 
-constexpr int add(int x, int y) {
-  return x + y;
-}
+constexpr int add(int x, int y) { return x + y; }
 
-void display(int i) {
-  std::cout << i << '\n';
-}
+void display(int i) { std::cout << i << '\n'; }
 
 auto evaluate(std::string_view input)
 {
@@ -42,5 +38,4 @@ int main()
 (count 10 1000000)
 (count -10 10000)
 )");
-
 }

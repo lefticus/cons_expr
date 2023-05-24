@@ -101,7 +101,9 @@ template<ConsExpr Eval> std::string to_string(const Eval &engine, bool annotate,
   result += "(";
 
   if (!list.empty()) {
-    for (const auto &item : engine.values[list.sublist(0, list.size - 1)]) { result += to_string(engine, false, item) + ' '; }
+    for (const auto &item : engine.values[list.sublist(0, list.size - 1)]) {
+      result += to_string(engine, false, item) + ' ';
+    }
     result += to_string(engine, false, engine.values[list.back()]);
   }
   result += ")";
@@ -128,6 +130,6 @@ template<ConsExpr Eval> std::string to_string(const Eval &engine, bool annotate,
 {
   return std::visit([&](const auto &value) { return to_string(engine, annotate, value); }, input.value);
 }
-}
+}// namespace lefticus
 
 #endif
