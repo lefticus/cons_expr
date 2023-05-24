@@ -1,13 +1,9 @@
 #include <cons_expr/cons_expr.hpp>
 #include <iostream>
 
-constexpr int add(int x, int y) {
-  return x + y;
-}
+constexpr long long add(long long x, long long y) { return x + y; }
 
-void display(int i) {
-  std::cout << i << '\n';
-}
+void display(long long i) { std::cout << i << '\n'; }
 
 auto evaluate(std::string_view input)
 {
@@ -16,7 +12,8 @@ auto evaluate(std::string_view input)
   evaluator.add<&add>("add");
   evaluator.add<&display>("display");
 
-  return evaluator.sequence(evaluator.global_scope, evaluator.parse(input).first.to_list());
+  return evaluator.sequence(
+    evaluator.global_scope, std::get<typename lefticus::cons_expr<>::list_type>(evaluator.parse(input).first.value));
 }
 
 template<typename Result> Result evaluate_to(std::string_view input)
@@ -42,5 +39,4 @@ int main()
 (count 10 1000000)
 (count -10 10000)
 )");
-
 }
