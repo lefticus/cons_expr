@@ -10,7 +10,7 @@ on:
       - develop
 
 env:
-  CLANG_TIDY_VERSION: "15.0.2"
+  CLANG_TIDY_VERSION: "16.0.0"
   VERBOSE: 1
 
 
@@ -29,13 +29,10 @@ jobs:
       # and your own projects needs
       matrix:
         os:
-          - ubuntu-20.04
-          - macos-10.15
-          - windows-2019
+          - ubuntu-22.04
         compiler:
-          # you can specify the version after `-` like "llvm-15.0.2".
-          - llvm-15.0.2
-          - gcc-11
+          # you can specify the version after `-` like "llvm-16.0.0".
+          - gcc-13
         generator:
           - "Ninja Multi-Config"
         build_type:
@@ -44,77 +41,19 @@ jobs:
         packaging_maintainer_mode:
           - ON
           - OFF
-        build_shared:
-          - OFF
-
-        exclude:
-          # mingw is determined by this author to be too buggy to support
-          - os: windows-2019
-            compiler: gcc-11
 
         include:
           # Add appropriate variables for gcov version required. This will intentionally break
           # if you try to use a compiler that does not have gcov set
-          - compiler: gcc-11
+          - compiler: gcc-13
             gcov_executable: gcov
             enable_ipo: On
 
-          - compiler: llvm-15.0.2
-            enable_ipo: Off
-            gcov_executable: "llvm-cov gcov"
-
-          - os: macos-10.15
-            enable_ipo: Off
 
           # Set up preferred package generators, for given build configurations
           - build_type: Release
             packaging_maintainer_mode: OFF
             package_generator: TBZ2
-
-          # This exists solely to make sure a non-multiconfig build works
-          - os: ubuntu-20.04
-            compiler: gcc-11
-            generator: "Unix Makefiles"
-            build_type: Debug
-            gcov_executable: gcov
-            packaging_maintainer_mode: On
-            enable_ipo: Off
-
-          # Windows msvc builds
-          - os: windows-2022
-            compiler: msvc
-            generator: "Visual Studio 17 2022"
-            build_type: Debug
-            packaging_maintainer_mode: On
-            enable_ipo: On
-
-          - os: windows-2022
-            compiler: msvc
-            generator: "Visual Studio 17 2022"
-            build_type: Release
-            packaging_maintainer_mode: On
-            enable_ipo: On
-
-          - os: windows-2022
-            compiler: msvc
-            generator: "Visual Studio 17 2022"
-            build_type: Debug
-            packaging_maintainer_mode: Off
-
-          - os: windows-2022
-            compiler: msvc
-            generator: "Visual Studio 17 2022"
-            build_type: Release
-            packaging_maintainer_mode: Off
-            package_generator: ZIP
-
-          - os: windows-2022
-            compiler: msvc
-            generator: "Visual Studio 17 2022"
-            build_type: Release
-            packaging_maintainer_mode: On
-            enable_ipo: On
-            build_shared: On
 
 
     steps:
