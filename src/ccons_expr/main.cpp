@@ -27,35 +27,39 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
 
   // evaluator.add<display>("display");
 
+
   std::vector<std::string> entries;
   std::vector<std::string> characters;
+  std::vector<std::string> globals;
 
   int selected = 0;
+  int globals_selected = 0;
   int character_selected = 0;
 
   auto update_objects = [&]() {
     entries.clear();
-    std::size_t index = 0;
-    for (auto itr = evaluator.values.small.begin(); itr != evaluator.values.small_end(); ++itr) {
-      entries.push_back(std::format("{}: {}", index, to_string(evaluator, true, *itr)));
-      ++index;
-    }
-
-    index = evaluator.values.small_capacity;
-    for (const auto &value : evaluator.values.rest) {
-      entries.push_back(std::format("{}: {}", index, to_string(evaluator, true, value)));
+    for (std::size_t index = 0; auto item : evaluator.values[{ 0, evaluator.values.size() }]) {
+      entries.push_back(std::format("{}: {}", index, to_string(evaluator, true, item)));
       ++index;
     }
 
     characters.clear();
-    index = 0;
-    for (auto itr = evaluator.strings.small.begin(); itr != evaluator.strings.small_end(); ++itr) {
-      characters.push_back(std::format("{}: '{}'", index, *itr));
+    for (std::size_t index = 0; auto item : evaluator.strings[{ 0, evaluator.strings.size() }]) {
+      characters.push_back(std::format("{}: '{}'", index, item));
+      ++index;
+    }
+
+    globals.clear();
+    for (std::size_t index = 0; auto [key, value] : evaluator.global_scope[{ 0, evaluator.global_scope.size() }]) {
+      globals.push_back(std::format("{}: '{}'", to_string(evaluator, false, key), to_string(evaluator, true, value)));
       ++index;
     }
   };
 
   update_objects();
+
+  auto textarea_1 = ftxui::Input(&content_1);
+  auto output_1 = ftxui::Input(&content_2);
 
   auto do_evaluate = [&]() {
     content_2 += "\n> " + content_1 + "\n";
@@ -71,21 +75,21 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
     }
     // content_1.clear();
     update_objects();
+    output_1->
   };
 
 
-  auto textarea_1 = ftxui::Input(&content_1);
-  auto output_1 = ftxui::Input(&content_2);
   auto button = ftxui::Button("Evaluate", do_evaluate);
   int size = 50;
   auto resizeable_bits = ftxui::ResizableSplitLeft(textarea_1, output_1, &size);
 
   auto radiobox = ftxui::Menu(&entries, &selected);
+  auto globalsbox = ftxui::Menu(&globals, &globals_selected);
   auto characterbox = ftxui::Menu(&characters, &character_selected);
   bool forget_history = false;
   auto forget_history_check = ftxui::Checkbox("Forget History", &forget_history);
 
-  auto layout = ftxui::Container::Horizontal({ characterbox, radiobox, resizeable_bits, button, forget_history_check });
+  auto layout = ftxui::Container::Horizontal({ characterbox, radiobox, globalsbox, resizeable_bits, button, forget_history_check });
 
   auto get_stats = [&]() {
     return ftxui::vbox({ ftxui::text(std::format("Data Sizes: cons_expr<> {} SExpr {} Atom {}",
@@ -106,8 +110,11 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
   auto component = ftxui::Renderer(layout, [&] {
     return ftxui::hbox({ characterbox->Render() | ftxui::vscroll_indicator | ftxui::frame,
              ftxui::separator(),
-             ftxui::vbox({ radiobox->Render() | ftxui::vscroll_indicator | ftxui::frame
-                             | ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, 10),
+             ftxui::vbox({ globalsbox->Render() | ftxui::vscroll_indicator | ftxui::frame
+                             | ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, 5),
+               ftxui::separator(),
+               radiobox->Render() | ftxui::vscroll_indicator | ftxui::frame
+                 | ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, 7),
                ftxui::separator(),
                resizeable_bits->Render() | ftxui::flex,
                ftxui::separator(),
