@@ -75,7 +75,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
     }
     // content_1.clear();
     update_objects();
-    output_1->
+    // output_1->
   };
 
 
