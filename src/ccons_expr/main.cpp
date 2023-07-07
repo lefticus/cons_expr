@@ -89,7 +89,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
   bool forget_history = false;
   auto forget_history_check = ftxui::Checkbox("Forget History", &forget_history);
 
-  auto layout = ftxui::Container::Horizontal({ characterbox, radiobox, globalsbox, resizeable_bits, button, forget_history_check });
+  auto layout =
+    ftxui::Container::Horizontal({ characterbox, radiobox, globalsbox, resizeable_bits, button, forget_history_check });
 
   auto get_stats = [&]() {
     return ftxui::vbox({ ftxui::text(std::format("Data Sizes: cons_expr<> {} SExpr {} Atom {}",
