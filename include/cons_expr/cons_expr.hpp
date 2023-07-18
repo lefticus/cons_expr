@@ -811,7 +811,7 @@ struct cons_expr
         return invoke_function(scope, values[(*indexed_list)[0]], indexed_list->sublist(1));
       }
     } else if (const auto *id = get_if<identifier_type>(&expr); id != nullptr) {
-      for (const auto &[key, value] : scope | std::ranges::views::reverse) {
+      for (const auto &[key, value] : scope | std::views::reverse) {
         if (key == id->value) { return value; }
       }
 
@@ -1062,12 +1062,12 @@ struct cons_expr
       }
       return SExpr{ this->values.insert_or_find(result) };
     } else if (auto *id = get_if<identifier_type>(&input); id != nullptr) {
-      for (const auto &local : local_identifiers | std::ranges::views::reverse) {
+      for (const auto &local : local_identifiers | std::views::reverse) {
         // do something smarter later, but abort for now because it's in the variable scope
         if (local == id->value) { return input; }
       }
 
-      for (const auto &object : local_constants | std::ranges::views::reverse) {
+      for (const auto &object : local_constants | std::views::reverse) {
         if (object.first == id->value) { return object.second; }
       }
 
@@ -1352,7 +1352,7 @@ struct cons_expr
 
   template<typename T> [[nodiscard]] constexpr auto eval_transform(LexicalScope &scope)
   {
-    return std::ranges::views::transform([&scope, this](const SExpr param) { return eval_to<T>(scope, param); });
+    return std::views::transform([&scope, this](const SExpr param) { return eval_to<T>(scope, param); });
   }
 
   template<auto Op>
