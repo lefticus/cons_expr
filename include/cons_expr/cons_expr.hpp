@@ -544,8 +544,8 @@ template<std::unsigned_integral SizeType> Error(IndexedString<SizeType>, Indexed
 
 template<std::unsigned_integral SizeType = std::uint16_t,
   typename CharType = char,
-  std::signed_integral IntegralType = long long,
-  std::floating_point FloatType = long double,
+  std::signed_integral IntegralType = int,
+  std::floating_point FloatType = double,
   SizeType BuiltInSymbolsSize = 64,
   SizeType BuiltInStringsSize = 1540,
   SizeType BuiltInValuesSize = 279,

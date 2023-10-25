@@ -1,11 +1,13 @@
 #include <cons_expr/cons_expr.hpp>
 #include <format>
 
+using cons_expr_type = lefticus::cons_expr<std::uint16_t, char, long long, long double>;
+
 constexpr long long add(long long x, long long y) { return x + y; }
 
 consteval auto make_scripted_function()
 {
-  lefticus::cons_expr<> evaluator;
+  cons_expr_type evaluator;
 
   evaluator.add<&add>("add");
 
@@ -23,7 +25,7 @@ consteval auto make_scripted_function()
 
 
   [[maybe_unused]] const auto result = evaluator.sequence(
-    evaluator.global_scope, std::get<typename lefticus::cons_expr<>::list_type>(evaluator.parse(input).first.value));
+    evaluator.global_scope, std::get<typename cons_expr_type::list_type>(evaluator.parse(input).first.value));
 
   return std::bind_front(evaluator.make_callable<long long(long long, long long)>("sum"), evaluator);
 }

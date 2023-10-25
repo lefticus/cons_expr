@@ -8,7 +8,9 @@
 
 #include <internal_use_only/config.hpp>
 
-void display(long long i) { std::cout << i << '\n'; }
+using cons_expr_type = lefticus::cons_expr<>;
+
+void display(cons_expr_type::int_type i) { std::cout << i << '\n'; }
 
 
 int main(int argc, const char **argv)
@@ -36,7 +38,7 @@ int main(int argc, const char **argv)
       std::cout << lefticus::to_string(evaluator,
         false,
         evaluator.sequence(evaluator.global_scope,
-          std::get<typename lefticus::cons_expr<>::list_type>(evaluator.parse(*script).first.value)));
+          std::get<cons_expr_type::list_type>(evaluator.parse(*script).first.value)));
       std::cout << '\n';
     }
   } catch (const std::exception &e) {

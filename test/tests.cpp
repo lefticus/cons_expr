@@ -1,42 +1,45 @@
 #include <catch2/catch_test_macros.hpp>
 #include <iostream>
 
-
 #include <cons_expr/cons_expr.hpp>
 
-void display(long long i) { std::cout << i << '\n'; }
+using cons_expr_type = lefticus::cons_expr<>;
+
+void display(cons_expr_type::int_type i) { std::cout << i << '\n'; }
 
 auto evaluate(std::string_view input)
 {
-  lefticus::cons_expr<> evaluator;
+  cons_expr_type evaluator;
 
   evaluator.add<display>("display");
 
   auto parse_result = evaluator.parse(input);
-  auto list = std::get<typename lefticus::cons_expr<>::list_type>(parse_result.first.value);
+  auto list = std::get<cons_expr_type::list_type>(parse_result.first.value);
 
   return evaluator.sequence(evaluator.global_scope, list);
 }
 
 template<typename Result> Result evaluate_to(std::string_view input)
 {
-  return std::get<Result>(std::get<lefticus::cons_expr<>::Atom>(evaluate(input).value));
+  return std::get<Result>(std::get<cons_expr_type::Atom>(evaluate(input).value));
 }
 
 
 TEST_CASE("basic callable usage", "[c++ api]")
 {
-  lefticus::cons_expr<> evaluator;
-  auto func = evaluator.make_callable<long long(long long, long long, long long)>("+");
+  cons_expr_type evaluator;
+  using int_type = cons_expr_type::int_type;
+
+  auto func = evaluator.make_callable<int_type (int_type, int_type, int_type)>("+");
   CHECK(func(evaluator, 1, 2, 3) == 6);
 
-  auto func2 = evaluator.make_callable<long long(long long)>("(lambda (x) (* x x))");
+  auto func2 = evaluator.make_callable<int_type(int_type)>("(lambda (x) (* x x))");
   CHECK(func2(evaluator, 10) == 100);
 }
 
 TEST_CASE("GPT Generated Tests", "[integration tests]")
 {
-  CHECK(evaluate_to<long long>(R"(
+  CHECK(evaluate_to<cons_expr_type::int_type>(R"(
 (define make-adder-multiplier
   (lambda (a)
     (lambda (b)
