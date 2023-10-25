@@ -33,7 +33,6 @@ SOFTWARE.
 #include <limits>
 #include <ranges>
 #include <span>
-#include <stacktrace>
 #include <stdexcept>
 #include <string_view>
 #include <type_traits>
@@ -301,6 +300,9 @@ template<typename CharType> struct Token
   std::basic_string_view<char_type> remaining;
 };
 
+template<typename CharType> Token(std::basic_string_view<CharType>, std::basic_string_view<CharType>) -> Token<CharType>;
+
+
 template<std::integral IntType, typename CharType>
 [[nodiscard]] constexpr std::pair<bool, IntType> parse_int(std::basic_string_view<CharType> input)
 {
@@ -425,7 +427,7 @@ template<typename CharType> [[nodiscard]] constexpr Token<CharType> next_token(s
     return std::basic_string_view<CharType>{ begin, ws_input.end() };
   };
 
-  constexpr auto make_token = [=](auto token_input, std::size_t size) {
+  constexpr auto make_token = [=](std::basic_string_view<CharType> token_input, std::size_t size) {
     return Token{ token_input.substr(0, size), consume(token_input.substr(size), is_whitespace) };
   };
 
@@ -514,6 +516,9 @@ template<std::unsigned_integral SizeType> struct LiteralList
   [[nodiscard]] constexpr bool operator==(const LiteralList &) const noexcept = default;
 };
 
+template<std::unsigned_integral SizeType> LiteralList(IndexedList<SizeType>) -> LiteralList<SizeType>;
+
+
 template<std::unsigned_integral SizeType> struct Identifier
 {
   using size_type = SizeType;
@@ -522,6 +527,10 @@ template<std::unsigned_integral SizeType> struct Identifier
   [[nodiscard]] constexpr bool operator==(const Identifier &) const noexcept = default;
 };
 
+template<std::unsigned_integral SizeType>
+Identifier(IndexedString<SizeType>) -> Identifier<SizeType>;
+
+
 template<std::unsigned_integral SizeType> struct Error
 {
   using size_type = SizeType;
@@ -529,6 +538,8 @@ template<std::unsigned_integral SizeType> struct Error
   IndexedList<size_type> got;
   [[nodiscard]] constexpr bool operator==(const Error &) const noexcept = default;
 };
+
+template<std::unsigned_integral SizeType> Error(IndexedString<SizeType>, IndexedList<SizeType>) -> Error<SizeType>;
 
 
 template<std::unsigned_integral SizeType = std::uint16_t,
@@ -624,7 +635,7 @@ struct cons_expr
     [[nodiscard]] constexpr SExpr invoke(cons_expr &engine, LexicalScope &scope, list_type params) const
     {
       if (params.size != parameter_names.size) {
-        return engine.make_error("Incorrect number of params for lambda", params);
+        return engine.make_error(std::string_view{"Incorrect number of params for lambda"}, params);
       }
 
       // Closures contain all of their own scope
@@ -1082,11 +1093,16 @@ struct cons_expr
     return SExpr{ Error{ strings.insert_or_find(description), context } };
   }
 
-  template<std::same_as<SExpr>... Param>
-  [[nodiscard]] constexpr SExpr make_error(std::basic_string_view<char_type> description, Param... context) noexcept
+  [[nodiscard]] constexpr SExpr make_error(std::basic_string_view<char_type> description, SExpr value) noexcept
   {
-    return make_error(description, values.insert_or_find(std::array{ context... }));
+    return make_error(description, values.insert_or_find(std::array{ value }));
   }
+
+  [[nodiscard]] constexpr SExpr make_error(std::basic_string_view<char_type> description, SExpr value, SExpr value2) noexcept
+  {
+    return make_error(description, values.insert_or_find(std::array{ value, value2 }));
+  }
+
 
   //
   // built-ins
