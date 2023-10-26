@@ -24,6 +24,10 @@ template<typename Result> Result evaluate_to(std::string_view input)
   return std::get<Result>(std::get<cons_expr_type::Atom>(evaluate(input).value));
 }
 
+TEST_CASE("non-char characters", "[c++ api]")
+{
+  [[maybe_unused]] lefticus::cons_expr<std::uint16_t, wchar_t> cons_expr;
+}
 
 TEST_CASE("basic callable usage", "[c++ api]")
 {
