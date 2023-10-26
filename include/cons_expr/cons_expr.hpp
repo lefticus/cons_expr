@@ -281,17 +281,17 @@ concept eq_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs == rh
 template<typename T>
 concept not_eq_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs != rhs; };
 
-static constexpr auto adds = []<addable T>(const T &lhs, const T &rhs) { return lhs + rhs; };
-static constexpr auto multiplies = []<multipliable T>(const T &lhs, const T &rhs) { return lhs * rhs; };
-static constexpr auto divides = []<dividable T>(const T &lhs, const T &rhs) { return lhs / rhs; };
-static constexpr auto subtracts = []<subtractable T>(const T &lhs, const T &rhs) { return lhs - rhs; };
-static constexpr auto less_than = []<lt_comparable T>(const T &lhs, const T &rhs) { return lhs < rhs; };
-static constexpr auto greater_than = []<gt_comparable T>(const T &lhs, const T &rhs) { return lhs > rhs; };
-static constexpr auto lt_equal = []<lt_eq_comparable T>(const T &lhs, const T &rhs) { return lhs <= rhs; };
-static constexpr auto gt_equal = []<gt_eq_comparable T>(const T &lhs, const T &rhs) { return lhs >= rhs; };
-static constexpr auto equal = []<eq_comparable T>(const T &lhs, const T &rhs) -> bool { return lhs == rhs; };
-static constexpr auto not_equal = []<not_eq_comparable T>(const T &lhs, const T &rhs) -> bool { return lhs != rhs; };
-static constexpr bool logical_not(bool lhs) { return !lhs; }
+inline constexpr auto adds = []<addable T>(const T &lhs, const T &rhs) { return lhs + rhs; };
+inline constexpr auto multiplies = []<multipliable T>(const T &lhs, const T &rhs) { return lhs * rhs; };
+inline constexpr auto divides = []<dividable T>(const T &lhs, const T &rhs) { return lhs / rhs; };
+inline constexpr auto subtracts = []<subtractable T>(const T &lhs, const T &rhs) { return lhs - rhs; };
+inline constexpr auto less_than = []<lt_comparable T>(const T &lhs, const T &rhs) { return lhs < rhs; };
+inline constexpr auto greater_than = []<gt_comparable T>(const T &lhs, const T &rhs) { return lhs > rhs; };
+inline constexpr auto lt_equal = []<lt_eq_comparable T>(const T &lhs, const T &rhs) { return lhs <= rhs; };
+inline constexpr auto gt_equal = []<gt_eq_comparable T>(const T &lhs, const T &rhs) { return lhs >= rhs; };
+inline constexpr auto equal = []<eq_comparable T>(const T &lhs, const T &rhs) -> bool { return lhs == rhs; };
+inline constexpr auto not_equal = []<not_eq_comparable T>(const T &lhs, const T &rhs) -> bool { return lhs != rhs; };
+inline constexpr bool logical_not(bool lhs) { return !lhs; }
 
 template<typename CharType> struct Token
 {
@@ -300,7 +300,8 @@ template<typename CharType> struct Token
   std::basic_string_view<char_type> remaining;
 };
 
-template<typename CharType> Token(std::basic_string_view<CharType>, std::basic_string_view<CharType>) -> Token<CharType>;
+template<typename CharType>
+Token(std::basic_string_view<CharType>, std::basic_string_view<CharType>) -> Token<CharType>;
 
 
 template<std::integral IntType, typename CharType>
@@ -527,8 +528,7 @@ template<std::unsigned_integral SizeType> struct Identifier
   [[nodiscard]] constexpr bool operator==(const Identifier &) const noexcept = default;
 };
 
-template<std::unsigned_integral SizeType>
-Identifier(IndexedString<SizeType>) -> Identifier<SizeType>;
+template<std::unsigned_integral SizeType> Identifier(IndexedString<SizeType>) -> Identifier<SizeType>;
 
 
 template<std::unsigned_integral SizeType> struct Error
@@ -564,6 +564,25 @@ struct cons_expr
 
   struct SExpr;
   struct Closure;
+
+
+  template<typename Type> static constexpr bool visit_helper(SExpr &result, auto Func, auto &variant)
+  {
+    auto *value = std::get_if<Type>(&variant);
+    if (value != nullptr) {
+      result = Func(*value);
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  template<typename... Type> static constexpr SExpr visit(auto visitor, const std::variant<Type...> &value)
+  {
+    SExpr result{};
+    ((visit_helper<Type>(result, visitor, value) || ...));
+    return result;
+  }
 
   using LexicalScope = SmallOptimizedVector<size_type, std::pair<string_type, SExpr>, BuiltInSymbolsSize, list_type>;
   using function_ptr = SExpr (*)(cons_expr &, LexicalScope &, list_type);
@@ -635,7 +654,7 @@ struct cons_expr
     [[nodiscard]] constexpr SExpr invoke(cons_expr &engine, LexicalScope &scope, list_type params) const
     {
       if (params.size != parameter_names.size) {
-        return engine.make_error(std::string_view{"Incorrect number of params for lambda"}, params);
+        return engine.make_error(std::string_view{ "Incorrect number of params for lambda" }, params);
       }
 
       // Closures contain all of their own scope
@@ -1098,7 +1117,8 @@ struct cons_expr
     return make_error(description, values.insert_or_find(std::array{ value }));
   }
 
-  [[nodiscard]] constexpr SExpr make_error(std::basic_string_view<char_type> description, SExpr value, SExpr value2) noexcept
+  [[nodiscard]] constexpr SExpr
+    make_error(std::basic_string_view<char_type> description, SExpr value, SExpr value2) noexcept
   {
     return make_error(description, values.insert_or_find(std::array{ value, value2 }));
   }
@@ -1377,7 +1397,8 @@ struct cons_expr
   {
     auto fold = [&engine, &scope, params]<typename Param>(Param first) -> SExpr {
       if constexpr (requires(Param p1, Param p2) { Op(p1, p2); }) {
-        for (const auto &next : engine.values[params.sublist(1)] | engine.eval_transform<Param>(scope)) {
+        for (const auto &elem : engine.values[params.sublist(1)]) {
+          const auto &next = engine.eval_to<Param>(scope, elem);
           if (!next) { return engine.make_error("same types for operator", SExpr{ first }, next.error()); }
           first = Op(first, *next);
         }
@@ -1391,7 +1412,7 @@ struct cons_expr
     if (params.size > 1) {
       const auto param1 = engine.eval(scope, engine.values[params[0]]);
       if (const auto *atom = std::get_if<Atom>(&param1.value); atom != nullptr) {
-        return std::visit(fold, *atom);
+        return visit(fold, *atom);
       } else {
         return engine.make_error("operator not supported for types", params);
       }
@@ -1426,7 +1447,8 @@ struct cons_expr
   {
     auto sum = [&engine, &scope, params]<typename Param>(Param next) -> SExpr {
       if constexpr (requires(Param p1, Param p2) { Op(p1, p2); }) {
-        for (const auto &result : engine.values[params.sublist(1)] | engine.eval_transform<Param>(scope)) {
+        for (const auto &elem : engine.values[params.sublist(1)]) {
+          const auto &result = engine.eval_to<Param>(scope, elem);
           if (!result) { return engine.make_error("same types for operator", SExpr{ next }, result.error()); }
           const auto prev = std::exchange(next, *result);
           if (!Op(prev, next)) { return SExpr{ Atom{ false } }; }
@@ -1444,7 +1466,7 @@ struct cons_expr
     // For working directly on "LiteralList" objects
     if (const auto *list = std::get_if<literal_list_type>(&first_param); list != nullptr) { return sum(*list); }
 
-    if (const auto *atom = std::get_if<Atom>(&first_param); atom != nullptr) { return std::visit(sum, *atom); }
+    if (const auto *atom = std::get_if<Atom>(&first_param); atom != nullptr) { return visit(sum, *atom); }
 
     return engine.make_error("supported types", params);
   }
