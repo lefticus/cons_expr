@@ -34,6 +34,7 @@ SOFTWARE.
 #include <ranges>
 #include <span>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
@@ -100,6 +101,33 @@ inline constexpr int cons_expr_version_major{ 0 };
 inline constexpr int cons_expr_version_minor{ 0 };
 inline constexpr int cons_expr_version_patch{ 1 };
 inline constexpr int cons_expr_version_tweak{};
+
+
+template<typename char_type> struct chars
+{
+  [[nodiscard]] static consteval std::string_view str(const char *input) noexcept
+    requires std::is_same_v<char_type, char>
+  {
+    return input;
+  }
+
+  template<std::size_t Size>
+  [[nodiscard]] static consteval auto str(const char (&input)[Size]) noexcept
+    requires(!std::is_same_v<char_type, char>)
+  {
+    struct Result
+    {
+      char_type data[Size];
+      constexpr operator std::basic_string_view<char_type>() { return { data, Size - 1 }; }
+    };
+
+    Result result;
+    std::copy(std::begin(input), std::end(input), std::begin(result.data));
+    return result;
+  }
+
+  [[nodiscard]] static consteval char_type ch(const char input) noexcept { return input; }
+};
 
 
 template<std::unsigned_integral SizeType,
@@ -296,31 +324,19 @@ inline constexpr bool logical_not(bool lhs) { return !lhs; }
 template<typename CharType> struct Token
 {
   using char_type = CharType;
-  std::basic_string_view<char_type> parsed;
-  std::basic_string_view<char_type> remaining;
+  using string_view_type = std::basic_string_view<char_type>;
+  string_view_type parsed;
+  string_view_type remaining;
 };
 
 template<typename CharType>
 Token(std::basic_string_view<CharType>, std::basic_string_view<CharType>) -> Token<CharType>;
 
-
-template<std::integral IntType, typename CharType>
-[[nodiscard]] constexpr std::pair<bool, IntType> parse_int(std::basic_string_view<CharType> input)
-{
-  IntType parsed = 0;
-  auto result = std::from_chars(input.data(), input.data() + input.size(), parsed);
-  if (result.ec == std::errc() && result.ptr == input.data() + input.size()) {
-    return { true, parsed };
-  } else {
-    return { false, parsed };
-  }
-}
-
-template<std::floating_point T, typename CharType>
-[[nodiscard]] constexpr std::pair<bool, T> parse_float(std::basic_string_view<CharType> input)
+template<typename T, typename CharType>
+[[nodiscard]] constexpr std::pair<bool, T> parse_number(std::basic_string_view<CharType> input)
 {
   static constexpr std::pair<bool, T> failure{ false, 0 };
-  if (input == "-") { return failure; }
+  if (input == chars<CharType>::str("-")) { return failure; }
 
   enum struct State {
     Start,
@@ -359,23 +375,28 @@ template<std::floating_point T, typename CharType>
         (static_cast<T>(value_sign) * (static_cast<T>(value) + static_cast<T>(frac) * pow(static_cast<T>(10), frac_exp))
           * pow(static_cast<T>(10), exp_sign * exp)) };
     }
+
+    [[nodiscard]] constexpr auto int_value() const noexcept -> std::pair<bool, T>
+    {
+      return { true, value_sign * static_cast<T>(value) };
+    }
   };
 
   ParseState state;
 
-  auto parse_digit = [](auto &value, char ch) {
-    if (ch >= '0' && ch <= '9') {
-      value = value * 10 + ch - '0';
+  auto parse_digit = [](auto &value, auto ch) {
+    if (ch >= chars<CharType>::ch('0') && ch <= chars<CharType>::ch('9')) {
+      value = value * 10 + ch - chars<CharType>::ch('0');
       return true;
     } else {
       return false;
     }
   };
 
-  for (const char c : input) {
+  for (const auto c : input) {
     switch (state.state) {
     case State::Start:
-      if (c == '-') {
+      if (c == chars<CharType>::ch('-')) {
         state.value_sign = -1;
       } else if (!parse_digit(state.value, c)) {
         return failure;
@@ -383,9 +404,9 @@ template<std::floating_point T, typename CharType>
       state.state = State::IntegerPart;
       break;
     case State::IntegerPart:
-      if (c == '.') {
+      if (c == chars<CharType>::ch('.')) {
         state.state = State::FractionPart;
-      } else if (c == 'e' || c == 'E') {
+      } else if (c == chars<CharType>::ch('e') || c == chars<CharType>::ch('E')) {
         state.state = State::ExponentPart;
       } else if (!parse_digit(state.value, c)) {
         return failure;
@@ -394,14 +415,14 @@ template<std::floating_point T, typename CharType>
     case State::FractionPart:
       if (parse_digit(state.frac, c)) {
         state.frac_exp--;
-      } else if (c == 'e' || c == 'E') {
+      } else if (c == chars<CharType>::ch('e') || c == chars<CharType>::ch('E')) {
         state.state = State::ExponentStart;
       } else {
         return failure;
       }
       break;
     case State::ExponentStart:
-      if (c == '-') {
+      if (c == chars<CharType>::ch('-')) {
         state.exp_sign = -1;
       } else if (!parse_digit(state.exp, c)) {
         return failure;
@@ -413,14 +434,22 @@ template<std::floating_point T, typename CharType>
     }
   }
 
-  return state.float_value();
+  if constexpr (std::is_integral_v<T>) {
+    if (state.state != State::IntegerPart) { return failure; }
+    return state.int_value();
+  } else {
+    return state.float_value();
+  }
 }
 
 
 template<typename CharType> [[nodiscard]] constexpr Token<CharType> next_token(std::basic_string_view<CharType> input)
 {
-  constexpr auto is_eol = [](auto ch) { return ch == '\n' || ch == '\r'; };
-  constexpr auto is_whitespace = [=](auto ch) { return ch == ' ' || ch == '\t' || is_eol(ch); };
+  using chars = lefticus::chars<CharType>;
+
+  constexpr auto is_eol = [](auto ch) { return ch == chars::ch('\n') || ch == chars::ch('\r'); };
+  constexpr auto is_whitespace = [=](auto ch) { return ch == chars::ch(' ') || ch == chars::ch('\t') || is_eol(ch); };
+
 
   constexpr auto consume = [=](auto ws_input, auto predicate) {
     auto begin = ws_input.begin();
@@ -435,25 +464,25 @@ template<typename CharType> [[nodiscard]] constexpr Token<CharType> next_token(s
   input = consume(input, is_whitespace);
 
   // comment
-  if (input.starts_with(';')) {
-    input = consume(input, [=](char ch) { return not is_eol(ch); });
+  if (input.starts_with(chars::ch(';'))) {
+    input = consume(input, [=](auto ch) { return not is_eol(ch); });
     input = consume(input, is_whitespace);
   }
 
   // list
-  if (input.starts_with('(') || input.starts_with(')')) { return make_token(input, 1); }
+  if (input.starts_with(chars::ch('(')) || input.starts_with(chars::ch(')'))) { return make_token(input, 1); }
 
   // literal list
-  if (input.starts_with("'(")) { return make_token(input, 2); }
+  if (input.starts_with(chars::str("'("))) { return make_token(input, 2); }
 
   // quoted string
-  if (input.starts_with('"')) {
+  if (input.starts_with(chars::ch('"'))) {
     bool in_escape = false;
     auto location = std::next(input.begin());
     while (location != input.end()) {
-      if (*location == '\\') {
+      if (*location == chars::ch('\\')) {
         in_escape = true;
-      } else if (*location == '"' && !in_escape) {
+      } else if (*location == chars::ch('"') && !in_escape) {
         ++location;
         break;
       } else {
@@ -466,7 +495,8 @@ template<typename CharType> [[nodiscard]] constexpr Token<CharType> next_token(s
   }
 
   // everything else
-  const auto value = consume(input, [=](char ch) { return !is_whitespace(ch) && ch != ')' && ch != '('; });
+  const auto value =
+    consume(input, [=](auto ch) { return !is_whitespace(ch) && ch != chars::ch(')') && ch != chars::ch('('); });
 
   return make_token(input, static_cast<std::size_t>(std::distance(input.begin(), value.begin())));
 }
@@ -557,6 +587,7 @@ struct cons_expr
   using int_type = IntegralType;
   using float_type = FloatType;
   using string_type = IndexedString<size_type>;
+  using string_view_type = std::basic_string_view<char_type>;
   using identifier_type = Identifier<size_type>;
   using list_type = IndexedList<size_type>;
   using literal_list_type = LiteralList<size_type>;
@@ -564,6 +595,11 @@ struct cons_expr
 
   struct SExpr;
   struct Closure;
+
+  template<std::size_t Size> [[nodiscard]] static consteval auto str(char const (&input)[Size]) noexcept
+  {
+    return chars<char_type>::str(input);
+  }
 
 
   template<typename Type> static constexpr bool visit_helper(SExpr &result, auto Func, auto &variant)
@@ -639,8 +675,7 @@ struct cons_expr
   }
 
   LexicalScope global_scope{};
-  SmallOptimizedVector<size_type, char_type, BuiltInStringsSize, string_type, std::basic_string_view<char_type>>
-    strings{};
+  SmallOptimizedVector<size_type, char_type, BuiltInStringsSize, string_type, string_view_type> strings{};
   SmallOptimizedVector<size_type, SExpr, BuiltInValuesSize, list_type> values{};
 
 
@@ -654,7 +689,7 @@ struct cons_expr
     [[nodiscard]] constexpr SExpr invoke(cons_expr &engine, LexicalScope &scope, list_type params) const
     {
       if (params.size != parameter_names.size) {
-        return engine.make_error(std::string_view{ "Incorrect number of params for lambda" }, params);
+        return engine.make_error(str("Incorrect number of params for lambda"), params);
       }
 
       // Closures contain all of their own scope
@@ -675,30 +710,30 @@ struct cons_expr
     }
   };
 
-  [[nodiscard]] constexpr std::pair<SExpr, Token<CharType>> parse(std::basic_string_view<char_type> input) noexcept
+  [[nodiscard]] constexpr std::pair<SExpr, Token<CharType>> parse(string_view_type input) noexcept
   {
     std::vector<SExpr> retval;
 
     auto token = next_token(input);
 
     while (!token.parsed.empty()) {
-      if (token.parsed == "(") {
+      if (token.parsed == str("(")) {
         auto [parsed, remaining] = parse(token.remaining);
         retval.push_back(parsed);
         token = remaining;
-      } else if (token.parsed == "'(") {
+      } else if (token.parsed == str("'(")) {
         auto [parsed, remaining] = parse(token.remaining);
         if (const auto *list = std::get_if<list_type>(&parsed.value); list != nullptr) {
           retval.push_back(SExpr{ LiteralList{ *list } });
         } else {
-          retval.push_back(make_error("parsed list", parsed));
+          retval.push_back(make_error(str("parsed list"), parsed));
         }
         token = remaining;
-      } else if (token.parsed == ")") {
+      } else if (token.parsed == str(")")) {
         break;
-      } else if (token.parsed == "true") {
+      } else if (token.parsed == str("true")) {
         retval.push_back(SExpr{ Atom{ true } });
-      } else if (token.parsed == "false") {
+      } else if (token.parsed == str("false")) {
         retval.push_back(SExpr{ Atom{ false } });
       } else {
         if (token.parsed.starts_with('"')) {
@@ -708,11 +743,11 @@ struct cons_expr
             const auto string = strings.insert_or_find(token.parsed.substr(1, token.parsed.size() - 2));
             retval.push_back(SExpr{ Atom(string) });
           } else {
-            retval.push_back(make_error("terminated string", SExpr{ Atom(strings.insert_or_find(token.parsed)) }));
+            retval.push_back(make_error(str("terminated string"), SExpr{ Atom(strings.insert_or_find(token.parsed)) }));
           }
-        } else if (auto [int_did_parse, int_value] = parse_int<int_type>(token.parsed); int_did_parse) {
+        } else if (auto [int_did_parse, int_value] = parse_number<int_type>(token.parsed); int_did_parse) {
           retval.push_back(SExpr{ Atom(int_value) });
-        } else if (auto [float_did_parse, float_value] = parse_float<float_type>(token.parsed); float_did_parse) {
+        } else if (auto [float_did_parse, float_value] = parse_number<float_type>(token.parsed); float_did_parse) {
           retval.push_back(SExpr{ Atom(float_value) });
         } else {
           retval.push_back(SExpr{ Atom(Identifier{ strings.insert_or_find(token.parsed) }) });
@@ -726,32 +761,32 @@ struct cons_expr
   // Guaranteed to be initialized at compile time
   consteval cons_expr()
   {
-    add("+", SExpr{ FunctionPtr{ binary_left_fold<adds>, FunctionPtr::Type::other } });
-    add("*", SExpr{ FunctionPtr{ binary_left_fold<multiplies>, FunctionPtr::Type::other } });
-    add("-", SExpr{ FunctionPtr{ binary_left_fold<subtracts>, FunctionPtr::Type::other } });
-    add("/", SExpr{ FunctionPtr{ binary_left_fold<divides>, FunctionPtr::Type::other } });
-    add("<=", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<lt_equal>, FunctionPtr::Type::other } });
-    add(">=", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<gt_equal>, FunctionPtr::Type::other } });
-    add("<", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<less_than>, FunctionPtr::Type::other } });
-    add(">", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<greater_than>, FunctionPtr::Type::other } });
-    add("and", SExpr{ FunctionPtr{ logical_and, FunctionPtr::Type::other } });
-    add("or", SExpr{ FunctionPtr{ logical_or, FunctionPtr::Type::other } });
-    add("if", SExpr{ FunctionPtr{ ifer, FunctionPtr::Type::other } });
-    add("not", SExpr{ FunctionPtr{ make_evaluator<logical_not>(), FunctionPtr::Type::other } });
-    add("==", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<equal>, FunctionPtr::Type::other } });
-    add("!=", SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<not_equal>, FunctionPtr::Type::other } });
-    add("for-each", SExpr{ FunctionPtr{ for_each, FunctionPtr::Type::other } });
-    add("list", SExpr{ FunctionPtr{ list, FunctionPtr::Type::other } });
-    add("lambda", SExpr{ FunctionPtr{ lambda, FunctionPtr::Type::lambda_expr } });
-    add("do", SExpr{ FunctionPtr{ doer, FunctionPtr::Type::do_expr } });
-    add("define", SExpr{ FunctionPtr{ definer, FunctionPtr::Type::define_expr } });
-    add("let", SExpr{ FunctionPtr{ letter, FunctionPtr::Type::let_expr } });
-    add("car", SExpr{ FunctionPtr{ car, FunctionPtr::Type::other } });
-    add("cdr", SExpr{ FunctionPtr{ cdr, FunctionPtr::Type::other } });
-    add("cons", SExpr{ FunctionPtr{ cons, FunctionPtr::Type::other } });
-    add("append", SExpr{ FunctionPtr{ append, FunctionPtr::Type::other } });
-    add("eval", SExpr{ FunctionPtr{ evaler, FunctionPtr::Type::other } });
-    add("apply", SExpr{ FunctionPtr{ applier, FunctionPtr::Type::other } });
+    add(str("+"), SExpr{ FunctionPtr{ binary_left_fold<adds>, FunctionPtr::Type::other } });
+    add(str("*"), SExpr{ FunctionPtr{ binary_left_fold<multiplies>, FunctionPtr::Type::other } });
+    add(str("-"), SExpr{ FunctionPtr{ binary_left_fold<subtracts>, FunctionPtr::Type::other } });
+    add(str("/"), SExpr{ FunctionPtr{ binary_left_fold<divides>, FunctionPtr::Type::other } });
+    add(str("<="), SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<lt_equal>, FunctionPtr::Type::other } });
+    add(str(">="), SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<gt_equal>, FunctionPtr::Type::other } });
+    add(str("<"), SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<less_than>, FunctionPtr::Type::other } });
+    add(str(">"), SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<greater_than>, FunctionPtr::Type::other } });
+    add(str("and"), SExpr{ FunctionPtr{ logical_and, FunctionPtr::Type::other } });
+    add(str("or"), SExpr{ FunctionPtr{ logical_or, FunctionPtr::Type::other } });
+    add(str("if"), SExpr{ FunctionPtr{ ifer, FunctionPtr::Type::other } });
+    add(str("not"), SExpr{ FunctionPtr{ make_evaluator<logical_not>(), FunctionPtr::Type::other } });
+    add(str("=="), SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<equal>, FunctionPtr::Type::other } });
+    add(str("!="), SExpr{ FunctionPtr{ binary_boolean_apply_pairwise<not_equal>, FunctionPtr::Type::other } });
+    add(str("for-each"), SExpr{ FunctionPtr{ for_each, FunctionPtr::Type::other } });
+    add(str("list"), SExpr{ FunctionPtr{ list, FunctionPtr::Type::other } });
+    add(str("lambda"), SExpr{ FunctionPtr{ lambda, FunctionPtr::Type::lambda_expr } });
+    add(str("do"), SExpr{ FunctionPtr{ doer, FunctionPtr::Type::do_expr } });
+    add(str("define"), SExpr{ FunctionPtr{ definer, FunctionPtr::Type::define_expr } });
+    add(str("let"), SExpr{ FunctionPtr{ letter, FunctionPtr::Type::let_expr } });
+    add(str("car"), SExpr{ FunctionPtr{ car, FunctionPtr::Type::other } });
+    add(str("cdr"), SExpr{ FunctionPtr{ cdr, FunctionPtr::Type::other } });
+    add(str("cons"), SExpr{ FunctionPtr{ cons, FunctionPtr::Type::other } });
+    add(str("append"), SExpr{ FunctionPtr{ append, FunctionPtr::Type::other } });
+    add(str("eval"), SExpr{ FunctionPtr{ evaler, FunctionPtr::Type::other } });
+    add(str("apply"), SExpr{ FunctionPtr{ applier, FunctionPtr::Type::other } });
   }
 
   [[nodiscard]] constexpr SExpr sequence(LexicalScope &scope, list_type expressions)
@@ -771,14 +806,14 @@ struct cons_expr
       return (func->ptr)(*this, scope, params);
     }
 
-    return make_error("Function", function);
+    return make_error(str("Function"), function);
   }
 
   template<auto Func, typename Ret, typename... Param>
   [[nodiscard]] constexpr static function_ptr make_evaluator() noexcept
   {
     return function_ptr{ [](cons_expr &engine, LexicalScope &scope, list_type params) -> SExpr {
-      if (params.size != sizeof...(Param)) { return engine.make_error("wrong param count for function", params); }
+      if (params.size != sizeof...(Param)) { return engine.make_error(str("wrong param count for function"), params); }
 
       // these invoke UB if the type is not contained, we need to come up with a better solution
       auto impl = [&]<size_type... Idx>(std::integer_sequence<size_type, Idx...>) {
@@ -818,17 +853,17 @@ struct cons_expr
     return make_evaluator<Func>(Func);
   }
 
-  constexpr auto add(std::basic_string_view<char_type> name, SExpr value)
+  constexpr auto add(string_view_type name, SExpr value)
   {
     return global_scope.emplace_back(strings.insert_or_find(name), value);
   }
 
-  template<auto Func> constexpr auto add(std::basic_string_view<char_type> name)
+  template<auto Func> constexpr auto add(string_view_type name)
   {
     return add(name, SExpr{ FunctionPtr{ make_evaluator<Func>() } });
   }
 
-  template<typename Value> constexpr auto add(std::basic_string_view<char_type> name, Value value)
+  template<typename Value> constexpr auto add(string_view_type name, Value value)
   {
     return add(name, SExpr{ Atom{ value } });
   }
@@ -850,7 +885,7 @@ struct cons_expr
       // is quoted identifier, handle appropriately
       if (string.starts_with('\'')) { return SExpr{ Atom{ id->substr(1) } }; }
 
-      return make_error("id not found", expr);
+      return make_error(str("id not found"), expr);
     }
     return expr;
   }
@@ -899,7 +934,7 @@ struct cons_expr
 
   [[nodiscard]] static constexpr SExpr lambda(cons_expr &engine, LexicalScope &scope, list_type params)
   {
-    if (params.size < 2) { return engine.make_error("(lambda ([params...]) [statement...])", params); }
+    if (params.size < 2) { return engine.make_error(str("(lambda ([params...]) [statement...])"), params); }
 
     auto locals = engine.get_lambda_parameter_names(engine.values[params[0]]);
 
@@ -914,11 +949,11 @@ struct cons_expr
     const auto list = engine.get_if<list_type>(&engine.values[params[0]]);
     if (list) { return SExpr{ Closure{ *list, { engine.values.insert_or_find(fixed_statements) } } }; }
 
-    return engine.make_error("(lambda ([params...]) [statement...])", params);
+    return engine.make_error(str("(lambda ([params...]) [statement...])"), params);
   }
 
   [[nodiscard]] constexpr std::expected<list_type, SExpr> get_list(SExpr expr,
-    std::basic_string_view<char_type> message,
+    string_view_type message,
     size_type min = 0,
     size_type max = std::numeric_limits<size_type>::max())
   {
@@ -931,7 +966,7 @@ struct cons_expr
   }
 
   [[nodiscard]] constexpr std::expected<typename decltype(values)::View, SExpr> get_list_range(SExpr expr,
-    std::basic_string_view<char_type> message,
+    string_view_type message,
     size_type min = 0,
     size_type max = std::numeric_limits<size_type>::max())
   {
@@ -950,20 +985,20 @@ struct cons_expr
     std::vector<SExpr> new_params;
 
     // collect all locals
-    const auto params = get_list(values[first_index + 1], "malformed do expression");
+    const auto params = get_list(values[first_index + 1], str("malformed do expression"));
     if (!params) { return params.error(); }
 
     for (const auto &param : values[*params]) {
-      const auto param_list = get_list(param, "malformed do expression", 2);
+      const auto param_list = get_list(param, str("malformed do expression"), 2);
       if (!param_list) { return params.error(); }
 
       auto id = get_if<identifier_type>(&values[(*param_list)[0]]);
-      if (id == nullptr) { return make_error("malformed do expression", list); }
+      if (id == nullptr) { return make_error(str("malformed do expression"), list); }
       new_locals.push_back(id->value);
     }
 
     for (const auto &param : values[*params]) {
-      const auto param_list = get_list(param, "malformed do expression", 2);
+      const auto param_list = get_list(param, str("malformed do expression"), 2);
       if (!param_list) { return params.error(); }
 
       std::vector<SExpr> new_param;
@@ -999,15 +1034,16 @@ struct cons_expr
 
     std::vector<SExpr> new_params;
 
-    const auto params = get_list_range(values[static_cast<size_type>(first_index + 1)], "malformed let expression");
+    const auto params =
+      get_list_range(values[static_cast<size_type>(first_index + 1)], str("malformed let expression"));
     if (!params) { return params.error(); }
 
     for (const auto &param : params.value()) {
-      const auto param_list = get_list(param, "malformed let expression", 2, 2);
+      const auto param_list = get_list(param, str("malformed let expression"), 2, 2);
       if (!param_list) { return param_list.error(); }
 
       auto id = get_if<identifier_type>(&values[(*param_list)[0]]);
-      if (id == nullptr) { return make_error("malformed let expression", list); }
+      if (id == nullptr) { return make_error(str("malformed let expression"), list); }
       new_locals.push_back(id->value);
 
       std::array new_param{ values[(*param_list)[0]],
@@ -1034,7 +1070,7 @@ struct cons_expr
 
     const auto *id = get_if<identifier_type>(&values[static_cast<size_type>(first_index + 1)]);
 
-    if (id == nullptr) { return make_error("malformed define expression", values[first_index + 1]); }
+    if (id == nullptr) { return make_error(str("malformed define expression"), values[first_index + 1]); }
     new_locals.push_back(id->value);
 
     std::array<SExpr, 3> new_define{ fix_identifiers(values[first_index], local_identifiers, local_constants),
@@ -1070,18 +1106,18 @@ struct cons_expr
       if (list->size != 0) {
         auto first_index = list->start;
         const auto &elem = values[first_index];
-        std::basic_string_view<char_type> id = "";
+        string_view_type id;
         auto fp_type = FunctionPtr::Type::other;
         if (auto *id_atom = get_if<identifier_type>(&elem); id_atom != nullptr) { id = strings.view(id_atom->value); }
         if (auto *fp = get_if<FunctionPtr>(&elem); fp != nullptr) { fp_type = fp->type; }
 
-        if (fp_type == FunctionPtr::Type::lambda_expr || id == "lambda") {
+        if (fp_type == FunctionPtr::Type::lambda_expr || id == str("lambda")) {
           return fix_lambda_identifiers(*list, first_index, local_identifiers, local_constants);
-        } else if (fp_type == FunctionPtr::Type::let_expr || id == "let") {
+        } else if (fp_type == FunctionPtr::Type::let_expr || id == str("let")) {
           return fix_let_identifiers(*list, first_index, local_identifiers, local_constants);
-        } else if (fp_type == FunctionPtr::Type::define_expr || id == "define") {
+        } else if (fp_type == FunctionPtr::Type::define_expr || id == str("define")) {
           return fix_define_identifiers(first_index, local_identifiers, local_constants);
-        } else if (fp_type == FunctionPtr::Type::do_expr || id == "do") {
+        } else if (fp_type == FunctionPtr::Type::do_expr || id == str("do")) {
           return fix_do_identifiers(*list, first_index, local_identifiers, local_constants);
         }
       }
@@ -1107,18 +1143,17 @@ struct cons_expr
     return input;
   }
 
-  [[nodiscard]] constexpr SExpr make_error(std::basic_string_view<char_type> description, list_type context) noexcept
+  [[nodiscard]] constexpr SExpr make_error(string_view_type description, list_type context) noexcept
   {
     return SExpr{ Error{ strings.insert_or_find(description), context } };
   }
 
-  [[nodiscard]] constexpr SExpr make_error(std::basic_string_view<char_type> description, SExpr value) noexcept
+  [[nodiscard]] constexpr SExpr make_error(string_view_type description, SExpr value) noexcept
   {
     return make_error(description, values.insert_or_find(std::array{ value }));
   }
 
-  [[nodiscard]] constexpr SExpr
-    make_error(std::basic_string_view<char_type> description, SExpr value, SExpr value2) noexcept
+  [[nodiscard]] constexpr SExpr make_error(string_view_type description, SExpr value, SExpr value2) noexcept
   {
     return make_error(description, values.insert_or_find(std::array{ value, value2 }));
   }
@@ -1129,21 +1164,21 @@ struct cons_expr
   //
   [[nodiscard]] static constexpr SExpr letter(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
-    if (params.empty()) { return engine.make_error("(let ((var1 val1) ...) [expr...])", params); }
+    if (params.empty()) { return engine.make_error(str("(let ((var1 val1) ...) [expr...])"), params); }
 
     std::vector<std::pair<std::size_t, SExpr>> variables;
 
     auto new_scope = scope;
 
-    const auto variable_list = engine.get_list_range(engine.values[params[0]], "((var1 val1) ...)");
+    const auto variable_list = engine.get_list_range(engine.values[params[0]], str("((var1 val1) ...)"));
     if (!variable_list) { return variable_list.error(); }
 
     for (const auto variable : *variable_list) {
-      const auto variable_elements = engine.get_list_range(variable, "(var1 val1)", 2, 2);
+      const auto variable_elements = engine.get_list_range(variable, str("(var1 val1)"), 2, 2);
       if (!variable_elements) { return variable_elements.error(); }
 
       auto variable_id = engine.eval_to<identifier_type>(scope, (*variable_elements)[0]);
-      if (!variable_id) { return engine.make_error("expected identifier", variable_id.error()); }
+      if (!variable_id) { return engine.make_error(str("expected identifier"), variable_id.error()); }
       new_scope.emplace_back(variable_id->value, engine.eval(scope, (*variable_elements)[1]));
     }
 
@@ -1156,7 +1191,7 @@ struct cons_expr
   {
     if (params.size < 2) {
       return engine.make_error(
-        "(do ((var1 val1 [iter_expr1]) ...) (terminate_condition [result...]) [body...])", params);
+        str("(do ((var1 val1 [iter_expr1]) ...) (terminate_condition [result...]) [body...])"), params);
     }
 
     std::vector<std::pair<std::size_t, SExpr>> variables;
@@ -1165,7 +1200,7 @@ struct cons_expr
     auto *variable_list = engine.get_if<list_type>(&engine.values[params[0]]);
 
     if (variable_list == nullptr) {
-      return engine.make_error("((var1 val1 [iter_expr1]) ...)", engine.values[params[0]]);
+      return engine.make_error(str("((var1 val1 [iter_expr1]) ...)"), engine.values[params[0]]);
     }
 
     auto new_scope = scope;
@@ -1173,7 +1208,7 @@ struct cons_expr
     for (const auto &variable : engine.values[*variable_list]) {
       auto *variable_parts = engine.get_if<list_type>(&variable);
       if (variable_parts == nullptr || variable_parts->size < 2 || variable_parts->size > 3) {
-        return engine.make_error("(var1 val1 [iter_expr1])", variable);
+        return engine.make_error(str("(var1 val1 [iter_expr1])"), variable);
       }
 
       auto variable_parts_list = engine.values[*variable_parts];
@@ -1181,7 +1216,7 @@ struct cons_expr
       const auto index = new_scope.size();
       const auto id = engine.eval_to<identifier_type>(scope, variable_parts_list[0]);
 
-      if (!id) { return engine.make_error("identifier", id.error()); }
+      if (!id) { return engine.make_error(str("identifier"), id.error()); }
 
       // initial value
       new_scope.emplace_back(id->value, engine.eval(scope, variable_parts_list[1]));
@@ -1199,7 +1234,7 @@ struct cons_expr
     const auto terminator_param = engine.values[params[1]];
     const auto *terminator_list = engine.get_if<list_type>(&terminator_param);
     if (terminator_list == nullptr || terminator_list->size == 0) {
-      return engine.make_error("(terminator_condition [result...])", terminator_param);
+      return engine.make_error(str("(terminator_condition [result...])"), terminator_param);
     }
     const auto terminators = engine.values[*terminator_list];
 
@@ -1213,7 +1248,7 @@ struct cons_expr
     bool end = false;
     while (!end) {
       const auto condition = engine.eval_to<bool>(new_scope, fixed_up_terminator);
-      if (!condition) { return engine.make_error("boolean condition", condition.error()); }
+      if (!condition) { return engine.make_error(str("boolean condition"), condition.error()); }
       end = *condition;
       if (!end) {
         // evaluate body
@@ -1235,7 +1270,7 @@ struct cons_expr
 
   template<typename Type>
   [[nodiscard]] constexpr std::expected<Type, SExpr>
-    eval_to(LexicalScope &scope, list_type params, std::string_view expected) noexcept
+    eval_to(LexicalScope &scope, list_type params, string_view_type expected) noexcept
   {
     if (params.size != 1) { return std::unexpected(make_error(expected, params)); }
     auto first = eval_to<Type>(scope, values[params[0]]);
@@ -1246,7 +1281,7 @@ struct cons_expr
 
   template<typename Type1, typename Type2>
   [[nodiscard]] constexpr std::expected<std::tuple<Type1, Type2>, SExpr>
-    eval_to(LexicalScope &scope, list_type params, std::string_view expected) noexcept
+    eval_to(LexicalScope &scope, list_type params, string_view_type expected) noexcept
   {
     if (params.size != 2) { return std::unexpected(make_error(expected, params)); }
 
@@ -1261,7 +1296,7 @@ struct cons_expr
   [[nodiscard]] static constexpr SExpr append(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
     auto evaled_params =
-      engine.eval_to<literal_list_type, literal_list_type>(scope, params, "(append LiteralList LiteralList)");
+      engine.eval_to<literal_list_type, literal_list_type>(scope, params, str("(append LiteralList LiteralList)"));
     if (!evaled_params) { return evaled_params.error(); }
     const auto &[first, second] = *evaled_params;
 
@@ -1275,7 +1310,7 @@ struct cons_expr
 
   [[nodiscard]] static constexpr SExpr cons(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
-    auto evaled_params = engine.eval_to<SExpr, literal_list_type>(scope, params, "(cons Expr LiteralList)");
+    auto evaled_params = engine.eval_to<SExpr, literal_list_type>(scope, params, str("(cons Expr LiteralList)"));
     if (!evaled_params) { return evaled_params.error(); }
     const auto &[front, list] = *evaled_params;
 
@@ -1304,19 +1339,19 @@ struct cons_expr
 
   [[nodiscard]] static constexpr SExpr cdr(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
-    return error_or_else(engine.eval_to<literal_list_type>(scope, params, "(cdr Non-Empty-LiteralList)"),
+    return error_or_else(engine.eval_to<literal_list_type>(scope, params, str("(cdr Non-Empty-LiteralList)")),
       [&](const auto &list) { return SExpr{ list.sublist(1) }; });
   }
 
   [[nodiscard]] static constexpr SExpr car(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
-    return error_or_else(engine.eval_to<literal_list_type>(scope, params, "(car Non-Empty-LiteralList)"),
+    return error_or_else(engine.eval_to<literal_list_type>(scope, params, str("(car Non-Empty-LiteralList)")),
       [&](const auto &list) { return engine.values[list.front()]; });
   }
 
   [[nodiscard]] static constexpr SExpr applier(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
-    return error_or_else(engine.eval_to<SExpr, literal_list_type>(scope, params, "(apply Function LiteralList)"),
+    return error_or_else(engine.eval_to<SExpr, literal_list_type>(scope, params, str("(apply Function LiteralList)")),
       [&](const auto &evaled_params) {
         return engine.invoke_function(scope, std::get<0>(evaled_params), std::get<1>(evaled_params).items);
       });
@@ -1324,18 +1359,18 @@ struct cons_expr
 
   [[nodiscard]] static constexpr SExpr evaler(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
-    return error_or_else(engine.eval_to<literal_list_type>(scope, params, "(eval LiteralList)"),
+    return error_or_else(engine.eval_to<literal_list_type>(scope, params, str("(eval LiteralList)")),
       [&](const auto &list) { return engine.eval(engine.global_scope, SExpr{ list.items }); });
   }
 
   [[nodiscard]] static constexpr SExpr ifer(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
     // need to be careful to not execute unexecuted branches
-    if (params.size != 3) { return engine.make_error("(if bool-cond then else)", params); }
+    if (params.size != 3) { return engine.make_error(str("(if bool-cond then else)"), params); }
 
     const auto condition = engine.eval_to<bool>(scope, engine.values[params[0]]);
 
-    if (!condition) { return engine.make_error("boolean condition", condition.error()); }
+    if (!condition) { return engine.make_error(str("boolean condition"), condition.error()); }
 
     if (*condition) {
       return engine.eval(scope, engine.values[params[1]]);
@@ -1346,7 +1381,7 @@ struct cons_expr
 
   [[nodiscard]] static constexpr SExpr for_each(cons_expr &engine, LexicalScope &scope, list_type params)
   {
-    auto evaled_params = engine.eval_to<SExpr, literal_list_type>(scope, params, "(for_each Function (param...))");
+    auto evaled_params = engine.eval_to<SExpr, literal_list_type>(scope, params, str("(for_each Function (param...))"));
     if (!evaled_params) { return evaled_params.error(); }
     const auto &[func, applied_params] = *evaled_params;
 
@@ -1359,8 +1394,8 @@ struct cons_expr
 
   [[nodiscard]] static constexpr SExpr definer(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
-    return error_or_else(
-      engine.eval_to<identifier_type, SExpr>(scope, params, "(define Identifier Expression)"), [&](const auto &evaled) {
+    return error_or_else(engine.eval_to<identifier_type, SExpr>(scope, params, str("(define Identifier Expression)")),
+      [&](const auto &evaled) {
         scope.emplace_back(std::get<0>(evaled).value, engine.fix_identifiers(std::get<1>(evaled), {}, scope));
         return SExpr{ Atom{ std::monostate{} } };
       });
@@ -1369,7 +1404,7 @@ struct cons_expr
   // take a string_view and return a C++ function object
   // of unspecified type.
   template<typename Signature>
-  [[nodiscard]] constexpr auto make_callable(std::basic_string_view<char_type> function) noexcept
+  [[nodiscard]] constexpr auto make_callable(string_view_type function) noexcept
     requires std::is_function_v<Signature>
   {
     auto impl = [this, function]<typename Ret, typename... Params>(Ret (*)(Params...)) {
@@ -1399,13 +1434,13 @@ struct cons_expr
       if constexpr (requires(Param p1, Param p2) { Op(p1, p2); }) {
         for (const auto &elem : engine.values[params.sublist(1)]) {
           const auto &next = engine.eval_to<Param>(scope, elem);
-          if (!next) { return engine.make_error("same types for operator", SExpr{ first }, next.error()); }
+          if (!next) { return engine.make_error(str("same types for operator"), SExpr{ first }, next.error()); }
           first = Op(first, *next);
         }
 
         return SExpr{ Atom{ first } };
       } else {
-        return engine.make_error("operator not supported for types", params);
+        return engine.make_error(str("operator not supported for types"), params);
       }
     };
 
@@ -1414,17 +1449,17 @@ struct cons_expr
       if (const auto *atom = std::get_if<Atom>(&param1.value); atom != nullptr) {
         return visit(fold, *atom);
       } else {
-        return engine.make_error("operator not supported for types", params);
+        return engine.make_error(str("operator not supported for types"), params);
       }
     }
 
-    return engine.make_error("operator requires at east two parameters", params);
+    return engine.make_error(str("operator requires at east two parameters"), params);
   }
 
   [[nodiscard]] static constexpr SExpr logical_and(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
     for (const auto &next : engine.values[params] | engine.eval_transform<bool>(scope)) {
-      if (!next) { return engine.make_error("parameter not boolean", next.error()); }
+      if (!next) { return engine.make_error(str("parameter not boolean"), next.error()); }
       if (!next.value()) { return SExpr{ Atom{ false } }; }
     }
 
@@ -1434,7 +1469,7 @@ struct cons_expr
   [[nodiscard]] static constexpr SExpr logical_or(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
     for (const auto &next : engine.values[params] | engine.eval_transform<bool>(scope)) {
-      if (!next) { return engine.make_error("parameter not boolean", next.error()); }
+      if (!next) { return engine.make_error(str("parameter not boolean"), next.error()); }
       if (next.value()) { return SExpr{ Atom{ true } }; }
     }
 
@@ -1449,18 +1484,18 @@ struct cons_expr
       if constexpr (requires(Param p1, Param p2) { Op(p1, p2); }) {
         for (const auto &elem : engine.values[params.sublist(1)]) {
           const auto &result = engine.eval_to<Param>(scope, elem);
-          if (!result) { return engine.make_error("same types for operator", SExpr{ next }, result.error()); }
+          if (!result) { return engine.make_error(str("same types for operator"), SExpr{ next }, result.error()); }
           const auto prev = std::exchange(next, *result);
           if (!Op(prev, next)) { return SExpr{ Atom{ false } }; }
         }
 
         return SExpr{ Atom{ true } };
       } else {
-        return engine.make_error("supported types", params);
+        return engine.make_error(str("supported types"), params);
       }
     };
 
-    if (params.size < 2) { return engine.make_error("at least 2 parameters", params); }
+    if (params.size < 2) { return engine.make_error(str("at least 2 parameters"), params); }
     auto first_param = engine.eval(scope, engine.values[params[0]]).value;
 
     // For working directly on "LiteralList" objects
@@ -1468,7 +1503,7 @@ struct cons_expr
 
     if (const auto *atom = std::get_if<Atom>(&first_param); atom != nullptr) { return visit(sum, *atom); }
 
-    return engine.make_error("supported types", params);
+    return engine.make_error(str("supported types"), params);
   }
 };
 

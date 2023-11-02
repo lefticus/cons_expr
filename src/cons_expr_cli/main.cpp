@@ -37,8 +37,8 @@ int main(int argc, const char **argv)
     if (script) {
       std::cout << lefticus::to_string(evaluator,
         false,
-        evaluator.sequence(evaluator.global_scope,
-          std::get<cons_expr_type::list_type>(evaluator.parse(*script).first.value)));
+        evaluator.sequence(
+          evaluator.global_scope, std::get<cons_expr_type::list_type>(evaluator.parse(*script).first.value)));
       std::cout << '\n';
     }
   } catch (const std::exception &e) {
