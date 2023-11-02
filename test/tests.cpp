@@ -3,32 +3,52 @@
 
 #include <cons_expr/cons_expr.hpp>
 
-using cons_expr_type = lefticus::cons_expr<>;
+template<typename char_type>
+using cons_expr_type = lefticus::cons_expr<std::uint16_t, char_type>;
 
-void display(cons_expr_type::int_type i) { std::cout << i << '\n'; }
+void display(cons_expr_type<char>::int_type i) { std::cout << i << '\n'; }
 
-auto evaluate(std::string_view input)
+auto evaluate(std::basic_string_view<char> input)
 {
-  cons_expr_type evaluator;
+  cons_expr_type<char> evaluator;
 
-  evaluator.add<display>("display");
+  evaluator.template add<display>("display");
 
   auto parse_result = evaluator.parse(input);
-  auto list = std::get<cons_expr_type::list_type>(parse_result.first.value);
+  auto list = std::get<cons_expr_type<char>::list_type>(parse_result.first.value);
 
   return evaluator.sequence(evaluator.global_scope, list);
 }
 
-template<typename Result> Result evaluate_to(std::string_view input)
+template<typename Result, typename char_type = char> Result evaluate_to(std::basic_string_view<char_type> input)
 {
-  return std::get<Result>(std::get<cons_expr_type::Atom>(evaluate(input).value));
+  return std::get<Result>(std::get<typename cons_expr_type<char_type>::Atom>(evaluate(input).value));
 }
 
+template<typename char_type = char> auto evaluate_non_char(std::basic_string_view<char_type> input)
+{
+  cons_expr_type<char_type> evaluator;
+
+  auto parse_result = evaluator.parse(input);
+  auto list = std::get<typename cons_expr_type<char_type>::list_type>(parse_result.first.value);
+
+  return evaluator.sequence(evaluator.global_scope, list);
+}
+
+template<typename Result, typename char_type = char> Result evaluate_non_char_to(std::basic_string_view<char_type> input)
+{
+  return std::get<Result>(std::get<typename cons_expr_type<char_type>::Atom>(evaluate_non_char(input).value));
+}
+
+TEST_CASE("non-char characters", "[c++ api]")
+{
+  CHECK(evaluate_non_char_to<int, wchar_t>(L"(+ 1 2 3 4)") == 10);
+}
 
 TEST_CASE("basic callable usage", "[c++ api]")
 {
-  cons_expr_type evaluator;
-  using int_type = cons_expr_type::int_type;
+  cons_expr_type<char> evaluator;
+  using int_type = cons_expr_type<char>::int_type;
 
   auto func = evaluator.make_callable<int_type (int_type, int_type, int_type)>("+");
   CHECK(func(evaluator, 1, 2, 3) == 6);
@@ -39,7 +59,7 @@ TEST_CASE("basic callable usage", "[c++ api]")
 
 TEST_CASE("GPT Generated Tests", "[integration tests]")
 {
-  CHECK(evaluate_to<cons_expr_type::int_type>(R"(
+  CHECK(evaluate_to<typename cons_expr_type<char>::int_type, char>(R"(
 (define make-adder-multiplier
   (lambda (a)
     (lambda (b)
@@ -95,7 +115,7 @@ TEST_CASE("member functions", "[function]")
 
 TEST_CASE("basic for-each usage", "[builtins]")
 {
-  CHECK_NOTHROW(evaluate_to<std::monostate>("(for-each display '(1 2 3 4))"));
+  CHECK_NOTHROW(evaluate_to<std::monostate, char>("(for-each display '(1 2 3 4))"));
 }
 
 /*
