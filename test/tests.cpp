@@ -3,8 +3,7 @@
 
 #include <cons_expr/cons_expr.hpp>
 
-template<typename char_type>
-using cons_expr_type = lefticus::cons_expr<std::uint16_t, char_type>;
+template<typename char_type> using cons_expr_type = lefticus::cons_expr<std::uint16_t, char_type>;
 
 void display(cons_expr_type<char>::int_type i) { std::cout << i << '\n'; }
 
@@ -35,22 +34,20 @@ template<typename char_type = char> auto evaluate_non_char(std::basic_string_vie
   return evaluator.sequence(evaluator.global_scope, list);
 }
 
-template<typename Result, typename char_type = char> Result evaluate_non_char_to(std::basic_string_view<char_type> input)
+template<typename Result, typename char_type = char>
+Result evaluate_non_char_to(std::basic_string_view<char_type> input)
 {
   return std::get<Result>(std::get<typename cons_expr_type<char_type>::Atom>(evaluate_non_char(input).value));
 }
 
-TEST_CASE("non-char characters", "[c++ api]")
-{
-  CHECK(evaluate_non_char_to<int, wchar_t>(L"(+ 1 2 3 4)") == 10);
-}
+TEST_CASE("non-char characters", "[c++ api]") { CHECK(evaluate_non_char_to<int, wchar_t>(L"(+ 1 2 3 4)") == 10); }
 
 TEST_CASE("basic callable usage", "[c++ api]")
 {
   cons_expr_type<char> evaluator;
   using int_type = cons_expr_type<char>::int_type;
 
-  auto func = evaluator.make_callable<int_type (int_type, int_type, int_type)>("+");
+  auto func = evaluator.make_callable<int_type(int_type, int_type, int_type)>("+");
   CHECK(func(evaluator, 1, 2, 3) == 6);
 
   auto func2 = evaluator.make_callable<int_type(int_type)>("(lambda (x) (* x x))");
