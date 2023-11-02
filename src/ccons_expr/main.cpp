@@ -97,13 +97,10 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
                            sizeof(lefticus::cons_expr<>),
                            sizeof(lefticus::cons_expr<>::SExpr),
                            sizeof(lefticus::cons_expr<>::Atom))),
-      ftxui::text(std::format("string used: {}+{}  symbols used: {}+{}  values used: {}+{}",
+      ftxui::text(std::format("string used: {} symbols used: {}  values used: {}",
         evaluator.strings.small_size_used,
-        evaluator.strings.rest.size(),
         evaluator.global_scope.small_size_used,
-        evaluator.global_scope.rest.size(),
-        evaluator.values.small_size_used,
-        evaluator.values.rest.size())),
+        evaluator.values.small_size_used)),
       ftxui::text(std::format(
         "GIT SHA: {}  version string: {}", cons_expr::cmake::git_sha, cons_expr::cmake::project_version)) });
   };

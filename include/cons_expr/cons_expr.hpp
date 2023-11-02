@@ -39,7 +39,6 @@ SOFTWARE.
 #include <type_traits>
 #include <utility>
 #include <variant>
-#include <vector>
 
 // https://en.wikipedia.org/wiki/Greenspun%27s_tenth_rule
 //
@@ -141,44 +140,18 @@ struct SmallOptimizedVector
 
   std::array<Contained, SmallSize> small;
   size_type small_size_used = 0;
-  std::vector<Contained> rest;
 
   static constexpr auto small_capacity = SmallSize;
 
-  [[nodiscard]] constexpr auto size() const noexcept
-  {
-    if (!rest.empty()) {
-      return static_cast<size_type>(rest.size() + SmallSize);
-    } else {
-      return small_size_used;
-    }
-  }
+  [[nodiscard]] constexpr auto size() const noexcept { return small_size_used; }
 
-  [[nodiscard]] constexpr Contained &operator[](size_type index)
-  {
-    if (index < SmallSize) {
-      return small[index];
-    } else {
-      return rest[index - SmallSize];
-    }
-  }
+  [[nodiscard]] constexpr Contained &operator[](size_type index) { return small[index]; }
 
-  [[nodiscard]] constexpr const Contained &operator[](size_type index) const
-  {
-    if (index < SmallSize) {
-      return small[index];
-    } else {
-      return rest[index - SmallSize];
-    }
-  }
+  [[nodiscard]] constexpr const Contained &operator[](size_type index) const { return small[index]; }
 
   [[nodiscard]] constexpr SpanType view(KeyType range) const
   {
-    if (range.start >= SmallSize) {
-      return SpanType{ std::span<const Contained>(rest).subspan(range.start - SmallSize, range.size) };
-    } else {
-      return SpanType{ std::span<const Contained>(small).subspan(range.start, range.size) };
-    }
+    return SpanType{ std::span<const Contained>(small).subspan(range.start, range.size) };
   }
 
   template<typename... Param> constexpr auto emplace_back(Param &&...param)
@@ -186,15 +159,11 @@ struct SmallOptimizedVector
     return insert(Contained{ std::forward<Param>(param)... });
   }
 
-  constexpr size_type insert(Contained obj, bool force_rest = false)
+  constexpr size_type insert(Contained obj)
   {
-    if (!rest.empty() || force_rest || small_size_used == SmallSize) {
-      rest.push_back(std::move(obj));
-      return static_cast<size_type>(rest.size() - 1) + SmallSize;
-    } else {
-      small[small_size_used] = std::move(obj);
-      return small_size_used++;
-    }
+    // handle case where small_size is too small to hold this object
+    small[small_size_used] = std::move(obj);
+    return small_size_used++;
   }
 
   constexpr auto small_end() { return std::next(small.begin(), static_cast<std::ptrdiff_t>(small_size_used)); }
@@ -267,11 +236,6 @@ struct SmallOptimizedVector
         small_found != small_end()) {
       return KeyType{ static_cast<size_type>(std::distance(small.begin(), small_found)),
         static_cast<size_type>(values.size()) };
-    } else if (const auto rest_found = std::search(rest.begin(), rest.end(), values.begin(), values.end());
-               rest_found != rest.end()) {
-      return KeyType{ static_cast<size_type>(
-                        static_cast<size_type>(std::distance(rest.begin(), rest_found)) + SmallSize),
-        static_cast<size_type>(values.size()) };
     } else {
       return insert(values);
     }
@@ -279,9 +243,8 @@ struct SmallOptimizedVector
 
   constexpr KeyType insert(SpanType values)
   {
-    const bool force_rest = !rest.empty() || ((values.size() + small_size_used) > SmallSize);
     size_type last = 0;
-    for (const auto &value : values) { last = insert(value, force_rest); }
+    for (const auto &value : values) { last = insert(value); }
     return KeyType{ static_cast<size_type>(last - values.size() + 1), static_cast<size_type>(values.size()) };
   }
 };
