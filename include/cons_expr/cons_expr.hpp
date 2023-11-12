@@ -143,6 +143,15 @@ struct SmallVector
 
   static constexpr auto small_capacity = SmallSize;
 
+  template<typename st, auto sz, typename kt, typename span_t>
+  constexpr void append(const SmallVector<st, Contained, sz, kt, span_t> &other) {
+    std::copy(other.small.begin(), other.small.begin() + other.small_size_used, small.begin() + small_size_used);
+    small_size_used += other.size();
+  }
+
+  constexpr SmallVector(std::ranges::range auto other) : small_size_used{static_cast<size_type>(other.size())} {
+    std::copy(other.begin(), other.end(), small.begin());
+  }
   constexpr SmallVector(auto... param) : small{ param... }, small_size_used{ sizeof...(param) } {}
 
   [[nodiscard]] constexpr auto size() const { return small_size_used; }
@@ -883,11 +892,10 @@ struct cons_expr
     return SExpr{ LiteralList{ engine.values.insert_or_find(result.to_span()) } };
   }
 
-  constexpr std::vector<string_type> get_lambda_parameter_names(const SExpr &sexpr)
+  constexpr SmallVector<size_type, string_type, 16, IndexedList<size_type>> get_lambda_parameter_names(const SExpr &sexpr)
   {
-    std::vector<string_type> retval;
+    SmallVector<size_type, string_type, 16, IndexedList<size_type>> retval;
     if (auto *parameter_list = get_if<list_type>(&sexpr); parameter_list != nullptr) {
-      retval.reserve(parameter_list->size);
       for (const auto &expr : values[*parameter_list]) {
         if (auto *local_id = get_if<identifier_type>(&expr); local_id != nullptr) { retval.push_back(local_id->value); }
       }
@@ -906,7 +914,7 @@ struct cons_expr
 
     for (const auto &statement : engine.values[params.sublist(1)]) {
       // all of current scope is const and capturable
-      fixed_statements.push_back(engine.fix_identifiers(statement, locals, scope));
+      fixed_statements.push_back(engine.fix_identifiers(statement, locals.to_span(), scope));
     }
 
     const auto list = engine.get_if<list_type>(&engine.values[params[0]]);
@@ -943,8 +951,7 @@ struct cons_expr
     std::span<const string_type> local_identifiers,
     const LexicalScope &local_constants)
   {
-    std::vector<string_type> new_locals{ local_identifiers.begin(), local_identifiers.end() };
-
+    SmallVector<size_type, string_type, 16, IndexedList<size_type>> new_locals{ local_identifiers };
     SmallVector<size_type, SExpr, 16, IndexedList<size_type>> new_params;
 
     // collect all locals
@@ -970,7 +977,7 @@ struct cons_expr
       new_param.push_back(fix_identifiers(values[(*param_list)[1]], local_identifiers, local_constants));
       // increment thingy (optional)
       if (param_list->size == 3) {
-        new_param.push_back(fix_identifiers(values[(*param_list)[2]], new_locals, local_constants));
+        new_param.push_back(fix_identifiers(values[(*param_list)[2]], new_locals.to_span(), local_constants));
       }
       new_params.push_back(SExpr{ values.insert_or_find(new_param.to_span()) });
     }
@@ -978,13 +985,13 @@ struct cons_expr
     SmallVector<size_type, SExpr, 16, IndexedList<size_type>> new_do;
 
     // fixup pointer to "do" function
-    new_do.push_back(fix_identifiers(values[first_index], new_locals, local_constants));
+    new_do.push_back(fix_identifiers(values[first_index], new_locals.to_span(), local_constants));
 
     // add parameter setup
     new_do.push_back(SExpr{ values.insert_or_find(new_params.to_span()) });
 
     for (auto value : values[list.sublist(2)]) {
-      new_do.push_back(fix_identifiers(value, new_locals, local_constants));
+      new_do.push_back(fix_identifiers(value, new_locals.to_span(), local_constants));
     }
 
     return SExpr{ values.insert_or_find(new_do.to_span()) };
@@ -995,7 +1002,7 @@ struct cons_expr
     std::span<const string_type> local_identifiers,
     const LexicalScope &local_constants)
   {
-    std::vector<string_type> new_locals{ local_identifiers.begin(), local_identifiers.end() };
+    SmallVector<size_type, string_type, 16, IndexedList<size_type>> new_locals{ local_identifiers };
 
     SmallVector<size_type, SExpr, 16, IndexedList<size_type>> new_params;
 
@@ -1018,12 +1025,12 @@ struct cons_expr
     }
 
     SmallVector<size_type, SExpr, 16, IndexedList<size_type>> new_let{
-      fix_identifiers(values[first_index], new_locals, local_constants),
+      fix_identifiers(values[first_index], new_locals.to_span(), local_constants),
       SExpr{ values.insert_or_find(new_params.to_span()) }
     };
 
     for (size_type index = first_index + 2; index < list.size + list.start; ++index) {
-      new_let.push_back(fix_identifiers(values[index], new_locals, local_constants));
+      new_let.push_back(fix_identifiers(values[index], new_locals.to_span(), local_constants));
     }
 
     return SExpr{ values.insert_or_find(new_let.to_span()) };
@@ -1033,7 +1040,7 @@ struct cons_expr
     std::span<const string_type> local_identifiers,
     const LexicalScope &local_constants)
   {
-    std::vector<string_type> new_locals{ local_identifiers.begin(), local_identifiers.end() };
+    SmallVector<size_type, string_type, 16, IndexedList<size_type>> new_locals{ local_identifiers };
 
     const auto *id = get_if<identifier_type>(&values[static_cast<size_type>(first_index + 1)]);
 
@@ -1042,7 +1049,7 @@ struct cons_expr
 
     std::array<SExpr, 3> new_define{ fix_identifiers(values[first_index], local_identifiers, local_constants),
       values[first_index + 1],
-      fix_identifiers(values[first_index + 2], new_locals, local_constants) };
+      fix_identifiers(values[first_index + 2], new_locals.to_span(), local_constants) };
     return SExpr{ values.insert_or_find(new_define) };
   }
 
@@ -1052,16 +1059,16 @@ struct cons_expr
     std::span<const string_type> local_identifiers,
     const LexicalScope &local_constants)
   {
-    std::vector<string_type> new_locals{ local_identifiers.begin(), local_identifiers.end() };
+    SmallVector<size_type, string_type, 16, IndexedList<size_type>> new_locals{ local_identifiers };
     auto lambda_locals = get_lambda_parameter_names(values[first_index + 1]);
-    new_locals.insert(new_locals.end(), lambda_locals.begin(), lambda_locals.end());
+    new_locals.append(lambda_locals);
 
     SmallVector<size_type, SExpr, 16, IndexedList<size_type>> new_lambda{
-      fix_identifiers(values[first_index], new_locals, local_constants), values[first_index + 1]
+      fix_identifiers(values[first_index], new_locals.to_span(), local_constants), values[first_index + 1]
     };
 
     for (size_type index = first_index + 2; index < list.size + list.start; ++index) {
-      new_lambda.push_back(fix_identifiers(values[index], new_locals, local_constants));
+      new_lambda.push_back(fix_identifiers(values[index], new_locals.to_span(), local_constants));
     }
 
     return SExpr{ values.insert_or_find(new_lambda.to_span()) };
@@ -1164,7 +1171,8 @@ struct cons_expr
 
     SmallVector<size_type, std::pair<size_type, SExpr>, 16, IndexedList<size_type>> variables;
 
-    std::vector<string_type> variable_names;
+    SmallVector<size_type, string_type, 32, IndexedList<size_type>> variable_names;
+
 
     auto *variable_list = engine.get_if<list_type>(&engine.values[params[0]]);
 
@@ -1195,7 +1203,7 @@ struct cons_expr
     }
 
     for (size_type idx = 0; idx < variables.size(); ++idx) {
-      variables[idx].second = engine.fix_identifiers(variables[idx].second, variable_names, scope);
+      variables[idx].second = engine.fix_identifiers(variables[idx].second, variable_names.to_span(), scope);
     }
 
     for (const auto &local : new_scope) { variable_names.push_back(local.first); }
@@ -1208,7 +1216,7 @@ struct cons_expr
     const auto terminators = engine.values[*terminator_list];
 
 
-    auto fixed_up_terminator = engine.fix_identifiers(terminators[0], variable_names, scope);
+    auto fixed_up_terminator = engine.fix_identifiers(terminators[0], variable_names.to_span(), scope);
 
     // continue while terminator test is false
 
