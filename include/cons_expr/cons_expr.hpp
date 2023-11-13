@@ -26,6 +26,7 @@ SOFTWARE.
 #define CONS_EXPR_HPP
 
 #include <algorithm>
+#include <cassert>
 #include <charconv>
 #include <cstdint>
 #include <expected>
@@ -104,20 +105,20 @@ inline constexpr int cons_expr_version_tweak{};
 
 template<typename char_type> struct chars
 {
-  [[nodiscard]] static consteval std::string_view str(const char *input)
+  [[nodiscard]] static consteval std::string_view str(const char *input) noexcept
     requires std::is_same_v<char_type, char>
   {
     return input;
   }
 
   template<std::size_t Size>
-  [[nodiscard]] static consteval auto str(const char (&input)[Size])
+  [[nodiscard]] static consteval auto str(const char (&input)[Size]) noexcept
     requires(!std::is_same_v<char_type, char>)
   {
     struct Result
     {
       char_type data[Size];
-      constexpr operator std::basic_string_view<char_type>() { return { data, Size - 1 }; }
+      constexpr operator std::basic_string_view<char_type>() noexcept { return { data, Size - 1 }; }
     };
 
     Result result;
@@ -125,7 +126,7 @@ template<typename char_type> struct chars
     return result;
   }
 
-  [[nodiscard]] static consteval char_type ch(const char input) { return input; }
+  [[nodiscard]] static consteval char_type ch(const char input) noexcept { return input; }
 };
 
 
@@ -144,46 +145,67 @@ struct SmallVector
   static constexpr auto small_capacity = SmallSize;
 
   template<typename st, auto sz, typename kt, typename span_t>
-  constexpr void append(const SmallVector<st, Contained, sz, kt, span_t> &other) {
-    std::copy(other.small.begin(), other.small.begin() + other.small_size_used, small.begin() + small_size_used);
-    small_size_used += other.size();
+  constexpr void append(const SmallVector<st, Contained, sz, kt, span_t> &other) noexcept
+  {
+    if (small_size_used + other.size() <= small_capacity) {
+      std::copy(other.small.begin(), other.small.begin() + other.small_size_used, small.begin() + small_size_used);
+      small_size_used += other.size();
+    } else {
+      assert("Size exhausted" && 0);
+    }
   }
 
-  constexpr SmallVector(std::ranges::range auto other) : small_size_used{static_cast<size_type>(other.size())} {
-    std::copy(other.begin(), other.end(), small.begin());
+  constexpr SmallVector(std::ranges::range auto other) noexcept
+    : small_size_used{ static_cast<size_type>(other.size()) }
+  {
+    if (other.size() <= small_capacity) {
+      std::copy(other.begin(), other.end(), small.begin());
+    } else {
+      assert("Size exhausted" && 0);
+    }
   }
-  constexpr SmallVector(auto... param) : small{ param... }, small_size_used{ sizeof...(param) } {}
+  constexpr SmallVector(auto... param)
+    requires(sizeof...(param) <= small_capacity)
+    : small{ param... }, small_size_used{ sizeof...(param) }
+  {}
 
-  [[nodiscard]] constexpr auto size() const { return small_size_used; }
+  [[nodiscard]] constexpr auto size() const noexcept { return small_size_used; }
 
-  [[nodiscard]] constexpr Contained &operator[](size_type index) { return small[index]; }
+  [[nodiscard]] constexpr Contained &operator[](size_type index) noexcept { return small[index]; }
 
-  [[nodiscard]] constexpr const Contained &operator[](size_type index) const { return small[index]; }
-  [[nodiscard]] constexpr auto to_span() const
+  [[nodiscard]] constexpr const Contained &operator[](size_type index) const noexcept { return small[index]; }
+  [[nodiscard]] constexpr auto to_span() const noexcept
   {
     return SpanType{ std::begin(small), std::next(std::begin(small), small_size_used) };
   }
 
-  [[nodiscard]] constexpr SpanType view(KeyType range) const
+  [[nodiscard]] constexpr SpanType view(KeyType range) const noexcept
   {
     return SpanType{ std::span<const Contained>(small).subspan(range.start, range.size) };
   }
 
-  template<typename Param> constexpr auto push_back(Param &&param) { return insert(std::forward<Param>(param)); }
+  template<typename Param> constexpr auto push_back(Param &&param) noexcept
+  {
+    return insert(std::forward<Param>(param));
+  }
 
-  template<typename... Param> constexpr auto emplace_back(Param &&...param)
+  template<typename... Param> constexpr auto emplace_back(Param &&...param) noexcept
   {
     return insert(Contained{ std::forward<Param>(param)... });
   }
 
-  constexpr size_type insert(Contained obj)
+  constexpr size_type insert(Contained obj) noexcept
   {
-    // handle case where small_size is too small to hold this object
-    small[small_size_used] = std::move(obj);
-    return small_size_used++;
+    if (small_size_used < small_capacity) {
+      small[small_size_used] = std::move(obj);
+      return small_size_used++;
+    } else {
+      assert("Small size capacity exhausted" && 0);
+      return small_size_used;
+    }
   }
 
-  constexpr auto small_end() { return std::next(small.begin(), static_cast<std::ptrdiff_t>(small_size_used)); }
+  constexpr auto small_end() noexcept { return std::next(small.begin(), static_cast<std::ptrdiff_t>(small_size_used)); }
 
   struct Iterator
   {
@@ -196,29 +218,29 @@ struct SmallVector
     const SmallVector *container;
     size_type index;
 
-    [[nodiscard]] constexpr bool operator==(const Iterator &other) const { return index == other.index; }
-    [[nodiscard]] constexpr bool operator!=(const Iterator &) const = default;
+    [[nodiscard]] constexpr bool operator==(const Iterator &other) const noexcept { return index == other.index; }
+    [[nodiscard]] constexpr bool operator!=(const Iterator &) const noexcept = default;
 
-    constexpr const auto &operator*() const { return (*container)[index]; }
-    constexpr auto &operator++()
+    constexpr const auto &operator*() const noexcept { return (*container)[index]; }
+    constexpr auto &operator++() noexcept
     {
       ++index;
       return *this;
     }
-    [[nodiscard]] constexpr auto operator++(int)
+    [[nodiscard]] constexpr auto operator++(int) noexcept
     {
       auto result = *this;
       ++(*this);
       return result;
     }
 
-    constexpr auto &operator--()
+    constexpr auto &operator--() noexcept
     {
       --index;
       return *this;
     }
 
-    [[nodiscard]] constexpr auto operator--(int)
+    [[nodiscard]] constexpr auto operator--(int) noexcept
     {
       auto result = *this;
       --(*this);
@@ -230,21 +252,24 @@ struct SmallVector
   {
     KeyType span;
     const SmallVector *container;
-    [[nodiscard]] constexpr const auto &operator[](size_type offset) const { return (*container)[span.start + offset]; }
-    [[nodiscard]] constexpr auto empty() const { return span.empty(); }
-    [[nodiscard]] constexpr auto size() const { return span.size; }
-    [[nodiscard]] constexpr auto begin() const { return Iterator{ container, span.start }; }
-    [[nodiscard]] constexpr auto end() const
+    [[nodiscard]] constexpr const auto &operator[](size_type offset) const noexcept
+    {
+      return (*container)[span.start + offset];
+    }
+    [[nodiscard]] constexpr auto empty() const noexcept { return span.empty(); }
+    [[nodiscard]] constexpr auto size() const noexcept { return span.size; }
+    [[nodiscard]] constexpr auto begin() const noexcept { return Iterator{ container, span.start }; }
+    [[nodiscard]] constexpr auto end() const noexcept
     {
       return Iterator{ container, static_cast<size_type>(span.start + span.size) };
     }
   };
 
-  [[nodiscard]] constexpr auto operator[](KeyType span) const { return View{ span, this }; }
-  [[nodiscard]] constexpr auto begin() const { return Iterator{ this, 0 }; }
-  [[nodiscard]] constexpr auto end() const { return Iterator{ this, size() }; }
+  [[nodiscard]] constexpr auto operator[](KeyType span) const noexcept { return View{ span, this }; }
+  [[nodiscard]] constexpr auto begin() const noexcept { return Iterator{ this, 0 }; }
+  [[nodiscard]] constexpr auto end() const noexcept { return Iterator{ this, size() }; }
 
-  constexpr KeyType insert_or_find(SpanType values)
+  constexpr KeyType insert_or_find(SpanType values) noexcept
   {
     if (const auto small_found = std::search(small.begin(), small_end(), values.begin(), values.end());
         small_found != small_end()) {
@@ -255,7 +280,7 @@ struct SmallVector
     }
   }
 
-  constexpr KeyType insert(SpanType values)
+  constexpr KeyType insert(SpanType values) noexcept
   {
     size_type last = 0;
     for (const auto &value : values) { last = insert(value); }
@@ -296,7 +321,7 @@ inline constexpr auto lt_equal = []<lt_eq_comparable T>(const T &lhs, const T &r
 inline constexpr auto gt_equal = []<gt_eq_comparable T>(const T &lhs, const T &rhs) { return lhs >= rhs; };
 inline constexpr auto equal = []<eq_comparable T>(const T &lhs, const T &rhs) -> bool { return lhs == rhs; };
 inline constexpr auto not_equal = []<not_eq_comparable T>(const T &lhs, const T &rhs) -> bool { return lhs != rhs; };
-inline constexpr bool logical_not(bool lhs) { return !lhs; }
+inline constexpr bool logical_not(bool lhs) noexcept { return !lhs; }
 
 template<typename CharType> struct Token
 {
@@ -310,7 +335,7 @@ template<typename CharType>
 Token(std::basic_string_view<CharType>, std::basic_string_view<CharType>) -> Token<CharType>;
 
 template<typename T, typename CharType>
-[[nodiscard]] constexpr std::pair<bool, T> parse_number(std::basic_string_view<CharType> input)
+[[nodiscard]] constexpr std::pair<bool, T> parse_number(std::basic_string_view<CharType> input) noexcept
 {
   static constexpr std::pair<bool, T> failure{ false, 0 };
   if (input == chars<CharType>::str("-")) { return failure; }
@@ -333,7 +358,7 @@ template<typename T, typename CharType>
     long long exp_sign = 1LL;
     long long exp = 0LL;
 
-    [[nodiscard]] static constexpr auto pow(const T base, long long power)
+    [[nodiscard]] static constexpr auto pow(const T base, long long power) noexcept
     {
       auto result = decltype(base)(1);
       if (power > 0) {
@@ -344,7 +369,7 @@ template<typename T, typename CharType>
       return result;
     };
 
-    [[nodiscard]] constexpr auto float_value() const -> std::pair<bool, T>
+    [[nodiscard]] constexpr auto float_value() const noexcept -> std::pair<bool, T>
     {
       if (state == State::Start || state == State::ExponentStart) { return { false, 0 }; }
 
@@ -353,7 +378,7 @@ template<typename T, typename CharType>
           * pow(static_cast<T>(10), exp_sign * exp)) };
     }
 
-    [[nodiscard]] constexpr auto int_value() const -> std::pair<bool, T>
+    [[nodiscard]] constexpr auto int_value() const noexcept -> std::pair<bool, T>
     {
       return { true, value_sign * static_cast<T>(value) };
     }
@@ -420,7 +445,8 @@ template<typename T, typename CharType>
 }
 
 
-template<typename CharType> [[nodiscard]] constexpr Token<CharType> next_token(std::basic_string_view<CharType> input)
+template<typename CharType>
+[[nodiscard]] constexpr Token<CharType> next_token(std::basic_string_view<CharType> input) noexcept
 {
   using chars = lefticus::chars<CharType>;
 
@@ -483,9 +509,9 @@ template<std::unsigned_integral SizeType> struct IndexedString
   using size_type = SizeType;
   size_type start{ 0 };
   size_type size{ 0 };
-  [[nodiscard]] constexpr bool operator==(const IndexedString &) const = default;
-  [[nodiscard]] constexpr auto front() const { return start; }
-  [[nodiscard]] constexpr auto substr(const size_type from) const
+  [[nodiscard]] constexpr bool operator==(const IndexedString &) const noexcept = default;
+  [[nodiscard]] constexpr auto front() const noexcept { return start; }
+  [[nodiscard]] constexpr auto substr(const size_type from) const noexcept
   {
     return IndexedString{ static_cast<size_type>(start + from), static_cast<size_type>(size - from) };
   }
@@ -496,13 +522,13 @@ template<std::unsigned_integral SizeType> struct IndexedList
   using size_type = SizeType;
   size_type start{ 0 };
   size_type size{ 0 };
-  [[nodiscard]] constexpr bool operator==(const IndexedList &) const = default;
-  [[nodiscard]] constexpr bool empty() const { return size == 0; }
-  [[nodiscard]] constexpr auto front() const { return start; }
-  [[nodiscard]] constexpr size_type operator[](size_type index) const { return start + index; }
-  [[nodiscard]] constexpr size_type back() const { return static_cast<size_type>(start + size - 1); }
+  [[nodiscard]] constexpr bool operator==(const IndexedList &) const noexcept = default;
+  [[nodiscard]] constexpr bool empty() const noexcept { return size == 0; }
+  [[nodiscard]] constexpr auto front() const noexcept { return start; }
+  [[nodiscard]] constexpr size_type operator[](size_type index) const noexcept { return start + index; }
+  [[nodiscard]] constexpr size_type back() const noexcept { return static_cast<size_type>(start + size - 1); }
   [[nodiscard]] constexpr auto sublist(const size_type from,
-    const size_type distance = std::numeric_limits<size_type>::max()) const
+    const size_type distance = std::numeric_limits<size_type>::max()) const noexcept
   {
     if (distance == std::numeric_limits<size_type>::max()) {
       return IndexedList{ static_cast<size_type>(start + from), static_cast<size_type>(size - from) };
@@ -516,9 +542,12 @@ template<std::unsigned_integral SizeType> struct LiteralList
 {
   using size_type = SizeType;
   IndexedList<size_type> items;
-  [[nodiscard]] constexpr auto front() const { return items.front(); }
-  [[nodiscard]] constexpr auto sublist(const size_type from) const { return LiteralList{ items.sublist(from) }; }
-  [[nodiscard]] constexpr bool operator==(const LiteralList &) const = default;
+  [[nodiscard]] constexpr auto front() const noexcept { return items.front(); }
+  [[nodiscard]] constexpr auto sublist(const size_type from) const noexcept
+  {
+    return LiteralList{ items.sublist(from) };
+  }
+  [[nodiscard]] constexpr bool operator==(const LiteralList &) const noexcept = default;
 };
 
 template<std::unsigned_integral SizeType> LiteralList(IndexedList<SizeType>) -> LiteralList<SizeType>;
@@ -528,7 +557,7 @@ template<std::unsigned_integral SizeType> struct Identifier
 {
   using size_type = SizeType;
   IndexedString<size_type> value;
-  [[nodiscard]] constexpr auto substr(const size_type from) const { return Identifier{ value.substr(from) }; }
+  [[nodiscard]] constexpr auto substr(const size_type from) const noexcept { return Identifier{ value.substr(from) }; }
   [[nodiscard]] constexpr bool operator==(const Identifier &) const = default;
 };
 
@@ -570,13 +599,13 @@ struct cons_expr
   struct SExpr;
   struct Closure;
 
-  template<std::size_t Size> [[nodiscard]] static consteval auto str(char const (&input)[Size])
+  template<std::size_t Size> [[nodiscard]] static consteval auto str(char const (&input)[Size]) noexcept
   {
     return chars<char_type>::str(input);
   }
 
 
-  template<typename Type> static constexpr bool visit_helper(SExpr &result, auto Func, auto &variant)
+  template<typename Type> static constexpr bool visit_helper(SExpr &result, auto Func, auto &variant) noexcept
   {
     auto *value = std::get_if<Type>(&variant);
     if (value != nullptr) {
@@ -587,7 +616,7 @@ struct cons_expr
     }
   }
 
-  template<typename... Type> static constexpr SExpr visit(auto visitor, const std::variant<Type...> &value)
+  template<typename... Type> static constexpr SExpr visit(auto visitor, const std::variant<Type...> &value) noexcept
   {
     SExpr result{};
     ((visit_helper<Type>(result, visitor, value) || ...));
@@ -595,7 +624,7 @@ struct cons_expr
   }
 
   using LexicalScope = SmallVector<size_type, std::pair<string_type, SExpr>, BuiltInSymbolsSize, list_type>;
-  using function_ptr = SExpr (*)(cons_expr &, LexicalScope &, list_type);
+  using function_ptr = SExpr (*)(cons_expr &, LexicalScope &, list_type) noexcept;
   using Atom = std::variant<std::monostate, bool, int_type, float_type, string_type, identifier_type, UserTypes...>;
 
 
@@ -605,7 +634,7 @@ struct cons_expr
     function_ptr ptr{ nullptr };
     Type type{ Type::other };
 
-    [[nodiscard]] constexpr bool operator==(const FunctionPtr &other) const
+    [[nodiscard]] constexpr bool operator==(const FunctionPtr &other) const noexcept
     {
       // this pointer comparison is giving me a problem in constexpr context
       // it feels like a bug in GCC, but not sure
@@ -633,7 +662,7 @@ struct cons_expr
   static_assert(std::is_trivially_copyable_v<SExpr> && std::is_trivially_destructible_v<SExpr>,
     "cons_expr does not work well with non-trivial types");
 
-  template<typename Result> [[nodiscard]] constexpr const Result *get_if(const SExpr *sexpr) const
+  template<typename Result> [[nodiscard]] constexpr const Result *get_if(const SExpr *sexpr) const noexcept
   {
     if (sexpr == nullptr) { return nullptr; }
 
@@ -658,9 +687,9 @@ struct cons_expr
     list_type parameter_names;
     list_type statements;
 
-    [[nodiscard]] constexpr bool operator==(const Closure &) const = default;
+    [[nodiscard]] constexpr bool operator==(const Closure &) const noexcept = default;
 
-    [[nodiscard]] constexpr SExpr invoke(cons_expr &engine, LexicalScope &scope, list_type params) const
+    [[nodiscard]] constexpr SExpr invoke(cons_expr &engine, LexicalScope &scope, list_type params) const noexcept
     {
       if (params.size != parameter_names.size) {
         return engine.make_error(str("Incorrect number of params for lambda"), params);
@@ -684,7 +713,7 @@ struct cons_expr
     }
   };
 
-  [[nodiscard]] constexpr std::pair<SExpr, Token<CharType>> parse(string_view_type input)
+  [[nodiscard]] constexpr std::pair<SExpr, Token<CharType>> parse(string_view_type input) noexcept
   {
     SmallVector<size_type, SExpr, 16, IndexedList<size_type>> retval;
 
@@ -763,14 +792,14 @@ struct cons_expr
     add(str("apply"), SExpr{ FunctionPtr{ applier, FunctionPtr::Type::other } });
   }
 
-  [[nodiscard]] constexpr SExpr sequence(LexicalScope &scope, list_type expressions)
+  [[nodiscard]] constexpr SExpr sequence(LexicalScope &scope, list_type expressions) noexcept
   {
     auto result = SExpr{ Atom{ std::monostate{} } };
     std::ranges::for_each(values[expressions], [&, engine = this](auto expr) { result = engine->eval(scope, expr); });
     return result;
   }
 
-  [[nodiscard]] constexpr SExpr invoke_function(LexicalScope &scope, const SExpr function, list_type params)
+  [[nodiscard]] constexpr SExpr invoke_function(LexicalScope &scope, const SExpr function, list_type params) noexcept
   {
     const SExpr resolved_function = eval(scope, function);
 
@@ -783,19 +812,36 @@ struct cons_expr
     return make_error(str("Function"), function);
   }
 
-  template<auto Func, typename Ret, typename... Param> [[nodiscard]] constexpr static function_ptr make_evaluator()
+
+  template<auto Func, typename Ret, typename... Param>
+  [[nodiscard]] constexpr static function_ptr make_evaluator() noexcept
   {
-    return function_ptr{ [](cons_expr &engine, LexicalScope &scope, list_type params) -> SExpr {
+    return function_ptr{ [](cons_expr &engine, LexicalScope &scope, list_type params) noexcept -> SExpr {
       if (params.size != sizeof...(Param)) { return engine.make_error(str("wrong param count for function"), params); }
 
-      // these invoke UB if the type is not contained, we need to come up with a better solution
+
       auto impl = [&]<size_type... Idx>(std::integer_sequence<size_type, Idx...>) {
+        std::tuple evaled_params{ engine.eval_to<std::remove_cvref_t<Param>>(scope, engine.values[params[Idx]])... };
+
+        SExpr error;
+
+        const bool errored = ([&] {
+          if (std::get<Idx>(evaled_params).has_value()) {
+            return true;
+          } else {
+            error = std::get<Idx>(evaled_params).error();
+            return false;
+          }
+        }() && ...);
+
+        if (errored) { return engine.make_error(str("parameter type mismatch"), error); }
+
+        // types have already been verified, so I can just `*` the expected safely to avoid exception checks
         if constexpr (std::is_same_v<void, Ret>) {
-          std::invoke(Func, engine.eval_to<std::remove_cvref_t<Param>>(scope, engine.values[params[Idx]]).value()...);
+          std::invoke(Func, *std::get<Idx>(evaled_params)...);
           return SExpr{ Atom{ std::monostate{} } };
         } else {
-          return SExpr{ std::invoke(
-            Func, engine.eval_to<std::remove_cvref_t<Param>>(scope, engine.values[params[Idx]]).value()...) };
+          return SExpr{ std::invoke(Func, *std::get<Idx>(evaled_params)...) };
         }
       };
 
@@ -804,44 +850,44 @@ struct cons_expr
   }
 
   template<auto Func, typename Ret, typename... Param>
-  [[nodiscard]] constexpr static function_ptr make_evaluator(Ret (*)(Param...))
+  [[nodiscard]] constexpr static function_ptr make_evaluator(Ret (*)(Param...) noexcept) noexcept
   {
     return make_evaluator<Func, Ret, Param...>();
   }
 
   template<auto Func, typename Ret, typename Type, typename... Param>
-  [[nodiscard]] constexpr static function_ptr make_evaluator(Ret (Type::*)(Param...) const)
+  [[nodiscard]] constexpr static function_ptr make_evaluator(Ret (Type::*)(Param...) const noexcept) noexcept
   {
     return make_evaluator<Func, Ret, Type *, Param...>();
   }
 
   template<auto Func, typename Ret, typename Type, typename... Param>
-  [[nodiscard]] constexpr static function_ptr make_evaluator(Ret (Type::*)(Param...))
+  [[nodiscard]] constexpr static function_ptr make_evaluator(Ret (Type::*)(Param...) noexcept) noexcept
   {
     return make_evaluator<Func, Ret, Type *, Param...>();
   }
 
-  template<auto Func> [[nodiscard]] constexpr static function_ptr make_evaluator()
+  template<auto Func> [[nodiscard]] constexpr static function_ptr make_evaluator() noexcept
   {
     return make_evaluator<Func>(Func);
   }
 
-  constexpr auto add(string_view_type name, SExpr value)
+  constexpr auto add(string_view_type name, SExpr value) noexcept
   {
     return global_scope.emplace_back(strings.insert_or_find(name), value);
   }
 
-  template<auto Func> constexpr auto add(string_view_type name)
+  template<auto Func> constexpr auto add(string_view_type name) noexcept
   {
     return add(name, SExpr{ FunctionPtr{ make_evaluator<Func>() } });
   }
 
-  template<typename Value> constexpr auto add(string_view_type name, Value value)
+  template<typename Value> constexpr auto add(string_view_type name, Value value) noexcept
   {
     return add(name, SExpr{ Atom{ value } });
   }
 
-  [[nodiscard]] constexpr SExpr eval(LexicalScope &scope, const SExpr expr)
+  [[nodiscard]] constexpr SExpr eval(LexicalScope &scope, const SExpr expr) noexcept
   {
     if (const auto *indexed_list = get_if<list_type>(&expr); indexed_list != nullptr) {
       // if it's a non-empty list, then we need to evaluate it as a function
@@ -864,7 +910,7 @@ struct cons_expr
   }
 
   template<typename Type>
-  [[nodiscard]] constexpr std::expected<Type, SExpr> eval_to(LexicalScope &scope, const SExpr expr)
+  [[nodiscard]] constexpr std::expected<Type, SExpr> eval_to(LexicalScope &scope, const SExpr expr) noexcept
   {
     if constexpr (std::is_same_v<Type, SExpr>) {
       return eval(scope, expr);
@@ -883,7 +929,7 @@ struct cons_expr
     return eval_to<Type>(scope, eval(scope, expr));
   }
 
-  [[nodiscard]] static constexpr SExpr list(cons_expr &engine, LexicalScope &scope, list_type params)
+  [[nodiscard]] static constexpr SExpr list(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
     SmallVector<size_type, SExpr, 16, IndexedList<size_type>> result;
 
@@ -892,7 +938,8 @@ struct cons_expr
     return SExpr{ LiteralList{ engine.values.insert_or_find(result.to_span()) } };
   }
 
-  constexpr SmallVector<size_type, string_type, 16, IndexedList<size_type>> get_lambda_parameter_names(const SExpr &sexpr)
+  constexpr SmallVector<size_type, string_type, 16, IndexedList<size_type>> get_lambda_parameter_names(
+    const SExpr &sexpr) noexcept
   {
     SmallVector<size_type, string_type, 16, IndexedList<size_type>> retval;
     if (auto *parameter_list = get_if<list_type>(&sexpr); parameter_list != nullptr) {
@@ -903,7 +950,7 @@ struct cons_expr
     return retval;
   }
 
-  [[nodiscard]] static constexpr SExpr lambda(cons_expr &engine, LexicalScope &scope, list_type params)
+  [[nodiscard]] static constexpr SExpr lambda(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
     if (params.size < 2) { return engine.make_error(str("(lambda ([params...]) [statement...])"), params); }
 
@@ -926,7 +973,7 @@ struct cons_expr
   [[nodiscard]] constexpr std::expected<list_type, SExpr> get_list(SExpr expr,
     string_view_type message,
     size_type min = 0,
-    size_type max = std::numeric_limits<size_type>::max())
+    size_type max = std::numeric_limits<size_type>::max()) noexcept
   {
     const auto *items = std::get_if<list_type>(&expr.value);
     if (items == nullptr || items->size < min || items->size > max) {
@@ -939,17 +986,17 @@ struct cons_expr
   [[nodiscard]] constexpr std::expected<typename decltype(values)::View, SExpr> get_list_range(SExpr expr,
     string_view_type message,
     size_type min = 0,
-    size_type max = std::numeric_limits<size_type>::max())
+    size_type max = std::numeric_limits<size_type>::max()) noexcept
   {
     auto list = get_list(expr, message, min, max);
     if (!list) { return std::unexpected(list.error()); }
-    return values[list.value()];
+    return values[*list];
   }
 
   [[nodiscard]] constexpr SExpr fix_do_identifiers(list_type list,
     size_type first_index,
     std::span<const string_type> local_identifiers,
-    const LexicalScope &local_constants)
+    const LexicalScope &local_constants) noexcept
   {
     SmallVector<size_type, string_type, 16, IndexedList<size_type>> new_locals{ local_identifiers };
     SmallVector<size_type, SExpr, 16, IndexedList<size_type>> new_params;
@@ -1000,7 +1047,7 @@ struct cons_expr
   [[nodiscard]] constexpr SExpr fix_let_identifiers(list_type list,
     size_type first_index,
     std::span<const string_type> local_identifiers,
-    const LexicalScope &local_constants)
+    const LexicalScope &local_constants) noexcept
   {
     SmallVector<size_type, string_type, 16, IndexedList<size_type>> new_locals{ local_identifiers };
 
@@ -1010,11 +1057,11 @@ struct cons_expr
       get_list_range(values[static_cast<size_type>(first_index + 1)], str("malformed let expression"));
     if (!params) { return params.error(); }
 
-    for (const auto &param : params.value()) {
+    for (const auto &param : *params) {
       const auto param_list = get_list(param, str("malformed let expression"), 2, 2);
       if (!param_list) { return param_list.error(); }
 
-      auto id = get_if<identifier_type>(&values[(*param_list)[0]]);
+      auto *id = get_if<identifier_type>(&values[(*param_list)[0]]);
       if (id == nullptr) { return make_error(str("malformed let expression"), list); }
       new_locals.push_back(id->value);
 
@@ -1038,7 +1085,7 @@ struct cons_expr
 
   [[nodiscard]] constexpr SExpr fix_define_identifiers(size_type first_index,
     std::span<const string_type> local_identifiers,
-    const LexicalScope &local_constants)
+    const LexicalScope &local_constants) noexcept
   {
     SmallVector<size_type, string_type, 16, IndexedList<size_type>> new_locals{ local_identifiers };
 
@@ -1057,7 +1104,7 @@ struct cons_expr
   [[nodiscard]] constexpr SExpr fix_lambda_identifiers(list_type list,
     size_type first_index,
     std::span<const string_type> local_identifiers,
-    const LexicalScope &local_constants)
+    const LexicalScope &local_constants) noexcept
   {
     SmallVector<size_type, string_type, 16, IndexedList<size_type>> new_locals{ local_identifiers };
     auto lambda_locals = get_lambda_parameter_names(values[first_index + 1]);
@@ -1074,8 +1121,9 @@ struct cons_expr
     return SExpr{ values.insert_or_find(new_lambda.to_span()) };
   }
 
-  [[nodiscard]] constexpr SExpr
-    fix_identifiers(SExpr input, std::span<const string_type> local_identifiers, const LexicalScope &local_constants)
+  [[nodiscard]] constexpr SExpr fix_identifiers(SExpr input,
+    std::span<const string_type> local_identifiers,
+    const LexicalScope &local_constants) noexcept
   {
     if (auto *list = get_if<list_type>(&input); list != nullptr) {
       if (list->size != 0) {
@@ -1118,17 +1166,17 @@ struct cons_expr
     return input;
   }
 
-  [[nodiscard]] constexpr SExpr make_error(string_view_type description, list_type context)
+  [[nodiscard]] constexpr SExpr make_error(string_view_type description, list_type context) noexcept
   {
     return SExpr{ Error{ strings.insert_or_find(description), context } };
   }
 
-  [[nodiscard]] constexpr SExpr make_error(string_view_type description, SExpr value)
+  [[nodiscard]] constexpr SExpr make_error(string_view_type description, SExpr value) noexcept
   {
     return make_error(description, values.insert_or_find(std::array{ value }));
   }
 
-  [[nodiscard]] constexpr SExpr make_error(string_view_type description, SExpr value, SExpr value2)
+  [[nodiscard]] constexpr SExpr make_error(string_view_type description, SExpr value, SExpr value2) noexcept
   {
     return make_error(description, values.insert_or_find(std::array{ value, value2 }));
   }
@@ -1137,7 +1185,7 @@ struct cons_expr
   //
   // built-ins
   //
-  [[nodiscard]] static constexpr SExpr letter(cons_expr &engine, LexicalScope &scope, list_type params)
+  [[nodiscard]] static constexpr SExpr letter(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
     if (params.empty()) { return engine.make_error(str("(let ((var1 val1) ...) [expr...])"), params); }
 
@@ -1162,7 +1210,7 @@ struct cons_expr
   }
 
 
-  [[nodiscard]] static constexpr SExpr doer(cons_expr &engine, LexicalScope &scope, list_type params)
+  [[nodiscard]] static constexpr SExpr doer(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
     if (params.size < 2) {
       return engine.make_error(
@@ -1245,7 +1293,7 @@ struct cons_expr
 
   template<typename Type>
   [[nodiscard]] constexpr std::expected<Type, SExpr>
-    eval_to(LexicalScope &scope, list_type params, string_view_type expected)
+    eval_to(LexicalScope &scope, list_type params, string_view_type expected) noexcept
   {
     if (params.size != 1) { return std::unexpected(make_error(expected, params)); }
     auto first = eval_to<Type>(scope, values[params[0]]);
@@ -1256,7 +1304,7 @@ struct cons_expr
 
   template<typename Type1, typename Type2>
   [[nodiscard]] constexpr std::expected<std::tuple<Type1, Type2>, SExpr>
-    eval_to(LexicalScope &scope, list_type params, string_view_type expected)
+    eval_to(LexicalScope &scope, list_type params, string_view_type expected) noexcept
   {
     if (params.size != 2) { return std::unexpected(make_error(expected, params)); }
 
@@ -1268,7 +1316,7 @@ struct cons_expr
     return std::tuple<Type1, Type2>{ *first, *second };
   }
 
-  [[nodiscard]] static constexpr SExpr append(cons_expr &engine, LexicalScope &scope, list_type params)
+  [[nodiscard]] static constexpr SExpr append(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
     auto evaled_params =
       engine.eval_to<literal_list_type, literal_list_type>(scope, params, str("(append LiteralList LiteralList)"));
@@ -1283,7 +1331,7 @@ struct cons_expr
     return SExpr{ LiteralList{ engine.values.insert_or_find(result.to_span()) } };
   }
 
-  [[nodiscard]] static constexpr SExpr cons(cons_expr &engine, LexicalScope &scope, list_type params)
+  [[nodiscard]] static constexpr SExpr cons(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
     auto evaled_params = engine.eval_to<SExpr, literal_list_type>(scope, params, str("(cons Expr LiteralList)"));
     if (!evaled_params) { return evaled_params.error(); }
@@ -1301,8 +1349,9 @@ struct cons_expr
 
     return SExpr{ LiteralList{ engine.values.insert_or_find(result.to_span()) } };
   }
+
   template<typename ValueType>
-  [[nodiscard]] static constexpr SExpr error_or_else(const std::expected<ValueType, SExpr> &obj, auto callable)
+  [[nodiscard]] static constexpr SExpr error_or_else(const std::expected<ValueType, SExpr> &obj, auto callable) noexcept
   {
     if (obj) {
       return callable(*obj);
@@ -1311,20 +1360,19 @@ struct cons_expr
     }
   }
 
-
-  [[nodiscard]] static constexpr SExpr cdr(cons_expr &engine, LexicalScope &scope, list_type params)
+  [[nodiscard]] static constexpr SExpr cdr(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
     return error_or_else(engine.eval_to<literal_list_type>(scope, params, str("(cdr Non-Empty-LiteralList)")),
       [&](const auto &list) { return SExpr{ list.sublist(1) }; });
   }
 
-  [[nodiscard]] static constexpr SExpr car(cons_expr &engine, LexicalScope &scope, list_type params)
+  [[nodiscard]] static constexpr SExpr car(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
     return error_or_else(engine.eval_to<literal_list_type>(scope, params, str("(car Non-Empty-LiteralList)")),
       [&](const auto &list) { return engine.values[list.front()]; });
   }
 
-  [[nodiscard]] static constexpr SExpr applier(cons_expr &engine, LexicalScope &scope, list_type params)
+  [[nodiscard]] static constexpr SExpr applier(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
     return error_or_else(engine.eval_to<SExpr, literal_list_type>(scope, params, str("(apply Function LiteralList)")),
       [&](const auto &evaled_params) {
@@ -1332,13 +1380,13 @@ struct cons_expr
       });
   }
 
-  [[nodiscard]] static constexpr SExpr evaler(cons_expr &engine, LexicalScope &scope, list_type params)
+  [[nodiscard]] static constexpr SExpr evaler(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
     return error_or_else(engine.eval_to<literal_list_type>(scope, params, str("(eval LiteralList)")),
       [&](const auto &list) { return engine.eval(engine.global_scope, SExpr{ list.items }); });
   }
 
-  [[nodiscard]] static constexpr SExpr ifer(cons_expr &engine, LexicalScope &scope, list_type params)
+  [[nodiscard]] static constexpr SExpr ifer(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
     // need to be careful to not execute unexecuted branches
     if (params.size != 3) { return engine.make_error(str("(if bool-cond then else)"), params); }
@@ -1354,7 +1402,7 @@ struct cons_expr
     }
   }
 
-  [[nodiscard]] static constexpr SExpr for_each(cons_expr &engine, LexicalScope &scope, list_type params)
+  [[nodiscard]] static constexpr SExpr for_each(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
     auto evaled_params = engine.eval_to<SExpr, literal_list_type>(scope, params, str("(for_each Function (param...))"));
     if (!evaled_params) { return evaled_params.error(); }
@@ -1367,7 +1415,7 @@ struct cons_expr
     return SExpr{ Atom{ std::monostate{} } };
   }
 
-  [[nodiscard]] static constexpr SExpr definer(cons_expr &engine, LexicalScope &scope, list_type params)
+  [[nodiscard]] static constexpr SExpr definer(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
     return error_or_else(engine.eval_to<identifier_type, SExpr>(scope, params, str("(define Identifier Expression)")),
       [&](const auto &evaled) {
@@ -1379,10 +1427,10 @@ struct cons_expr
   // take a string_view and return a C++ function object
   // of unspecified type.
   template<typename Signature>
-  [[nodiscard]] constexpr auto make_callable(string_view_type function)
+  [[nodiscard]] constexpr auto make_callable(string_view_type function) noexcept
     requires std::is_function_v<Signature>
   {
-    auto impl = [this, function]<typename Ret, typename... Params>(Ret (*)(Params...)) {
+    auto impl = [this, function]<typename Ret, typename... Params>(Ret (*)(Params...) noexcept) {
       // this is fragile, we need to check parsing better
 
       return [callable = eval(global_scope, values[std::get<list_type>(parse(function).first.value)][0])](
@@ -1396,13 +1444,14 @@ struct cons_expr
     return impl(std::add_pointer_t<Signature>{ nullptr });
   }
 
-  template<typename T> [[nodiscard]] constexpr auto eval_transform(LexicalScope &scope)
+  template<typename T> [[nodiscard]] constexpr auto eval_transform(LexicalScope &scope) noexcept
   {
     return std::views::transform([&scope, this](const SExpr param) { return eval_to<T>(scope, param); });
   }
 
   template<auto Op>
-  [[nodiscard]] static constexpr SExpr binary_left_fold(cons_expr &engine, LexicalScope &scope, list_type params)
+  [[nodiscard]] static constexpr SExpr
+    binary_left_fold(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
     auto fold = [&engine, &scope, params]<typename Param>(Param first) -> SExpr {
       if constexpr (requires(Param p1, Param p2) { Op(p1, p2); }) {
@@ -1430,21 +1479,21 @@ struct cons_expr
     return engine.make_error(str("operator requires at east two parameters"), params);
   }
 
-  [[nodiscard]] static constexpr SExpr logical_and(cons_expr &engine, LexicalScope &scope, list_type params)
+  [[nodiscard]] static constexpr SExpr logical_and(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
     for (const auto &next : engine.values[params] | engine.eval_transform<bool>(scope)) {
       if (!next) { return engine.make_error(str("parameter not boolean"), next.error()); }
-      if (!next.value()) { return SExpr{ Atom{ false } }; }
+      if (!(*next)) { return SExpr{ Atom{ false } }; }
     }
 
     return SExpr{ Atom{ true } };
   }
 
-  [[nodiscard]] static constexpr SExpr logical_or(cons_expr &engine, LexicalScope &scope, list_type params)
+  [[nodiscard]] static constexpr SExpr logical_or(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
     for (const auto &next : engine.values[params] | engine.eval_transform<bool>(scope)) {
       if (!next) { return engine.make_error(str("parameter not boolean"), next.error()); }
-      if (next.value()) { return SExpr{ Atom{ true } }; }
+      if (*next) { return SExpr{ Atom{ true } }; }
     }
 
     return SExpr{ Atom{ false } };
@@ -1452,7 +1501,7 @@ struct cons_expr
 
   template<auto Op>
   [[nodiscard]] static constexpr SExpr
-    binary_boolean_apply_pairwise(cons_expr &engine, LexicalScope &scope, list_type params)
+    binary_boolean_apply_pairwise(cons_expr &engine, LexicalScope &scope, list_type params) noexcept
   {
     auto sum = [&engine, &scope, params]<typename Param>(Param next) -> SExpr {
       if constexpr (requires(Param p1, Param p2) { Op(p1, p2); }) {
