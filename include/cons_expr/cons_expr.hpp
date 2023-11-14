@@ -80,6 +80,7 @@ SOFTWARE.
 //   between script and C++
 // * C++23 as a minimum
 // * never thread safe
+// * no exceptions or dynamic allocations
 
 /// Notes
 // it's a scheme-like language with a few caveats:
@@ -94,7 +95,6 @@ SOFTWARE.
 // * We probably want some sort of "defragment" at some point
 // * Add constant folding capability
 // * Allow functions to be registered as "pure" so they can be folded!
-// * make allocator aware
 
 
 namespace lefticus {
@@ -114,13 +114,13 @@ template<typename char_type> struct chars
   }
 
   template<std::size_t Size>
-  [[nodiscard]] static consteval auto str(const char (&input)[Size]) // NOLINT c-arrays
+  [[nodiscard]] static consteval auto str(const char (&input)[Size])// NOLINT c-arrays
     requires(!std::is_same_v<char_type, char>)
   {
     struct Result
     {
-      char_type data[Size]; // NOLINT c-arrays
-      constexpr operator std::basic_string_view<char_type>() { return { data, Size - 1 }; } // NOLINT implicit
+      char_type data[Size];// NOLINT c-arrays
+      constexpr operator std::basic_string_view<char_type>() { return { data, Size - 1 }; }// NOLINT implicit
     };
 
     Result result;
@@ -140,6 +140,7 @@ template<std::unsigned_integral SizeType,
 struct SmallVector
 {
   using size_type = SizeType;
+  using span_type = SpanType;
 
   std::array<Contained, SmallSize> small;
   size_type small_size_used = 0;
@@ -157,7 +158,8 @@ struct SmallVector
     }
   }
 
-  constexpr explicit SmallVector(std::ranges::range auto other) : small_size_used{ static_cast<size_type>(other.size()) }
+  constexpr explicit SmallVector(std::ranges::range auto other)
+    : small_size_used{ static_cast<size_type>(other.size()) }
   {
     if (other.size() <= small_capacity) {
       std::copy(other.begin(), other.end(), small.begin());
@@ -171,20 +173,21 @@ struct SmallVector
   {}
 
   [[nodiscard]] constexpr auto size() const noexcept { return small_size_used; }
-  [[nodiscard]] constexpr auto small_end() { return std::next(small.begin(), static_cast<std::ptrdiff_t>(small_size_used)); }
+  [[nodiscard]] constexpr auto begin() const noexcept { return small.begin(); }
+
+  [[nodiscard]] constexpr auto end() const noexcept
+  {
+    return std::next(small.begin(), static_cast<std::ptrdiff_t>(small_size_used));
+  }
 
   [[nodiscard]] constexpr Contained &operator[](size_type index) noexcept { return small[index]; }
   [[nodiscard]] constexpr const Contained &operator[](size_type index) const noexcept { return small[index]; }
-
-  [[nodiscard]] constexpr auto to_span() const noexcept
-  {
-    return SpanType{ std::begin(small), std::next(std::begin(small), small_size_used) };
-  }
 
   [[nodiscard]] constexpr SpanType view(KeyType range) const
   {
     return SpanType{ std::span<const Contained>(small).subspan(range.start, range.size) };
   }
+  [[nodiscard]] constexpr auto operator[](KeyType span) const { return view(span); }
 
   template<typename Param> constexpr auto push_back(Param &&param) { return insert(std::forward<Param>(param)); }
 
@@ -205,75 +208,10 @@ struct SmallVector
   }
 
 
-  struct Iterator
-  {
-    using difference_type [[maybe_unused]] = std::ptrdiff_t;
-    using value_type = Contained;
-    using pointer = const Contained *;
-    using reference = const Contained &;
-    using iterator_category = std::random_access_iterator_tag;
-
-    const SmallVector *container;
-    size_type index;
-
-    [[nodiscard]] constexpr bool operator==(const Iterator &other) const noexcept { return index == other.index; }
-    [[nodiscard]] constexpr bool operator!=(const Iterator &) const = default;
-
-    [[nodiscard]] constexpr const auto &operator*() const noexcept { return (*container)[index]; }
-
-    constexpr auto &operator++() noexcept
-    {
-      ++index;
-      return *this;
-    }
-
-    [[nodiscard]] constexpr auto operator++(int) noexcept
-    {
-      auto result = *this;
-      ++(*this);
-      return result;
-    }
-
-    constexpr auto &operator--() noexcept
-    {
-      --index;
-      return *this;
-    }
-
-    [[nodiscard]] constexpr auto operator--(int) noexcept
-    {
-      auto result = *this;
-      --(*this);
-      return result;
-    }
-  };
-
-  struct View
-  {
-    KeyType span;
-    const SmallVector *container;
-    [[nodiscard]] constexpr const auto &operator[](size_type offset) const noexcept
-    {
-      return (*container)[span.start + offset];
-    }
-    [[nodiscard]] constexpr auto empty() const noexcept { return span.empty(); }
-    [[nodiscard]] constexpr auto size() const noexcept { return span.size; }
-    [[nodiscard]] constexpr auto begin() const noexcept { return Iterator{ container, span.start }; }
-    [[nodiscard]] constexpr auto end() const noexcept
-    {
-      return Iterator{ container, static_cast<size_type>(span.start + span.size) };
-    }
-  };
-
-  [[nodiscard]] constexpr auto operator[](KeyType span) const noexcept { return View{ span, this }; }
-  [[nodiscard]] constexpr auto begin() const noexcept { return Iterator{ this, 0 }; }
-  [[nodiscard]] constexpr auto end() const noexcept { return Iterator{ this, size() }; }
-
   constexpr KeyType insert_or_find(SpanType values)
   {
-    if (const auto small_found = std::search(small.begin(), small_end(), values.begin(), values.end());
-        small_found != small_end()) {
-      return KeyType{ static_cast<size_type>(std::distance(small.begin(), small_found)),
+    if (const auto small_found = std::search(begin(), end(), values.begin(), values.end()); small_found != end()) {
+      return KeyType{ static_cast<size_type>(std::distance(begin(), small_found)),
         static_cast<size_type>(values.size()) };
     } else {
       return insert(values);
@@ -594,8 +532,7 @@ struct cons_expr
   using literal_list_type = LiteralList<size_type>;
   using error_type = Error<size_type>;
 
-  template<typename Contained>
-  using stack_vector = SmallVector<size_type, Contained, 32, IndexedList<size_type>>;
+  template<typename Contained> using stack_vector = SmallVector<size_type, Contained, 32, IndexedList<size_type>>;
 
   struct SExpr;
   struct Closure;
@@ -606,15 +543,13 @@ struct cons_expr
   }
 
 
-  template<typename Type> static constexpr bool visit_helper(SExpr &result, auto Func, auto &variant) noexcept
+  template<typename Type> [[nodiscard]] static constexpr bool visit_helper(SExpr &result, auto Func, auto &variant) noexcept
   {
-    auto *value = std::get_if<Type>(&variant);
-    if (value != nullptr) {
+    if (auto *value = std::get_if<Type>(&variant); value != nullptr) {
       result = Func(*value);
       return true;
-    } else {
-      return false;
     }
+    return false;
   }
 
   template<typename... Type> static constexpr SExpr visit(auto visitor, const std::variant<Type...> &value) noexcept
@@ -710,7 +645,7 @@ struct cons_expr
         fixed_statements.push_back(engine.fix_identifiers(statement, {}, new_scope));
       }
 
-      return engine.sequence(new_scope, engine.values.insert_or_find(fixed_statements.to_span()));
+      return engine.sequence(new_scope, engine.values.insert_or_find(fixed_statements));
     }
   };
 
@@ -759,7 +694,7 @@ struct cons_expr
       }
       token = next_token(token.remaining);
     }
-    return std::pair<SExpr, Token<CharType>>(SExpr{ values.insert_or_find(retval.to_span()) }, token);
+    return std::pair<SExpr, Token<CharType>>(SExpr{ values.insert_or_find(retval) }, token);
   }
 
   // Guaranteed to be initialized at compile time
@@ -825,6 +760,7 @@ struct cons_expr
 
         SExpr error;
 
+        // See if any parameter evaluations errored
         const bool errored = !([&] {
           if (std::get<Idx>(evaled_params).has_value()) {
             return true;
@@ -935,11 +871,10 @@ struct cons_expr
 
     for (const auto &param : engine.values[params]) { result.push_back(engine.eval(scope, param)); }
 
-    return SExpr{ LiteralList{ engine.values.insert_or_find(result.to_span()) } };
+    return SExpr{ LiteralList{ engine.values.insert_or_find(result) } };
   }
 
-  constexpr stack_vector< string_type> get_lambda_parameter_names(
-    const SExpr &sexpr)
+  constexpr stack_vector<string_type> get_lambda_parameter_names(const SExpr &sexpr)
   {
     stack_vector<string_type> retval;
     if (auto *parameter_list = get_if<list_type>(&sexpr); parameter_list != nullptr) {
@@ -961,11 +896,11 @@ struct cons_expr
 
     for (const auto &statement : engine.values[params.sublist(1)]) {
       // all of current scope is const and capturable
-      fixed_statements.push_back(engine.fix_identifiers(statement, locals.to_span(), scope));
+      fixed_statements.push_back(engine.fix_identifiers(statement, locals, scope));
     }
 
     const auto list = engine.get_if<list_type>(&engine.values[params[0]]);
-    if (list) { return SExpr{ Closure{ *list, { engine.values.insert_or_find(fixed_statements.to_span()) } } }; }
+    if (list) { return SExpr{ Closure{ *list, { engine.values.insert_or_find(fixed_statements) } } }; }
 
     return engine.make_error(str("(lambda ([params...]) [statement...])"), params);
   }
@@ -983,7 +918,7 @@ struct cons_expr
     return *items;
   }
 
-  [[nodiscard]] constexpr std::expected<typename decltype(values)::View, SExpr> get_list_range(SExpr expr,
+  [[nodiscard]] constexpr std::expected<typename decltype(values)::span_type, SExpr> get_list_range(SExpr expr,
     string_view_type message,
     size_type min = 0,
     size_type max = std::numeric_limits<size_type>::max())
@@ -998,7 +933,7 @@ struct cons_expr
     std::span<const string_type> local_identifiers,
     const LexicalScope &local_constants)
   {
-    stack_vector<string_type> new_locals{local_identifiers};
+    stack_vector<string_type> new_locals{ local_identifiers };
     stack_vector<SExpr> new_params;
 
     // collect all locals
@@ -1024,24 +959,24 @@ struct cons_expr
       new_param.push_back(fix_identifiers(values[(*param_list)[1]], local_identifiers, local_constants));
       // increment thingy (optional)
       if (param_list->size == 3) {
-        new_param.push_back(fix_identifiers(values[(*param_list)[2]], new_locals.to_span(), local_constants));
+        new_param.push_back(fix_identifiers(values[(*param_list)[2]], new_locals, local_constants));
       }
-      new_params.push_back(SExpr{ values.insert_or_find(new_param.to_span()) });
+      new_params.push_back(SExpr{ values.insert_or_find(new_param) });
     }
 
     stack_vector<SExpr> new_do;
 
     // fixup pointer to "do" function
-    new_do.push_back(fix_identifiers(values[first_index], new_locals.to_span(), local_constants));
+    new_do.push_back(fix_identifiers(values[first_index], new_locals, local_constants));
 
     // add parameter setup
-    new_do.push_back(SExpr{ values.insert_or_find(new_params.to_span()) });
+    new_do.push_back(SExpr{ values.insert_or_find(new_params) });
 
     for (auto value : values[list.sublist(2)]) {
-      new_do.push_back(fix_identifiers(value, new_locals.to_span(), local_constants));
+      new_do.push_back(fix_identifiers(value, new_locals, local_constants));
     }
 
-    return SExpr{ values.insert_or_find(new_do.to_span()) };
+    return SExpr{ values.insert_or_find(new_do) };
   }
 
   [[nodiscard]] constexpr SExpr fix_let_identifiers(list_type list,
@@ -1071,16 +1006,14 @@ struct cons_expr
       new_params.push_back(SExpr{ values.insert_or_find(new_param) });
     }
 
-    stack_vector<SExpr> new_let{
-      fix_identifiers(values[first_index], new_locals.to_span(), local_constants),
-      SExpr{ values.insert_or_find(new_params.to_span()) }
-    };
+    stack_vector<SExpr> new_let{ fix_identifiers(values[first_index], new_locals, local_constants),
+      SExpr{ values.insert_or_find(new_params) } };
 
     for (size_type index = first_index + 2; index < list.size + list.start; ++index) {
-      new_let.push_back(fix_identifiers(values[index], new_locals.to_span(), local_constants));
+      new_let.push_back(fix_identifiers(values[index], new_locals, local_constants));
     }
 
-    return SExpr{ values.insert_or_find(new_let.to_span()) };
+    return SExpr{ values.insert_or_find(new_let) };
   }
 
   [[nodiscard]] constexpr SExpr fix_define_identifiers(size_type first_index,
@@ -1096,7 +1029,7 @@ struct cons_expr
 
     std::array<SExpr, 3> new_define{ fix_identifiers(values[first_index], local_identifiers, local_constants),
       values[first_index + 1],
-      fix_identifiers(values[first_index + 2], new_locals.to_span(), local_constants) };
+      fix_identifiers(values[first_index + 2], new_locals, local_constants) };
     return SExpr{ values.insert_or_find(new_define) };
   }
 
@@ -1110,15 +1043,14 @@ struct cons_expr
     auto lambda_locals = get_lambda_parameter_names(values[first_index + 1]);
     new_locals.append(lambda_locals);
 
-    stack_vector<SExpr> new_lambda{
-      fix_identifiers(values[first_index], new_locals.to_span(), local_constants), values[first_index + 1]
-    };
+    stack_vector<SExpr> new_lambda{ fix_identifiers(values[first_index], new_locals, local_constants),
+      values[first_index + 1] };
 
     for (size_type index = first_index + 2; index < list.size + list.start; ++index) {
-      new_lambda.push_back(fix_identifiers(values[index], new_locals.to_span(), local_constants));
+      new_lambda.push_back(fix_identifiers(values[index], new_locals, local_constants));
     }
 
-    return SExpr{ values.insert_or_find(new_lambda.to_span()) };
+    return SExpr{ values.insert_or_find(new_lambda) };
   }
 
   [[nodiscard]] constexpr SExpr
@@ -1148,7 +1080,7 @@ struct cons_expr
       for (const auto &value : values[*list]) {
         result.push_back(fix_identifiers(value, local_identifiers, local_constants));
       }
-      return SExpr{ this->values.insert_or_find(result.to_span()) };
+      return SExpr{ this->values.insert_or_find(result) };
     } else if (auto *id = get_if<identifier_type>(&input); id != nullptr) {
       for (const auto &local : local_identifiers | std::views::reverse) {
         // do something smarter later, but abort for now because it's in the variable scope
@@ -1170,16 +1102,11 @@ struct cons_expr
     return SExpr{ Error{ strings.insert_or_find(description), context } };
   }
 
-  [[nodiscard]] constexpr SExpr make_error(string_view_type description, SExpr value)
+  [[nodiscard]] constexpr SExpr make_error(string_view_type description, auto ... value)
   {
-    return make_error(description, values.insert_or_find(std::array{ value }));
+    return make_error(description, values.insert_or_find(std::array{ SExpr{value} ... }));
   }
-
-  [[nodiscard]] constexpr SExpr make_error(string_view_type description, SExpr value, SExpr value2)
-  {
-    return make_error(description, values.insert_or_find(std::array{ value, value2 }));
-  }
-
+  
 
   //
   // built-ins
@@ -1188,7 +1115,7 @@ struct cons_expr
   {
     if (params.empty()) { return engine.make_error(str("(let ((var1 val1) ...) [expr...])"), params); }
 
-    stack_vector< std::pair<size_type, SExpr>> variables;
+    stack_vector<std::pair<size_type, SExpr>> variables;
 
     auto new_scope = scope;
 
@@ -1216,7 +1143,7 @@ struct cons_expr
         str("(do ((var1 val1 [iter_expr1]) ...) (terminate_condition [result...]) [body...])"), params);
     }
 
-    stack_vector< std::pair<size_type, SExpr>> variables;
+    stack_vector<std::pair<size_type, SExpr>> variables;
     stack_vector<string_type> variable_names;
 
     auto *variable_list = engine.get_if<list_type>(&engine.values[params[0]]);
@@ -1248,7 +1175,7 @@ struct cons_expr
     }
 
     for (size_type idx = 0; idx < variables.size(); ++idx) {
-      variables[idx].second = engine.fix_identifiers(variables[idx].second, variable_names.to_span(), scope);
+      variables[idx].second = engine.fix_identifiers(variables[idx].second, variable_names, scope);
     }
 
     for (const auto &local : new_scope) { variable_names.push_back(local.first); }
@@ -1260,8 +1187,7 @@ struct cons_expr
     }
     const auto terminators = engine.values[*terminator_list];
 
-
-    auto fixed_up_terminator = engine.fix_identifiers(terminators[0], variable_names.to_span(), scope);
+    auto fixed_up_terminator = engine.fix_identifiers(terminators[0], variable_names, scope);
 
     // continue while terminator test is false
 
@@ -1285,7 +1211,7 @@ struct cons_expr
     }
 
     // evaluate sequence of termination expressions
-    return engine.sequence(new_scope, terminators.span.sublist(1));
+    return engine.sequence(new_scope, terminator_list->sublist(1));
   }
 
   template<typename Type>
@@ -1325,7 +1251,7 @@ struct cons_expr
     for (const auto &value : engine.values[first.items]) { result.push_back(value); }
     for (const auto &value : engine.values[second.items]) { result.push_back(value); }
 
-    return SExpr{ LiteralList{ engine.values.insert_or_find(result.to_span()) } };
+    return SExpr{ LiteralList{ engine.values.insert_or_find(result) } };
   }
 
   [[nodiscard]] static constexpr SExpr cons(cons_expr &engine, LexicalScope &scope, list_type params)
@@ -1344,7 +1270,7 @@ struct cons_expr
 
     for (const auto &value : engine.values[list.items]) { result.push_back(value); }
 
-    return SExpr{ LiteralList{ engine.values.insert_or_find(result.to_span()) } };
+    return SExpr{ LiteralList{ engine.values.insert_or_find(result) } };
   }
 
   template<typename ValueType>
