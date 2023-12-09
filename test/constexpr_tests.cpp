@@ -86,6 +86,7 @@ TEST_CASE("basic logical boolean operations", "[operators]")
   STATIC_CHECK(evaluate_to<bool>("(or false true false true)") == true);
   STATIC_CHECK(evaluate_to<bool>("(not false)") == true);
   STATIC_CHECK(evaluate_to<bool>("(not true)") == false);
+  STATIC_CHECK(evaluate_to<bool>("(not false)") == true);
 }
 
 TEST_CASE("basic lambda usage", "[lambdas]")

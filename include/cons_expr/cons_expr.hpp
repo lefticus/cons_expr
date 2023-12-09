@@ -26,15 +26,16 @@ SOFTWARE.
 #define CONS_EXPR_HPP
 
 #include <algorithm>
+#include <array>
 #include <cassert>
-#include <charconv>
+#include <concepts>
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <functional>
 #include <limits>
 #include <ranges>
 #include <span>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -167,6 +168,7 @@ struct SmallVector
       assert("Size exhausted" && 0);
     }
   }
+
   constexpr explicit SmallVector(auto... param)
     requires(sizeof...(param) <= small_capacity)
     : small{ param... }, small_size_used{ sizeof...(param) }
@@ -1449,6 +1451,26 @@ struct cons_expr
     if (const auto *atom = std::get_if<Atom>(&first_param); atom != nullptr) { return visit(sum, *atom); }
 
     return engine.make_error(str("supported types"), params);
+  }
+
+  [[nodiscard]] constexpr auto evaluate(string_view_type input)
+  {
+    const auto result = parse(input).first.value;
+    const auto *list = std::get_if < typename lefticus::cons_expr<>::list_type>(&result);
+
+    if (list == nullptr) {
+      return make_error(str("evaluation did not return a list"), result);
+    }
+    return sequence(global_scope, *list);
+  }
+
+  template<typename Result> [[nodiscard]] constexpr Result evaluate_to(string_view_type input)
+  {
+    if constexpr (std::is_same_v<Result, lefticus::cons_expr<>::error_type>) {
+      return std::get<lefticus::cons_expr<>::error_type>(evaluate(input).value);
+    } else {
+      return std::get<Result>(std::get<lefticus::cons_expr<>::Atom>(evaluate(input).value));
+    }
   }
 };
 

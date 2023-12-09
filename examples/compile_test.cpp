@@ -33,7 +33,7 @@ consteval auto make_scripted_function()
 
 int main()
 {
-  // the kicker here is that this lambda is a full self contained script environment
+  // the kicker here is that this lambda is a full self-contained script environment
   // that was all parsed and optimized at compile-time
   auto func = make_scripted_function();
 
