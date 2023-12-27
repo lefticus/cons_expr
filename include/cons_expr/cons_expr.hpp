@@ -38,6 +38,7 @@ SOFTWARE.
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -539,13 +540,16 @@ struct cons_expr
   struct SExpr;
   struct Closure;
 
-  template<std::size_t Size> [[nodiscard]] static consteval auto str(char const (&input)[Size]) noexcept
+
+  template<std::size_t Size>
+  [[nodiscard]] static consteval auto str(char const (&input)[Size]) noexcept// NOLINT(modernize-avoid-c-arrays)
   {
     return chars<char_type>::str(input);
   }
 
 
-  template<typename Type> [[nodiscard]] static constexpr bool visit_helper(SExpr &result, auto Func, auto &variant) noexcept
+  template<typename Type>
+  [[nodiscard]] static constexpr bool visit_helper(SExpr &result, auto Func, auto &variant) noexcept
   {
     if (auto *value = std::get_if<Type>(&variant); value != nullptr) {
       result = Func(*value);
@@ -856,10 +860,14 @@ struct cons_expr
       if (const auto *obj = std::get_if<Type>(&expr.value); obj != nullptr) { return *obj; }
     } else {
       if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
-        if (const auto *value = std::get_if<Type>(atom); value != nullptr) {
-          return *value;
-        } else if (!std::holds_alternative<identifier_type>(*atom)) {
-          return std::unexpected(expr);
+        if constexpr (std::is_same_v<Type, string_view_type>) {
+          if (const auto *value = std::get_if<string_type>(atom); value != nullptr) { return strings.view(*value); }
+        } else {
+          if (const auto *value = std::get_if<Type>(atom); value != nullptr) {
+            return *value;
+          } else if (!std::holds_alternative<identifier_type>(*atom)) {
+            return std::unexpected(expr);
+          }
         }
       }
     }
@@ -1104,11 +1112,11 @@ struct cons_expr
     return SExpr{ Error{ strings.insert_or_find(description), context } };
   }
 
-  [[nodiscard]] constexpr SExpr make_error(string_view_type description, auto ... value)
+  [[nodiscard]] constexpr SExpr make_error(string_view_type description, auto... value)
   {
-    return make_error(description, values.insert_or_find(std::array{ SExpr{value} ... }));
+    return make_error(description, values.insert_or_find(std::array{ SExpr{ value }... }));
   }
-  
+
 
   //
   // built-ins
@@ -1456,11 +1464,9 @@ struct cons_expr
   [[nodiscard]] constexpr auto evaluate(string_view_type input)
   {
     const auto result = parse(input).first.value;
-    const auto *list = std::get_if < typename lefticus::cons_expr<>::list_type>(&result);
+    const auto *list = std::get_if<typename lefticus::cons_expr<>::list_type>(&result);
 
-    if (list == nullptr) {
-      return make_error(str("evaluation did not return a list"), result);
-    }
+    if (list == nullptr) { return make_error(str("evaluation did not return a list"), result); }
     return sequence(global_scope, *list);
   }
 

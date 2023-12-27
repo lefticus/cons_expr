@@ -53,6 +53,11 @@ TEST_CASE("basic string_view operators", "[operators]")
   STATIC_CHECK(evaluate_to<bool>(R"((== "hello" "hello"))") == true);
 }
 
+TEST_CASE("access as string_view", "[strings]")
+{
+  STATIC_CHECK(evaluate_to<std::string_view>(R"("hello")") == "hello");
+}
+
 TEST_CASE("basic integer operators", "[operators]")
 {
   STATIC_CHECK(evaluate_to<IntType>("(+ 1 2)") == 3);
