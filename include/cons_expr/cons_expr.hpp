@@ -632,14 +632,22 @@ struct cons_expr
   SmallVector<size_type, char_type, BuiltInStringsSize, string_type, string_view_type> strings{};
   SmallVector<size_type, SExpr, BuiltInValuesSize, list_type> values{};
 
-  SmallVector<size_type, SExpr, 128, IndexedList<size_type>> object_scratch;
+  SmallVector<size_type, SExpr, 32, IndexedList<size_type>> object_scratch;
   SmallVector<size_type, std::pair<size_type, SExpr>, 32, IndexedList<size_type>> variables_scratch;
+  SmallVector<size_type, string_type, 32, IndexedList<size_type>> string_scratch;
 
   template<typename ScratchTo> struct Scratch
   {
-    constexpr explicit Scratch(ScratchTo &t_data) : data(&t_data) {}
+    constexpr explicit Scratch(ScratchTo &t_data) : data(&t_data)
+    {
+    }
+    constexpr explicit Scratch(ScratchTo &t_data, auto initial_values) : Scratch(t_data) {
+      for (const auto &obj : initial_values) {
+        push_back(obj);
+      }
+    }
     Scratch(const Scratch &) = delete;
-    Scratch(Scratch &&other)
+    constexpr Scratch(Scratch &&other)
       : data{ std::exchange(other.data, nullptr) }, initial_size{ other.initial_size },
         current_size{ other.current_size }
     {}
@@ -656,7 +664,7 @@ struct cons_expr
       ++current_size;
       return data->emplace_back(std::move(param)...);
     }
-    constexpr void push_back(SExpr obj) noexcept
+    constexpr void push_back(auto obj) noexcept
     {
       assert(data->size() == current_size);
       data->push_back(obj);
@@ -931,9 +939,9 @@ struct cons_expr
     return SExpr{ LiteralList{ engine.values.insert_or_find(result) } };
   }
 
-  constexpr stack_vector<string_type> get_lambda_parameter_names(const SExpr &sexpr)
+  constexpr auto get_lambda_parameter_names(const SExpr &sexpr)
   {
-    stack_vector<string_type> retval;
+    Scratch retval{string_scratch};
     if (auto *parameter_list = get_if<list_type>(&sexpr); parameter_list != nullptr) {
       for (const auto &expr : values[*parameter_list]) {
         if (auto *local_id = get_if<identifier_type>(&expr); local_id != nullptr) { retval.push_back(local_id->value); }
@@ -990,7 +998,7 @@ struct cons_expr
     std::span<const string_type> local_identifiers,
     const LexicalScope &local_constants)
   {
-    stack_vector<string_type> new_locals{ local_identifiers };
+    Scratch new_locals{string_scratch, local_identifiers };
     Scratch new_params{ object_scratch };
 
     // collect all locals
@@ -1041,7 +1049,7 @@ struct cons_expr
     std::span<const string_type> local_identifiers,
     const LexicalScope &local_constants)
   {
-    stack_vector<string_type> new_locals{ local_identifiers };
+    Scratch new_locals{string_scratch, local_identifiers };
 
     Scratch new_params{ object_scratch };
 
@@ -1079,7 +1087,7 @@ struct cons_expr
     std::span<const string_type> local_identifiers,
     const LexicalScope &local_constants)
   {
-    stack_vector<string_type> new_locals{ local_identifiers };
+    Scratch new_locals{ string_scratch, local_identifiers };
 
     const auto *id = get_if<identifier_type>(&values[static_cast<size_type>(first_index + 1)]);
 
@@ -1098,9 +1106,11 @@ struct cons_expr
     std::span<const string_type> local_identifiers,
     const LexicalScope &local_constants)
   {
-    stack_vector<string_type> new_locals{ local_identifiers };
     auto lambda_locals = get_lambda_parameter_names(values[first_index + 1]);
-    new_locals.append(lambda_locals);
+    Scratch new_locals{string_scratch, local_identifiers };
+    for (const auto &value : lambda_locals) {
+      new_locals.push_back(value);
+    }
 
     Scratch new_lambda{ object_scratch };
     new_lambda.push_back(fix_identifiers(values[first_index], new_locals, local_constants));
@@ -1232,7 +1242,7 @@ struct cons_expr
       if (variable_parts->size == 3) { variables.emplace_back(index, variable_parts_list[2]); }
     }
 
-    stack_vector<string_type> variable_names;
+    Scratch variable_names{engine.string_scratch};
     for (auto &[index, value] : variables) {
       value = engine.fix_identifiers(value, variable_names, scope);
     }
