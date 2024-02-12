@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2023 Jason Turner
+Copyright (c) 2023-2024 Jason Turner
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -182,6 +182,12 @@ struct SmallVector
   {
     return std::next(small.begin(), static_cast<std::ptrdiff_t>(small_size_used));
   }
+  [[nodiscard]] constexpr auto begin()  noexcept { return small.begin(); }
+
+  [[nodiscard]] constexpr auto end()  noexcept
+  {
+    return std::next(small.begin(), static_cast<std::ptrdiff_t>(small_size_used));
+  }
 
   [[nodiscard]] constexpr Contained &operator[](size_type index) noexcept { return small[index]; }
   [[nodiscard]] constexpr const Contained &operator[](size_type index) const noexcept { return small[index]; }
@@ -194,10 +200,13 @@ struct SmallVector
 
   template<typename Param> constexpr auto push_back(Param &&param) { return insert(std::forward<Param>(param)); }
 
-  template<typename... Param> constexpr auto emplace_back(Param &&...param)
+  template<typename... Param> constexpr auto &emplace_back(Param &&...param)
   {
-    return insert(Contained{ std::forward<Param>(param)... });
+    insert(Contained{ std::forward<Param>(param)... });
+    return small[small_size_used-1];
   }
+
+  constexpr void resize(SizeType new_size) { small_size_used = std::min(new_size, SmallSize); }
 
   constexpr size_type insert(Contained obj)
   {
@@ -623,6 +632,43 @@ struct cons_expr
   SmallVector<size_type, char_type, BuiltInStringsSize, string_type, string_view_type> strings{};
   SmallVector<size_type, SExpr, BuiltInValuesSize, list_type> values{};
 
+  SmallVector<size_type, SExpr, 128, IndexedList<size_type>> object_scratch;
+  SmallVector<size_type, std::pair<size_type, SExpr>, 32, IndexedList<size_type>> variables_scratch;
+
+  template<typename ScratchTo> struct Scratch
+  {
+    constexpr explicit Scratch(ScratchTo &t_data) : data(&t_data) {}
+    Scratch(const Scratch &) = delete;
+    Scratch(Scratch &&other)
+      : data{ std::exchange(other.data, nullptr) }, initial_size{ other.initial_size },
+        current_size{ other.current_size }
+    {}
+    auto &operator=(Scratch &&) = delete;
+    auto &operator=(const Scratch &&) = delete;
+    constexpr ~Scratch() noexcept
+    {
+      if (data != nullptr) { data->resize(initial_size); }
+    }
+    [[nodiscard]] constexpr auto begin() const noexcept { return std::next(data->begin(), initial_size); }
+    [[nodiscard]] constexpr auto end() const noexcept { return std::next(data->begin(), current_size); }
+    constexpr auto &emplace_back(auto ... param) noexcept {
+      assert(data->size() == current_size);
+      ++current_size;
+      return data->emplace_back(std::move(param)...);
+    }
+    constexpr void push_back(SExpr obj) noexcept
+    {
+      assert(data->size() == current_size);
+      data->push_back(obj);
+      current_size = data->size();
+    }
+
+  private:
+    ScratchTo *data;
+    size_type initial_size = data->size();
+    size_type current_size = data->size();
+  };
+
 
   struct Closure
   {
@@ -646,7 +692,7 @@ struct cons_expr
         new_scope.emplace_back(engine.get_if<identifier_type>(&name)->value, engine.eval(scope, parameter));
       }
 
-      stack_vector<SExpr> fixed_statements;
+      Scratch fixed_statements{ engine.object_scratch };
       for (const auto &statement : engine.values[statements]) {
         fixed_statements.push_back(engine.fix_identifiers(statement, {}, new_scope));
       }
@@ -658,7 +704,7 @@ struct cons_expr
 
   [[nodiscard]] constexpr std::pair<SExpr, Token<CharType>> parse(string_view_type input)
   {
-    stack_vector<SExpr> retval;
+    Scratch retval{ object_scratch };
 
     auto token = next_token(input);
 
@@ -878,7 +924,7 @@ struct cons_expr
 
   [[nodiscard]] static constexpr SExpr list(cons_expr &engine, LexicalScope &scope, list_type params)
   {
-    stack_vector<SExpr> result;
+    Scratch result{ engine.object_scratch };
 
     for (const auto &param : engine.values[params]) { result.push_back(engine.eval(scope, param)); }
 
@@ -903,7 +949,7 @@ struct cons_expr
     auto locals = engine.get_lambda_parameter_names(engine.values[params[0]]);
 
     // replace all references to captured values with constant copies
-    stack_vector<SExpr> fixed_statements;
+    Scratch fixed_statements{ engine.object_scratch };
 
     for (const auto &statement : engine.values[params.sublist(1)]) {
       // all of current scope is const and capturable
@@ -945,7 +991,7 @@ struct cons_expr
     const LexicalScope &local_constants)
   {
     stack_vector<string_type> new_locals{ local_identifiers };
-    stack_vector<SExpr> new_params;
+    Scratch new_params{ object_scratch };
 
     // collect all locals
     const auto params = get_list(values[first_index + 1], str("malformed do expression"));
@@ -964,18 +1010,18 @@ struct cons_expr
       const auto param_list = get_list(param, str("malformed do expression"), 2);
       if (!param_list) { return params.error(); }
 
-      stack_vector<SExpr> new_param;
+      std::array<SExpr, 3> new_param{ values[(*param_list)[0]],
+        fix_identifiers(values[(*param_list)[1]], local_identifiers, local_constants) };
 
-      new_param.push_back(values[(*param_list)[0]]);
-      new_param.push_back(fix_identifiers(values[(*param_list)[1]], local_identifiers, local_constants));
       // increment thingy (optional)
       if (param_list->size == 3) {
-        new_param.push_back(fix_identifiers(values[(*param_list)[2]], new_locals, local_constants));
+        new_param[2] = (fix_identifiers(values[(*param_list)[2]], new_locals, local_constants));
       }
-      new_params.push_back(SExpr{ values.insert_or_find(new_param) });
+      new_params.push_back(
+        SExpr{ values.insert_or_find(std::span{ new_param.begin(), param_list->size == 3u ? 3u : 2u }) });
     }
 
-    stack_vector<SExpr> new_do;
+    Scratch new_do{ object_scratch };
 
     // fixup pointer to "do" function
     new_do.push_back(fix_identifiers(values[first_index], new_locals, local_constants));
@@ -997,7 +1043,7 @@ struct cons_expr
   {
     stack_vector<string_type> new_locals{ local_identifiers };
 
-    stack_vector<SExpr> new_params;
+    Scratch new_params{ object_scratch };
 
     const auto params =
       get_list_range(values[static_cast<size_type>(first_index + 1)], str("malformed let expression"));
@@ -1017,8 +1063,10 @@ struct cons_expr
       new_params.push_back(SExpr{ values.insert_or_find(new_param) });
     }
 
-    stack_vector<SExpr> new_let{ fix_identifiers(values[first_index], new_locals, local_constants),
-      SExpr{ values.insert_or_find(new_params) } };
+    Scratch new_let{ object_scratch };
+
+    new_let.push_back(fix_identifiers(values[first_index], new_locals, local_constants));
+    new_let.push_back(SExpr{ values.insert_or_find(new_params) });
 
     for (size_type index = first_index + 2; index < list.size + list.start; ++index) {
       new_let.push_back(fix_identifiers(values[index], new_locals, local_constants));
@@ -1054,8 +1102,9 @@ struct cons_expr
     auto lambda_locals = get_lambda_parameter_names(values[first_index + 1]);
     new_locals.append(lambda_locals);
 
-    stack_vector<SExpr> new_lambda{ fix_identifiers(values[first_index], new_locals, local_constants),
-      values[first_index + 1] };
+    Scratch new_lambda{ object_scratch };
+    new_lambda.push_back(fix_identifiers(values[first_index], new_locals, local_constants));
+    new_lambda.push_back(values[first_index + 1]);
 
     for (size_type index = first_index + 2; index < list.size + list.start; ++index) {
       new_lambda.push_back(fix_identifiers(values[index], new_locals, local_constants));
@@ -1087,7 +1136,8 @@ struct cons_expr
         }
       }
 
-      stack_vector<SExpr> result;
+
+      Scratch result{ object_scratch };
       for (const auto &value : values[*list]) {
         result.push_back(fix_identifiers(value, local_identifiers, local_constants));
       }
@@ -1126,8 +1176,6 @@ struct cons_expr
   {
     if (params.empty()) { return engine.make_error(str("(let ((var1 val1) ...) [expr...])"), params); }
 
-    stack_vector<std::pair<size_type, SExpr>> variables;
-
     auto new_scope = scope;
 
     const auto variable_list = engine.get_list_range(engine.values[params[0]], str("((var1 val1) ...)"));
@@ -1154,8 +1202,7 @@ struct cons_expr
         str("(do ((var1 val1 [iter_expr1]) ...) (terminate_condition [result...]) [body...])"), params);
     }
 
-    stack_vector<std::pair<size_type, SExpr>> variables;
-    stack_vector<string_type> variable_names;
+    Scratch variables{engine.variables_scratch};
 
     auto *variable_list = engine.get_if<list_type>(&engine.values[params[0]]);
 
@@ -1185,8 +1232,9 @@ struct cons_expr
       if (variable_parts->size == 3) { variables.emplace_back(index, variable_parts_list[2]); }
     }
 
-    for (size_type idx = 0; idx < variables.size(); ++idx) {
-      variables[idx].second = engine.fix_identifiers(variables[idx].second, variable_names, scope);
+    stack_vector<string_type> variable_names;
+    for (auto &[index, value] : variables) {
+      value = engine.fix_identifiers(value, variable_names, scope);
     }
 
     for (const auto &local : new_scope) { variable_names.push_back(local.first); }
@@ -1211,7 +1259,7 @@ struct cons_expr
         // evaluate body
         [[maybe_unused]] const auto result = engine.sequence(new_scope, params.sublist(2));
 
-        stack_vector<std::pair<size_type, SExpr>> new_values;
+        Scratch new_values{ engine.variables_scratch };
 
         // iterate loop variables
         for (const auto &[index, expr] : variables) { new_values.emplace_back(index, engine.eval(new_scope, expr)); }
@@ -1257,7 +1305,7 @@ struct cons_expr
     if (!evaled_params) { return evaled_params.error(); }
     const auto &[first, second] = *evaled_params;
 
-    stack_vector<SExpr> result;
+    Scratch result{ engine.object_scratch };
 
     for (const auto &value : engine.values[first.items]) { result.push_back(value); }
     for (const auto &value : engine.values[second.items]) { result.push_back(value); }
@@ -1271,7 +1319,7 @@ struct cons_expr
     if (!evaled_params) { return evaled_params.error(); }
     const auto &[front, list] = *evaled_params;
 
-    stack_vector<SExpr> result;
+    Scratch result{ engine.object_scratch };
 
     if (const auto *list_front = std::get_if<literal_list_type>(&front.value); list_front != nullptr) {
       result.push_back(SExpr{ list_front->items });
