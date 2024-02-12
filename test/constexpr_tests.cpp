@@ -12,27 +12,20 @@ static_assert(lefticus::is_cons_expr_v<lefticus::cons_expr<>>);
 
 static_assert(std::is_trivially_copyable_v<lefticus::cons_expr<>::SExpr>);
 
-// we'll be exactly 16k, because we can
-// static_assert(sizeof(lefticus::cons_expr<>) == 16384);
-
-
-constexpr auto evaluate(std::string_view input)
-{
-  lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
-
-  return evaluator.sequence(
-    evaluator.global_scope, std::get<lefticus::cons_expr<>::list_type>(evaluator.parse(input).first.value));
-}
 
 template<typename Result> constexpr Result evaluate_to(std::string_view input)
 {
-  if constexpr (std::is_same_v<Result, lefticus::cons_expr<>::error_type>) {
-    return std::get<lefticus::cons_expr<>::error_type>(evaluate(input).value);
-  } else {
-    return std::get<Result>(std::get<lefticus::cons_expr<>::Atom>(evaluate(input).value));
-  }
+  lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
+  return evaluator.evaluate_to<Result>(input).value();
 }
 
+// this version exists so we can evaluate an objects
+// whose lifetime would have otherwise ended
+template<typename Result> constexpr bool evaluate_expected(std::string_view input, auto result)
+{
+  lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
+  return evaluator.evaluate_to<Result>(input).value() == result;
+}
 
 TEST_CASE("Operator identifiers", "[operators]")
 {
@@ -55,7 +48,7 @@ TEST_CASE("basic string_view operators", "[operators]")
 
 TEST_CASE("access as string_view", "[strings]")
 {
-  STATIC_CHECK(evaluate_to<std::string_view>(R"("hello")") == "hello");
+  STATIC_CHECK(evaluate_expected<std::string_view>(R"("hello")", "hello"));
 }
 
 TEST_CASE("basic integer operators", "[operators]")

@@ -651,6 +651,7 @@ struct cons_expr
         fixed_statements.push_back(engine.fix_identifiers(statement, {}, new_scope));
       }
 
+      // TODO set up tail call elimination for last element of the sequence being evaluated?
       return engine.sequence(new_scope, engine.values.insert_or_find(fixed_statements));
     }
   };
@@ -1461,22 +1462,18 @@ struct cons_expr
     return engine.make_error(str("supported types"), params);
   }
 
-  [[nodiscard]] constexpr auto evaluate(string_view_type input)
+  [[nodiscard]] constexpr SExpr evaluate(string_view_type input)
   {
-    const auto result = parse(input).first.value;
-    const auto *list = std::get_if<typename lefticus::cons_expr<>::list_type>(&result);
+    const auto result = parse(input).first;
+    const auto *list = std::get_if<list_type>(&result.value);
 
-    if (list == nullptr) { return make_error(str("evaluation did not return a list"), result); }
-    return sequence(global_scope, *list);
+    if (list != nullptr) { return sequence(global_scope, *list); }
+    return result;
   }
 
-  template<typename Result> [[nodiscard]] constexpr Result evaluate_to(string_view_type input)
+  template<typename Result> [[nodiscard]] constexpr std::expected<Result, SExpr> evaluate_to(string_view_type input)
   {
-    if constexpr (std::is_same_v<Result, lefticus::cons_expr<>::error_type>) {
-      return std::get<lefticus::cons_expr<>::error_type>(evaluate(input).value);
-    } else {
-      return std::get<Result>(std::get<lefticus::cons_expr<>::Atom>(evaluate(input).value));
-    }
+    return eval_to<Result>(global_scope, evaluate(input));
   }
 };
 
