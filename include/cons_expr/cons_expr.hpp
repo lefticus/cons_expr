@@ -91,7 +91,7 @@ SOFTWARE.
 // * Pair types don't exist, only lists
 // * only indices and values are passed, for safety during resize of `values` object
 // Triviality of types is critical to design and structure of this system
-// We cannot use `noexcept` as much as we'd like because it blows up code size in clang
+// Triviality lets us greatly simplify the copy/move/forward discussion
 
 /// To do
 // * We probably want some sort of "defragment" at some point
@@ -109,14 +109,14 @@ inline constexpr int cons_expr_version_tweak{};
 
 template<typename char_type> struct chars
 {
-  [[nodiscard]] static consteval std::string_view str(const char *input)
+  [[nodiscard]] static consteval std::string_view str(const char *input) noexcept
     requires std::is_same_v<char_type, char>
   {
     return input;
   }
 
   template<std::size_t Size>
-  [[nodiscard]] static consteval auto str(const char (&input)[Size])// NOLINT c-arrays
+  [[nodiscard]] static consteval auto str(const char (&input)[Size]) noexcept// NOLINT c-arrays
     requires(!std::is_same_v<char_type, char>)
   {
     struct Result
@@ -130,7 +130,7 @@ template<typename char_type> struct chars
     return result;
   }
 
-  [[nodiscard]] static consteval char_type ch(const char input) { return input; }
+  [[nodiscard]] static consteval char_type ch(const char input) noexcept { return input; }
 };
 
 
@@ -146,81 +146,54 @@ struct SmallVector
 
   std::array<Contained, SmallSize> small;
   size_type small_size_used = 0;
+  bool error_state = false;
 
   static constexpr auto small_capacity = SmallSize;
 
-  template<typename st, auto sz, typename kt, typename span_t>
-  constexpr void append(const SmallVector<st, Contained, sz, kt, span_t> &other)
-  {
-    if (small_size_used + other.size() <= small_capacity) {
-      std::copy(other.small.begin(), other.small.begin() + other.small_size_used, small.begin() + small_size_used);
-      small_size_used += other.size();
-    } else {
-      assert("Size exhausted" && 0);
-    }
-  }
-
-  constexpr explicit SmallVector(std::ranges::range auto other)
-    : small_size_used{ static_cast<size_type>(other.size()) }
-  {
-    if (other.size() <= small_capacity) {
-      std::copy(other.begin(), other.end(), small.begin());
-    } else {
-      assert("Size exhausted" && 0);
-    }
-  }
-
-  constexpr explicit SmallVector(auto... param)
-    requires(sizeof...(param) <= small_capacity)
-    : small{ param... }, small_size_used{ sizeof...(param) }
-  {}
-
+  [[nodiscard]] constexpr Contained &operator[](size_type index) noexcept { return small[index]; }
+  [[nodiscard]] constexpr const Contained &operator[](size_type index) const noexcept { return small[index]; }
   [[nodiscard]] constexpr auto size() const noexcept { return small_size_used; }
   [[nodiscard]] constexpr auto begin() const noexcept { return small.begin(); }
+  [[nodiscard]] constexpr auto begin() noexcept { return small.begin(); }
 
   [[nodiscard]] constexpr auto end() const noexcept
   {
     return std::next(small.begin(), static_cast<std::ptrdiff_t>(small_size_used));
   }
-  [[nodiscard]] constexpr auto begin()  noexcept { return small.begin(); }
 
-  [[nodiscard]] constexpr auto end()  noexcept
+  [[nodiscard]] constexpr auto end() noexcept
   {
     return std::next(small.begin(), static_cast<std::ptrdiff_t>(small_size_used));
   }
 
-  [[nodiscard]] constexpr Contained &operator[](size_type index) noexcept { return small[index]; }
-  [[nodiscard]] constexpr const Contained &operator[](size_type index) const noexcept { return small[index]; }
-
-  [[nodiscard]] constexpr SpanType view(KeyType range) const
+  [[nodiscard]] constexpr SpanType view(KeyType range) const noexcept
   {
     return SpanType{ std::span<const Contained>(small).subspan(range.start, range.size) };
   }
-  [[nodiscard]] constexpr auto operator[](KeyType span) const { return view(span); }
+  [[nodiscard]] constexpr auto operator[](KeyType span) const noexcept { return view(span); }
 
-  template<typename Param> constexpr auto push_back(Param &&param) { return insert(std::forward<Param>(param)); }
+  constexpr void push_back(auto &&param) noexcept { insert(param); }
+  constexpr void emplace_back(auto &&...param) noexcept { insert(Contained{ param... }); }
 
-  template<typename... Param> constexpr auto &emplace_back(Param &&...param)
+  constexpr void resize(SizeType new_size) noexcept
   {
-    insert(Contained{ std::forward<Param>(param)... });
-    return small[small_size_used-1];
+    small_size_used = std::min(new_size, SmallSize);
+    if (new_size > SmallSize) { error_state = true; }
   }
 
-  constexpr void resize(SizeType new_size) { small_size_used = std::min(new_size, SmallSize); }
-
-  constexpr size_type insert(Contained obj)
+  constexpr size_type insert(Contained obj) noexcept
   {
     if (small_size_used < small_capacity) {
       small[small_size_used] = std::move(obj);
       return small_size_used++;
     } else {
-      assert("Small size capacity exhausted" && 0);
+      error_state = true;
       return small_size_used;
     }
   }
 
 
-  constexpr KeyType insert_or_find(SpanType values)
+  constexpr KeyType insert_or_find(SpanType values) noexcept
   {
     if (const auto small_found = std::search(begin(), end(), values.begin(), values.end()); small_found != end()) {
       return KeyType{ static_cast<size_type>(std::distance(begin(), small_found)),
@@ -230,7 +203,7 @@ struct SmallVector
     }
   }
 
-  constexpr KeyType insert(SpanType values)
+  constexpr KeyType insert(SpanType values) noexcept
   {
     size_type last = 0;
     for (const auto &value : values) { last = insert(value); }
@@ -240,26 +213,19 @@ struct SmallVector
 
 template<typename T>
 concept not_bool_or_ptr = !std::same_as<std::remove_cvref_t<T>, bool> && !std::is_pointer_v<std::remove_cvref_t<T>>;
-template<typename T>
-concept addable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs + rhs; };
-template<typename T>
-concept multipliable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs *rhs; };
-template<typename T>
-concept dividable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs / rhs; };
-template<typename T>
-concept subtractable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs - rhs; };
-template<typename T>
-concept lt_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs < rhs; };
-template<typename T>
-concept gt_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs > rhs; };
-template<typename T>
-concept lt_eq_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs <= rhs; };
-template<typename T>
-concept gt_eq_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs >= rhs; };
-template<typename T>
-concept eq_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs == rhs; };
-template<typename T>
-concept not_eq_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs != rhs; };
+
+// clang-format off
+template<typename T> concept addable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs + rhs; };
+template<typename T> concept multipliable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs *rhs; };
+template<typename T> concept dividable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs / rhs; };
+template<typename T> concept subtractable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs - rhs; };
+template<typename T> concept lt_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs < rhs; };
+template<typename T> concept gt_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs > rhs; };
+template<typename T> concept lt_eq_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs <= rhs; };
+template<typename T> concept gt_eq_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs >= rhs; };
+template<typename T> concept eq_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs == rhs; };
+template<typename T> concept not_eq_comparable = not_bool_or_ptr<T> && requires(T lhs, T rhs) { lhs != rhs; };
+// clang-format on
 
 inline constexpr auto adds = []<addable T>(const T &lhs, const T &rhs) { return lhs + rhs; };
 inline constexpr auto multiplies = []<multipliable T>(const T &lhs, const T &rhs) { return lhs * rhs; };
@@ -290,7 +256,7 @@ template<typename T, typename CharType>
   static constexpr std::pair<bool, T> failure{ false, 0 };
   if (input == chars<CharType>::str("-")) { return failure; }
 
-  enum struct State {
+  enum struct State : std::uint8_t {
     Start,
     IntegerPart,
     FractionPart,
@@ -298,47 +264,27 @@ template<typename T, typename CharType>
     ExponentStart,
   };
 
-  struct ParseState
-  {
-    State state = State::Start;
-    T value_sign = 1;
-    long long value = 0LL;
-    long long frac = 0LL;
-    long long frac_exp = 0LL;
-    long long exp_sign = 1LL;
-    long long exp = 0LL;
+  State state = State::Start;
+  T value_sign = 1;
+  long long value = 0LL;
+  long long frac = 0LL;
+  long long frac_exp = 0LL;
+  long long exp_sign = 1LL;
+  long long exp = 0LL;
 
-    [[nodiscard]] static constexpr auto pow(const T base, long long power) noexcept
-    {
-      auto result = decltype(base)(1);
-      if (power > 0) {
-        for (int iteration = 0; iteration < power; ++iteration) { result *= base; }
-      } else if (power < 0) {
-        for (int iteration = 0; iteration > power; --iteration) { result /= base; }
-      }
-      return result;
-    };
-
-    [[nodiscard]] constexpr auto float_value() const noexcept -> std::pair<bool, T>
-    {
-      if (state == State::Start || state == State::ExponentStart) { return { false, 0 }; }
-
-      return { true,
-        (static_cast<T>(value_sign) * (static_cast<T>(value) + static_cast<T>(frac) * pow(static_cast<T>(10), frac_exp))
-          * pow(static_cast<T>(10), exp_sign * exp)) };
+  constexpr auto pow_10 = [](long long power) noexcept {
+    auto result = T{ 1 };
+    if (power > 0) {
+      for (int iteration = 0; iteration < power; ++iteration) { result *= T{ 10 }; }
+    } else if (power < 0) {
+      for (int iteration = 0; iteration > power; --iteration) { result /= T{ 10 }; }
     }
-
-    [[nodiscard]] constexpr auto int_value() const noexcept -> std::pair<bool, T>
-    {
-      return { true, value_sign * static_cast<T>(value) };
-    }
+    return result;
   };
 
-  ParseState state;
-
-  auto parse_digit = [](auto &value, auto ch) {
+  const auto parse_digit = [](auto &cur_value, auto ch) {
     if (ch >= chars<CharType>::ch('0') && ch <= chars<CharType>::ch('9')) {
-      value = value * 10 + ch - chars<CharType>::ch('0');
+      cur_value = cur_value * 10 + ch - chars<CharType>::ch('0');
       return true;
     } else {
       return false;
@@ -346,51 +292,55 @@ template<typename T, typename CharType>
   };
 
   for (const auto ch : input) {
-    switch (state.state) {
+    switch (state) {
     case State::Start:
       if (ch == chars<CharType>::ch('-')) {
-        state.value_sign = -1;
-      } else if (!parse_digit(state.value, ch)) {
+        value_sign = -1;
+      } else if (!parse_digit(value, ch)) {
         return failure;
       }
-      state.state = State::IntegerPart;
+      state = State::IntegerPart;
       break;
     case State::IntegerPart:
       if (ch == chars<CharType>::ch('.')) {
-        state.state = State::FractionPart;
+        state = State::FractionPart;
       } else if (ch == chars<CharType>::ch('e') || ch == chars<CharType>::ch('E')) {
-        state.state = State::ExponentPart;
-      } else if (!parse_digit(state.value, ch)) {
+        state = State::ExponentPart;
+      } else if (!parse_digit(value, ch)) {
         return failure;
       }
       break;
     case State::FractionPart:
-      if (parse_digit(state.frac, ch)) {
-        state.frac_exp--;
+      if (parse_digit(frac, ch)) {
+        frac_exp--;
       } else if (ch == chars<CharType>::ch('e') || ch == chars<CharType>::ch('E')) {
-        state.state = State::ExponentStart;
+        state = State::ExponentStart;
       } else {
         return failure;
       }
       break;
     case State::ExponentStart:
       if (ch == chars<CharType>::ch('-')) {
-        state.exp_sign = -1;
-      } else if (!parse_digit(state.exp, ch)) {
+        exp_sign = -1;
+      } else if (!parse_digit(exp, ch)) {
         return failure;
       }
-      state.state = State::ExponentPart;
+      state = State::ExponentPart;
       break;
     case State::ExponentPart:
-      if (!parse_digit(state.exp, ch)) { return failure; }
+      if (!parse_digit(exp, ch)) { return failure; }
     }
   }
 
   if constexpr (std::is_integral_v<T>) {
-    if (state.state != State::IntegerPart) { return failure; }
-    return state.int_value();
+    if (state != State::IntegerPart) { return failure; }
+    return { true, value_sign * static_cast<T>(value) };
   } else {
-    return state.float_value();
+    if (state == State::Start || state == State::ExponentStart) { return { false, 0 }; }
+
+    return { true,
+      (static_cast<T>(value_sign) * (static_cast<T>(value) + static_cast<T>(frac) * pow_10(frac_exp))
+        * pow_10(exp_sign * exp)) };
   }
 }
 
@@ -457,7 +407,7 @@ template<std::unsigned_integral SizeType> struct IndexedString
   using size_type = SizeType;
   size_type start{ 0 };
   size_type size{ 0 };
-  [[nodiscard]] constexpr bool operator==(const IndexedString &) const = default;
+  [[nodiscard]] constexpr bool operator==(const IndexedString &) const noexcept = default;
   [[nodiscard]] constexpr auto front() const noexcept { return start; }
   [[nodiscard]] constexpr auto substr(const size_type from) const noexcept
   {
@@ -475,14 +425,14 @@ template<std::unsigned_integral SizeType> struct IndexedList
   [[nodiscard]] constexpr auto front() const noexcept { return start; }
   [[nodiscard]] constexpr size_type operator[](size_type index) const noexcept { return start + index; }
   [[nodiscard]] constexpr size_type back() const noexcept { return static_cast<size_type>(start + size - 1); }
-  [[nodiscard]] constexpr auto sublist(const size_type from,
-    const size_type distance = std::numeric_limits<size_type>::max()) const noexcept
+  [[nodiscard]] constexpr auto sublist(const size_type from) const noexcept
   {
-    if (distance == std::numeric_limits<size_type>::max()) {
-      return IndexedList{ static_cast<size_type>(start + from), static_cast<size_type>(size - from) };
-    } else {
-      return IndexedList{ static_cast<size_type>(start + from), distance };
-    };
+    return IndexedList{ static_cast<size_type>(start + from), static_cast<size_type>(size - from) };
+  }
+
+  [[nodiscard]] constexpr auto sublist(const size_type from, const size_type distance) const noexcept
+  {
+    return IndexedList{ static_cast<size_type>(start + from), distance };
   }
 };
 
@@ -495,7 +445,7 @@ template<std::unsigned_integral SizeType> struct LiteralList
   {
     return LiteralList{ items.sublist(from) };
   }
-  [[nodiscard]] constexpr bool operator==(const LiteralList &) const = default;
+  [[nodiscard]] constexpr bool operator==(const LiteralList &) const noexcept = default;
 };
 
 template<std::unsigned_integral SizeType> LiteralList(IndexedList<SizeType>) -> LiteralList<SizeType>;
@@ -549,13 +499,11 @@ struct cons_expr
   struct SExpr;
   struct Closure;
 
-
   template<std::size_t Size>
   [[nodiscard]] static consteval auto str(char const (&input)[Size]) noexcept// NOLINT(modernize-avoid-c-arrays)
   {
     return chars<char_type>::str(input);
   }
-
 
   template<typename Type>
   [[nodiscard]] static constexpr bool visit_helper(SExpr &result, auto Func, auto &variant) noexcept
@@ -570,6 +518,7 @@ struct cons_expr
   template<typename... Type> static constexpr SExpr visit(auto visitor, const std::variant<Type...> &value) noexcept
   {
     SExpr result{};
+    // || will make this short circuit and stop on first matching function
     ((visit_helper<Type>(result, visitor, value) || ...));
     return result;
   }
@@ -578,10 +527,9 @@ struct cons_expr
   using function_ptr = SExpr (*)(cons_expr &, LexicalScope &, list_type);
   using Atom = std::variant<std::monostate, bool, int_type, float_type, string_type, identifier_type, UserTypes...>;
 
-
   struct FunctionPtr
   {
-    enum struct Type { other, do_expr, let_expr, lambda_expr, define_expr };
+    enum struct Type : std::uint8_t { other, do_expr, let_expr, lambda_expr, define_expr };
     function_ptr ptr{ nullptr };
     Type type{ Type::other };
 
@@ -607,11 +555,11 @@ struct cons_expr
   {
     std::variant<Atom, list_type, literal_list_type, Closure, FunctionPtr, error_type> value;
 
-    [[nodiscard]] constexpr bool operator==(const SExpr &) const = default;
+    [[nodiscard]] constexpr bool operator==(const SExpr &) const noexcept = default;
   };
 
   static_assert(std::is_trivially_copyable_v<SExpr> && std::is_trivially_destructible_v<SExpr>,
-    "cons_expr does not work well with non-trivial types");
+    "cons_expr does not work with non-trivial types");
 
   template<typename Result> [[nodiscard]] constexpr const Result *get_if(const SExpr *sexpr) const noexcept
   {
@@ -632,22 +580,19 @@ struct cons_expr
   SmallVector<size_type, char_type, BuiltInStringsSize, string_type, string_view_type> strings{};
   SmallVector<size_type, SExpr, BuiltInValuesSize, list_type> values{};
 
-  SmallVector<size_type, SExpr, 32, IndexedList<size_type>> object_scratch;
-  SmallVector<size_type, std::pair<size_type, SExpr>, 32, IndexedList<size_type>> variables_scratch;
-  SmallVector<size_type, string_type, 32, IndexedList<size_type>> string_scratch;
+  SmallVector<size_type, SExpr, 32, IndexedList<size_type>> object_scratch{};
+  SmallVector<size_type, std::pair<size_type, SExpr>, 32, IndexedList<size_type>> variables_scratch{};
+  SmallVector<size_type, string_type, 32, IndexedList<size_type>> string_scratch{};
 
   template<typename ScratchTo> struct Scratch
   {
-    constexpr explicit Scratch(ScratchTo &t_data) : data(&t_data)
+    constexpr explicit Scratch(ScratchTo &t_data) noexcept : data(&t_data) {}
+    constexpr explicit Scratch(ScratchTo &t_data, auto initial_values) noexcept : Scratch(t_data)
     {
-    }
-    constexpr explicit Scratch(ScratchTo &t_data, auto initial_values) : Scratch(t_data) {
-      for (const auto &obj : initial_values) {
-        push_back(obj);
-      }
+      for (const auto &obj : initial_values) { push_back(obj); }
     }
     Scratch(const Scratch &) = delete;
-    constexpr Scratch(Scratch &&other)
+    constexpr Scratch(Scratch &&other) noexcept
       : data{ std::exchange(other.data, nullptr) }, initial_size{ other.initial_size },
         current_size{ other.current_size }
     {}
@@ -659,10 +604,11 @@ struct cons_expr
     }
     [[nodiscard]] constexpr auto begin() const noexcept { return std::next(data->begin(), initial_size); }
     [[nodiscard]] constexpr auto end() const noexcept { return std::next(data->begin(), current_size); }
-    constexpr auto &emplace_back(auto ... param) noexcept {
+    constexpr void emplace_back(auto &&...param) noexcept
+    {
       assert(data->size() == current_size);
-      ++current_size;
-      return data->emplace_back(std::move(param)...);
+      data->emplace_back(param...);
+      current_size = data->size();
     }
     constexpr void push_back(auto obj) noexcept
     {
@@ -815,7 +761,6 @@ struct cons_expr
     return function_ptr{ [](cons_expr &engine, LexicalScope &scope, list_type params) -> SExpr {
       if (params.size != sizeof...(Param)) { return engine.make_error(str("wrong param count for function"), params); }
 
-
       auto impl = [&]<size_type... Idx>(std::integer_sequence<size_type, Idx...>) {
         std::tuple evaled_params{ engine.eval_to<std::remove_cvref_t<Param>>(scope, engine.values[params[Idx]])... };
 
@@ -933,15 +878,13 @@ struct cons_expr
   [[nodiscard]] static constexpr SExpr list(cons_expr &engine, LexicalScope &scope, list_type params)
   {
     Scratch result{ engine.object_scratch };
-
     for (const auto &param : engine.values[params]) { result.push_back(engine.eval(scope, param)); }
-
     return SExpr{ LiteralList{ engine.values.insert_or_find(result) } };
   }
 
   constexpr auto get_lambda_parameter_names(const SExpr &sexpr)
   {
-    Scratch retval{string_scratch};
+    Scratch retval{ string_scratch };
     if (auto *parameter_list = get_if<list_type>(&sexpr); parameter_list != nullptr) {
       for (const auto &expr : values[*parameter_list]) {
         if (auto *local_id = get_if<identifier_type>(&expr); local_id != nullptr) { retval.push_back(local_id->value); }
@@ -998,7 +941,7 @@ struct cons_expr
     std::span<const string_type> local_identifiers,
     const LexicalScope &local_constants)
   {
-    Scratch new_locals{string_scratch, local_identifiers };
+    Scratch new_locals{ string_scratch, local_identifiers };
     Scratch new_params{ object_scratch };
 
     // collect all locals
@@ -1049,7 +992,7 @@ struct cons_expr
     std::span<const string_type> local_identifiers,
     const LexicalScope &local_constants)
   {
-    Scratch new_locals{string_scratch, local_identifiers };
+    Scratch new_locals{ string_scratch, local_identifiers };
 
     Scratch new_params{ object_scratch };
 
@@ -1107,14 +1050,11 @@ struct cons_expr
     const LexicalScope &local_constants)
   {
     auto lambda_locals = get_lambda_parameter_names(values[first_index + 1]);
-    Scratch new_locals{string_scratch, local_identifiers };
-    for (const auto &value : lambda_locals) {
-      new_locals.push_back(value);
-    }
+    Scratch new_locals{ string_scratch, local_identifiers };
+    for (const auto &value : lambda_locals) { new_locals.push_back(value); }
 
-    Scratch new_lambda{ object_scratch };
-    new_lambda.push_back(fix_identifiers(values[first_index], new_locals, local_constants));
-    new_lambda.push_back(values[first_index + 1]);
+    Scratch new_lambda{ object_scratch,
+      std::array{ fix_identifiers(values[first_index], new_locals, local_constants), values[first_index + 1] } };
 
     for (size_type index = first_index + 2; index < list.size + list.start; ++index) {
       new_lambda.push_back(fix_identifiers(values[index], new_locals, local_constants));
@@ -1212,7 +1152,7 @@ struct cons_expr
         str("(do ((var1 val1 [iter_expr1]) ...) (terminate_condition [result...]) [body...])"), params);
     }
 
-    Scratch variables{engine.variables_scratch};
+    Scratch variables{ engine.variables_scratch };
 
     auto *variable_list = engine.get_if<list_type>(&engine.values[params[0]]);
 
@@ -1242,10 +1182,8 @@ struct cons_expr
       if (variable_parts->size == 3) { variables.emplace_back(index, variable_parts_list[2]); }
     }
 
-    Scratch variable_names{engine.string_scratch};
-    for (auto &[index, value] : variables) {
-      value = engine.fix_identifiers(value, variable_names, scope);
-    }
+    Scratch variable_names{ engine.string_scratch };
+    for (auto &[index, value] : variables) { value = engine.fix_identifiers(value, variable_names, scope); }
 
     for (const auto &local : new_scope) { variable_names.push_back(local.first); }
 
