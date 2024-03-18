@@ -5,15 +5,17 @@ constexpr long long add(long long x, long long y) { return x + y; }
 
 void display(long long i) { std::cout << i << '\n'; }
 
+using cons_expr_type = lefticus::cons_expr<std::uint16_t, char, long long, double>;
+
 auto evaluate(std::string_view input)
 {
-  lefticus::cons_expr<> evaluator;
+  cons_expr_type evaluator;
 
   evaluator.add<&add>("add");
   evaluator.add<&display>("display");
 
   return evaluator.sequence(
-    evaluator.global_scope, std::get<typename lefticus::cons_expr<>::list_type>(evaluator.parse(input).first.value));
+    evaluator.global_scope, std::get<typename cons_expr_type::list_type>(evaluator.parse(input).first.value));
 }
 
 template<typename Result> Result evaluate_to(std::string_view input)
