@@ -1357,22 +1357,34 @@ struct cons_expr
   // take a string_view and return a C++ function object
   // of unspecified type.
   template<typename Signature>
-  [[nodiscard]] constexpr auto make_callable(string_view_type function)
+  [[nodiscard]] constexpr auto make_callable(SExpr callable) noexcept
     requires std::is_function_v<Signature>
   {
-    auto impl = [this, function]<typename Ret, typename... Params>(Ret (*)(Params...)) {
-      // this is fragile, we need to check parsing better
-
-      return [callable = eval(global_scope, values[std::get<list_type>(parse(function).first.value)][0])](
-               cons_expr &engine, Params... params) {
+    auto impl = [this, callable]<typename Ret, typename... Params>(Ret (*)(Params...)) {
+      return [callable](cons_expr &engine, Params... params) {
         std::array<SExpr, sizeof...(Params)> args{ SExpr{ Atom{ params } }... };
-        return engine.eval_to<Ret>(engine.global_scope,
-          engine.invoke_function(engine.global_scope, callable, engine.values.insert_or_find(args)));
+        if constexpr (std::is_same_v<void, Ret>) {
+          engine.eval(engine.global_scope,
+            engine.invoke_function(engine.global_scope, callable, engine.values.insert_or_find(args)));
+
+        } else {
+          return engine.eval_to<Ret>(engine.global_scope,
+            engine.invoke_function(engine.global_scope, callable, engine.values.insert_or_find(args)));
+        }
       };
     };
 
     return impl(std::add_pointer_t<Signature>{ nullptr });
   }
+
+  template<typename Signature>
+  [[nodiscard]] constexpr auto make_callable(std::basic_string_view<char_type> function) noexcept
+    requires std::is_function_v<Signature>
+  {
+    // this is fragile, we need to check parsing better
+    return make_callable<Signature>(eval(global_scope, values[std::get<list_type>(parse(function).first.value)][0]));
+  }
+
 
   template<typename T> [[nodiscard]] constexpr auto eval_transform(LexicalScope &scope)
   {
