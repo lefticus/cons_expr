@@ -1366,7 +1366,6 @@ struct cons_expr
         if constexpr (std::is_same_v<void, Ret>) {
           engine.eval(engine.global_scope,
             engine.invoke_function(engine.global_scope, callable, engine.values.insert_or_find(args)));
-
         } else {
           return engine.eval_to<Ret>(engine.global_scope,
             engine.invoke_function(engine.global_scope, callable, engine.values.insert_or_find(args)));
