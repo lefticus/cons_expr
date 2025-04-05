@@ -844,7 +844,7 @@ struct cons_expr
       const auto string = strings.view(id->value);
 
       // is quoted identifier, handle appropriately
-      if (string.starts_with('\'')) { return SExpr{ Atom{ id->substr(1) } }; }
+      if (string.starts_with('\'')) { return SExpr{ Atom{ identifier_type{strings.insert_or_find(strings.view(id->substr(1).value)) }  } }; }
 
       return make_error(str("id not found"), expr);
     }
