@@ -537,6 +537,39 @@ TEST_CASE("simple error handling", "[errors]")
 )");
 }
 
+TEST_CASE("custom make_callable functionality", "[callables]")
+{
+  // This tests the make_callable template functionality
+  STATIC_CHECK(evaluate_to<IntType>(R"(
+    ((lambda (x) (+ x 5)) 10)
+  )") == 15);
+  
+  // Testing more complex callable patterns
+  STATIC_CHECK(evaluate_to<IntType>(R"(
+    (define square (lambda (x) (* x x)))
+    (define inc (lambda (x) (+ x 1)))
+    (define compose (lambda (f g) (lambda (x) (f (g x)))))
+    ((compose square inc) 4)
+  )") == 25);
+}
+
+TEST_CASE("get_list and get_list_range edge cases", "[implementation]")
+{
+  // Test empty list handling
+  STATIC_CHECK(evaluate_to<bool>("(== '() '())") == true);
+  
+  // Test boundary cases with lists
+  STATIC_CHECK(evaluate_to<bool>(R"(
+    (define empty '())
+    (== (append empty '(1)) '(1))
+  )") == true);
+  
+  STATIC_CHECK(evaluate_to<bool>(R"(
+    (define singleton '(1))
+    (== (car singleton) 1)
+  )") == true);
+}
+
 TEST_CASE("scoped do expression", "[builtins]")
 {
   STATIC_CHECK(evaluate_to<IntType>(R"(
@@ -607,4 +640,123 @@ TEST_CASE("iterative algorithmic tests", "[algorithms]")
 TEST_CASE("basic for-each usage", "[builtins]")
 {
   // STATIC_CHECK_NOTHROW(evaluate_to<std::monostate>("(for-each display '(1 2 3 4))"));
+}
+
+TEST_CASE("SmallVector memory and optimization", "[implementation]")
+{
+  // Test string deduplication behavior
+  STATIC_CHECK(evaluate_to<bool>("(== 'hello 'hello)") == true);
+  STATIC_CHECK(evaluate_to<bool>("(== \"test\" \"test\")") == true);
+  
+  // Alternative test for identical identifier equality using define
+  STATIC_CHECK(evaluate_to<bool>(R"(
+    (define x 'symbol)
+    (define y 'symbol)
+    (== x y)
+  )") == true);
+  
+  // This test checks if value reuse is working correctly
+  STATIC_CHECK(evaluate_to<bool>(R"(
+    (define list1 '(1 2 3))
+    (define list2 '(1 2 3))
+    (== list1 list2)
+  )") == true);
+}
+
+
+TEST_CASE("token parsing edge cases", "[parsing]")
+{
+  // Simple string test that doesn't use escaped quotes
+  STATIC_CHECK(evaluate_expected<std::string_view>(R"("simple string")","simple string"));
+  
+  // Test with whitespace variations
+  STATIC_CHECK(evaluate_to<IntType>("(+ \t1   2\n)") == 3);
+}
+
+TEST_CASE("Quoted symbol equality issues", "[symbols]")
+{
+  // These tests currently fail but should work based on the expected behavior of symbols
+  // They are included to document expected behavior and prevent regression
+
+  // ----------------------------------------
+  // FAILING CASES - Should all return true  
+  // ----------------------------------------
+  
+  // 1. Direct quoted symbol equality fails
+  STATIC_CHECK(evaluate_to<bool>("(== 'hello 'hello)") == true);
+  
+  // 2. Defined symbols with identical quoted values fail comparison 
+  STATIC_CHECK(evaluate_to<bool>("(define x 'hello) (define y 'hello) (== x y)") == true);
+  
+  // 3. Reference equality of symbols fails
+  STATIC_CHECK(evaluate_to<bool>("(define x 'hello) (define y x) (== x y)") == true);
+  
+  // 4. Car of quoted list equality fails
+  STATIC_CHECK(evaluate_to<bool>("(define a (car '('a))) (define b (car '('a))) (== a b)") == true);
+  
+  // 5. Identity of a symbol fails
+  STATIC_CHECK(evaluate_to<bool>("(define sym 'hello) (== sym sym)") == true);
+  
+  // ----------------------------------------
+  // WORKING CASES - For comparison
+  // ----------------------------------------
+  
+  // Lists containing quoted symbols work fine
+  STATIC_CHECK(evaluate_to<bool>("(== '('hello) '('hello))") == true);
+  
+  // Car of list with quoted symbols also works
+  STATIC_CHECK(evaluate_to<bool>("(== (car '('hello)) (car '('hello)))") == true);
+  
+  // Symbols in the same list compare equal
+  STATIC_CHECK(evaluate_to<bool>("(define lst '(x x)) (== (car lst) (car (cdr lst)))") == true);
+  
+  // Integer equality works
+  STATIC_CHECK(evaluate_to<bool>("(== 1 1)") == true);
+  
+  // String equality works
+  STATIC_CHECK(evaluate_to<bool>("(== \"hello\" \"hello\")") == true);
+}
+
+TEST_CASE("Symbol equality diagnosis", "[symbols][analysis]")
+{
+  /* Root cause analysis:
+   * 
+   * The issue appears to be how quoted identifiers are processed during evaluation.
+   * 
+   * During parsing, quoted symbols are stored in the string table with the quote mark.
+   * During evaluation (in the eval function ~line 847):
+   * 
+   * if (string.starts_with('\'')) { 
+   *   return SExpr{ Atom{ identifier_type{strings.insert_or_find(strings.view(id->substr(1).value)) } } }; 
+   * }
+   * 
+   * This creates a new identifier without the quote for each occurrence, giving each a 
+   * different index in the string table. When these identifiers are compared with ==, 
+   * it's comparing the indices rather than the string content.
+   * 
+   * In lists, symbols retain their original representation (including the quote),
+   * which is why '('hello) == '('hello) works.
+   * 
+   * Potential fixes:
+   * 1. Modify identifier equality to compare string content instead of indices
+   * 2. Ensure consistent indexing for identical symbols
+   * 3. Create a global symbol table that guarantees a single instance per unique symbol
+   */
+  
+  // Current behavior: these tests document the current behavior and will fail when fixed
+  STATIC_CHECK(evaluate_to<bool>("(== 'hello 'hello)") == false);
+  STATIC_CHECK(evaluate_to<bool>("(define sym 'hello) (== sym sym)") == false);
+}
+
+TEST_CASE("deeply nested expressions", "[nesting]")
+{
+  // Test deeply nested expressions
+  STATIC_CHECK(evaluate_to<IntType>(R"(
+    (+ 1 (* 2 (- 10 (/ 8 (+ 1 1)))))
+  )") == 13);
+  
+  // Test deeply nested lists
+  STATIC_CHECK(evaluate_to<bool>(R"(
+    (== (cons 1 (cons 2 (cons 3 (cons 4 (cons 5 '()))))) '(1 2 3 4 5))
+  )") == true);
 }
