@@ -27,6 +27,24 @@ template<typename Result> constexpr bool evaluate_expected(std::string_view inpu
   return evaluator.evaluate_to<Result>(input).value() == result;
 }
 
+template<typename Result> constexpr std::optional<Result> parse_as(auto &evaluator, std::string_view input) {
+  using eval_type = std::remove_cvref_t<decltype(evaluator)>;
+  using list_type = eval_type::list_type;
+
+  auto [parse_result, parse_remaining] = evaluator.parse(input);
+  // properly parsed results are always lists
+  const auto list = std::get_if<list_type>(&parse_result.value);
+  // this should be a list of exactly 1 thing (which might be another list)
+  if (list == nullptr || list->size != 1) { return std::optional<Result>{}; }
+  const auto first_elem = evaluator.values[(*list)[0]];
+
+  const auto *result = evaluator.template get_if<Result>(&first_elem);
+
+  if (result == nullptr) { return std::optional<Result>{}; }
+
+  return *result;
+}
+
 TEST_CASE("Operator identifiers", "[operators]")
 {
   STATIC_CHECK(evaluate_to<IntType>("((if false + *) 3 4)") == 12);
@@ -746,6 +764,251 @@ TEST_CASE("Symbol equality diagnosis", "[symbols][analysis]")
   // Current behavior: these tests document the current behavior and will fail when fixed
   STATIC_CHECK(evaluate_to<bool>("(== 'hello 'hello)") == false);
   STATIC_CHECK(evaluate_to<bool>("(define sym 'hello) (== sym sym)") == false);
+}
+
+// Unit tests for internal structures
+
+// IndexedString tests
+TEST_CASE("IndexedString creation and comparison", "[core][indexedstring]")
+{
+  constexpr auto test_indexed_string_creation = []() {
+    lefticus::IndexedString<uint16_t> str{5, 10};
+    return str.start == 5 && str.size == 10;
+  };
+  STATIC_CHECK(test_indexed_string_creation());
+}
+
+TEST_CASE("IndexedString equality", "[core][indexedstring]")
+{
+  constexpr auto test_indexed_string_equality = []() {
+    lefticus::IndexedString<uint16_t> str1{5, 10};
+    lefticus::IndexedString<uint16_t> str2{5, 10};
+    return str1 == str2;
+  };
+  STATIC_CHECK(test_indexed_string_equality());
+}
+
+TEST_CASE("IndexedString inequality", "[core][indexedstring]")
+{
+  constexpr auto test_indexed_string_inequality = []() {
+    lefticus::IndexedString<uint16_t> str1{5, 10};
+    lefticus::IndexedString<uint16_t> str2{15, 10};
+    return str1 != str2;
+  };
+  STATIC_CHECK(test_indexed_string_inequality());
+}
+
+TEST_CASE("IndexedString substr", "[core][indexedstring]")
+{
+  constexpr auto test_indexed_string_substr = []() {
+    lefticus::IndexedString<uint16_t> str{5, 10};
+    auto substr = str.substr(2);
+    return substr.start == 7 && substr.size == 8;
+  };
+  STATIC_CHECK(test_indexed_string_substr());
+}
+
+// IndexedList tests
+TEST_CASE("IndexedList creation and properties", "[core][indexedlist]")
+{
+  constexpr auto test_indexed_list_creation = []() {
+    lefticus::IndexedList<uint16_t> list{10, 5};
+    return list.start == 10 && list.size == 5 && !list.empty();
+  };
+  STATIC_CHECK(test_indexed_list_creation());
+}
+
+TEST_CASE("IndexedList equality", "[core][indexedlist]")
+{
+  constexpr auto test_indexed_list_equality = []() {
+    lefticus::IndexedList<uint16_t> list1{10, 5};
+    lefticus::IndexedList<uint16_t> list2{10, 5};
+    return list1 == list2;
+  };
+  STATIC_CHECK(test_indexed_list_equality());
+}
+
+TEST_CASE("IndexedList element access", "[core][indexedlist]")
+{
+  constexpr auto test_indexed_list_access = []() {
+    lefticus::IndexedList<uint16_t> list{10, 5};
+    return list.front() == 10 && list[2] == 12 && list.back() == 14;
+  };
+  STATIC_CHECK(test_indexed_list_access());
+}
+
+TEST_CASE("IndexedList sublist operations", "[core][indexedlist]")
+{
+  constexpr auto test_indexed_list_sublist = []() {
+    lefticus::IndexedList<uint16_t> list{10, 5};
+    auto sublist1 = list.sublist(2);
+    auto sublist2 = list.sublist(1, 3);
+    return (sublist1.start == 12 && sublist1.size == 3) &&
+           (sublist2.start == 11 && sublist2.size == 3);
+  };
+  STATIC_CHECK(test_indexed_list_sublist());
+}
+
+// Identifier tests
+TEST_CASE("Identifier creation and properties", "[core][identifier]")
+{
+  constexpr auto test_identifier_creation = []() {
+    lefticus::Identifier<uint16_t> id{lefticus::IndexedString<uint16_t>{5, 10}};
+    return id.value.start == 5 && id.value.size == 10;
+  };
+  STATIC_CHECK(test_identifier_creation());
+}
+
+TEST_CASE("Identifier equality", "[core][identifier]")
+{
+  constexpr auto test_identifier_equality = []() {
+    lefticus::Identifier<uint16_t> id1{lefticus::IndexedString<uint16_t>{5, 10}};
+    lefticus::Identifier<uint16_t> id2{lefticus::IndexedString<uint16_t>{5, 10}};
+    return id1 == id2;
+  };
+  STATIC_CHECK(test_identifier_equality());
+}
+
+TEST_CASE("Identifier inequality", "[core][identifier]")
+{
+  constexpr auto test_identifier_inequality = []() {
+    lefticus::Identifier<uint16_t> id1{lefticus::IndexedString<uint16_t>{5, 10}};
+    lefticus::Identifier<uint16_t> id2{lefticus::IndexedString<uint16_t>{15, 10}};
+    return id1 != id2;
+  };
+  STATIC_CHECK(test_identifier_inequality());
+}
+
+TEST_CASE("Identifier substr", "[core][identifier]")
+{
+  constexpr auto test_identifier_substr = []() {
+    lefticus::Identifier<uint16_t> id{lefticus::IndexedString<uint16_t>{5, 10}};
+    auto substr = id.substr(2);
+    return substr.value.start == 7 && substr.value.size == 8;
+  };
+  STATIC_CHECK(test_identifier_substr());
+}
+
+// Token and parsing tests
+TEST_CASE("Token parsing basics", "[core][token]")
+{
+  constexpr auto test_token_simple = []() {
+    auto token = lefticus::next_token(std::string_view("hello world"));
+    return token.parsed == "hello" && token.remaining == "world";
+  };
+  STATIC_CHECK(test_token_simple());
+}
+
+TEST_CASE("Token parsing with whitespace", "[core][token]")
+{
+  constexpr auto test_token_whitespace = []() {
+    auto token = lefticus::next_token(std::string_view("  hello  world  "));
+    return token.parsed == "hello" && token.remaining == "world  ";
+  };
+  STATIC_CHECK(test_token_whitespace());
+}
+
+TEST_CASE("Token parsing with delimiters", "[core][token]")
+{
+  constexpr auto test_token_delimiters = []() {
+    auto token = lefticus::next_token(std::string_view("(hello world)"));
+    return token.parsed == "(" && token.remaining == "hello world)";
+  };
+  STATIC_CHECK(test_token_delimiters());
+}
+
+// Number parsing tests
+TEST_CASE("Parse integer", "[core][parse]")
+{
+  constexpr auto test_parse_int = []() {
+    auto [success, value] = lefticus::parse_number<int>(std::string_view("123"));
+    return success && value == 123;
+  };
+  STATIC_CHECK(test_parse_int());
+}
+
+TEST_CASE("Parse negative integer", "[core][parse]")
+{
+  constexpr auto test_parse_negative = []() {
+    auto [success, value] = lefticus::parse_number<int>(std::string_view("-42"));
+    return success && value == -42;
+  };
+  STATIC_CHECK(test_parse_negative());
+}
+
+TEST_CASE("Parse float", "[core][parse]")
+{
+  constexpr auto test_parse_float = []() {
+    auto [success, value] = lefticus::parse_number<double>(std::string_view("123.45"));
+    return success && std::abs(value - 123.45) < 0.0001;
+  };
+  STATIC_CHECK(test_parse_float());
+}
+
+TEST_CASE("Parse invalid number", "[core][parse]")
+{
+  constexpr auto test_parse_invalid = []() {
+    auto [success, value] = lefticus::parse_number<int>(std::string_view("abc"));
+    return !success;
+  };
+  STATIC_CHECK(test_parse_invalid());
+}
+
+
+// Full parser tests
+TEST_CASE("Parser handles basic expressions", "[core][parser]")
+{
+  constexpr auto test_parse_number = []() {
+    using eval_type = lefticus::cons_expr<std::uint16_t, char, int, double>;
+    eval_type evaluator;
+
+    const auto parsed = parse_as<int>(evaluator, "42");
+    return parsed.value();
+  };
+  STATIC_CHECK(test_parse_number() == 42);
+}
+
+TEST_CASE("Parser handles simple list", "[core][parser]")
+{
+  constexpr auto test_parse_list = []() {
+    lefticus::cons_expr<std::uint16_t, char, int, double> evaluator;
+    using list_type = lefticus::cons_expr<std::uint16_t, char, int, double>::list_type;
+    return parse_as<list_type>(evaluator, "(+ 1 2)");
+  };
+  STATIC_CHECK(test_parse_list().has_value());
+}
+
+// Quote-related tests relevant to our issue
+TEST_CASE("Parser interprets quoted symbols", "[core][parser][quotes]")
+{
+  constexpr auto test_parse_quoted_symbol = []() {
+    lefticus::cons_expr<std::uint16_t, char, int, double> evaluator;
+    return evaluator.parse("'hello");
+  };
+  constexpr auto parse_result = test_parse_quoted_symbol();
+  constexpr auto token = parse_result.second;
+  // it's actually expected that both "parsed" and "remaining" are empty here
+  // because it consumed all input tokens and the last pass parsed nothing
+  STATIC_CHECK(token.parsed == "");
+  STATIC_CHECK(token.remaining == "");
+}
+
+TEST_CASE("Direct parsing comparison", "[core][parser][quotes]")
+{
+  constexpr auto test_parse_result_equality = []() {
+    using eval_type = lefticus::cons_expr<std::uint16_t, char, int, double>;
+    using identifier_type = eval_type::identifier_type;
+
+    eval_type evaluator;
+
+    // parse same identifier twice
+    auto result1 = parse_as<identifier_type>(evaluator, "'hello");
+    auto result2 = parse_as<identifier_type>(evaluator, "'hello");
+
+    // The parse results should be equal
+    return result1 == result2;
+  };
+  STATIC_CHECK(test_parse_result_equality());
 }
 
 TEST_CASE("deeply nested expressions", "[nesting]")

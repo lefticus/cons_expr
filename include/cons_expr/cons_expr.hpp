@@ -561,7 +561,7 @@ struct cons_expr
   static_assert(std::is_trivially_copyable_v<SExpr> && std::is_trivially_destructible_v<SExpr>,
     "cons_expr does not work with non-trivial types");
 
-  template<typename Result> [[nodiscard]] constexpr const Result *get_if(const SExpr *sexpr) const noexcept
+  template<typename Result> [[nodiscard]] static constexpr const Result *get_if(const SExpr *sexpr) noexcept
   {
     if (sexpr == nullptr) { return nullptr; }
 
