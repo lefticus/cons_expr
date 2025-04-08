@@ -408,7 +408,7 @@ TEST_CASE("simple cons expression", "[builtins]")
   STATIC_CHECK(evaluate_to<bool>("(== (cons 1 (cons 2 (cons 3 '()))) '(1 2 3))") == true);
   
   // Test consing symbols instead of numbers
-STATIC_CHECK(evaluate_to<bool>("(== (cons 'a '(b c)) '(a b c))") ==   true);
+  STATIC_CHECK(evaluate_to<bool>("(== (cons 'a '(b c)) '(a b c))") ==   true);
   
   // Test sequential consing with symbols
   STATIC_CHECK(evaluate_to<bool>("(== (cons 'a (cons 'b '(c))) '(a b c))") == true);
@@ -1011,4 +1011,33 @@ TEST_CASE("deeply nested expressions", "[nesting]")
   STATIC_CHECK(evaluate_to<bool>(R"(
     (== (cons 1 (cons 2 (cons 3 (cons 4 (cons 5 '()))))) '(1 2 3 4 5))
   )") == true);
+}
+
+TEST_CASE("quote function", "[builtins][quote]")
+{
+  // Basic quote tests with lists
+  STATIC_CHECK(evaluate_to<bool>("(== (quote (1 2 3)) '(1 2 3))") == true);
+  STATIC_CHECK(evaluate_to<bool>("(== (quote ()) '())") == true);
+  
+  // Quote with symbols
+  STATIC_CHECK(evaluate_to<bool>("(== (quote hello) 'hello)") == true);
+  
+  // Quote prevents evaluation
+  STATIC_CHECK(evaluate_to<bool>("(== (quote (+ 1 2)) '(+ 1 2))") == true);
+  
+  // Quote vs eval
+  STATIC_CHECK(evaluate_to<IntType>("(eval (quote (+ 1 2)))") == 3);
+  
+  // Compare quote and the ' shorthand
+  STATIC_CHECK(evaluate_to<bool>("(== (quote (1 2 3)) '(1 2 3))") == true);
+  STATIC_CHECK(evaluate_to<bool>("(== (quote x) 'x)") == true);
+  
+  // Quote in different contexts
+  STATIC_CHECK(evaluate_to<bool>(R"(
+    (define x 10)
+    (== (quote x) 'x)
+  )") == true);
+  
+  // Quote for expressions that would otherwise error
+  STATIC_CHECK(evaluate_to<bool>("(== (quote (undefined-function 1 2)) '(undefined-function 1 2))") == true);
 }

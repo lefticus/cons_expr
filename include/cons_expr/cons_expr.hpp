@@ -744,6 +744,7 @@ struct cons_expr
     add(str("append"), SExpr{ FunctionPtr{ append, FunctionPtr::Type::other } });
     add(str("eval"), SExpr{ FunctionPtr{ evaler, FunctionPtr::Type::other } });
     add(str("apply"), SExpr{ FunctionPtr{ applier, FunctionPtr::Type::other } });
+    add(str("quote"), SExpr{ FunctionPtr{ quoter, FunctionPtr::Type::other } });
   }
 
   [[nodiscard]] constexpr SExpr sequence(LexicalScope &scope, list_type expressions)
@@ -1357,6 +1358,32 @@ struct cons_expr
     }
 
     return SExpr{ Atom{ std::monostate{} } };
+  }
+  
+  [[nodiscard]] static constexpr SExpr quoter(cons_expr &engine, LexicalScope &, list_type params)
+  {
+    if (params.size != 1) { return engine.make_error(str("(quote expr)"), params); }
+    
+    const auto &expr = engine.values[params[0]];
+    
+    // If it's a list, convert it to a literal list
+    if (const auto *list = std::get_if<list_type>(&expr.value); list != nullptr) {
+      // Special case for empty lists - use a canonical empty list with start index 0
+      if (list->size == 0) {
+        static constexpr IndexedList<size_type> empty_list{ 0, 0 };
+        return SExpr{ literal_list_type{ empty_list } };
+      }
+      return SExpr{ literal_list_type{ *list } };
+    }
+    // If it's an identifier, convert it to a symbol
+    else if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
+      if (const auto *id = std::get_if<identifier_type>(atom); id != nullptr) {
+        return SExpr{ Atom{ symbol_type{ id->value } } };
+      }
+    }
+    
+    // Otherwise return as is
+    return expr;
   }
 
   [[nodiscard]] static constexpr SExpr definer(cons_expr &engine, LexicalScope &scope, list_type params)
