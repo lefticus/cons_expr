@@ -1307,14 +1307,36 @@ struct cons_expr
 
   [[nodiscard]] static constexpr SExpr cdr(cons_expr &engine, LexicalScope &scope, list_type params)
   {
-    return error_or_else(engine.eval_to<literal_list_type>(scope, params, str("(cdr Non-Empty-LiteralList)")),
-      [&](const auto &list) { return SExpr{ list.sublist(1) }; });
+    return error_or_else(engine.eval_to<literal_list_type>(scope, params, str("(cdr LiteralList)")),
+      [&](const auto &list) { 
+        // If the list has one or zero elements, return empty list
+        if (list.items.size <= 1) {
+          static constexpr IndexedList<size_type> empty_list{ 0, 0 };
+          return SExpr{ literal_list_type{ empty_list } };
+        }
+        return SExpr{ list.sublist(1) }; 
+      });
   }
 
   [[nodiscard]] static constexpr SExpr car(cons_expr &engine, LexicalScope &scope, list_type params)
   {
     return error_or_else(engine.eval_to<literal_list_type>(scope, params, str("(car Non-Empty-LiteralList)")),
-      [&](const auto &list) { return engine.values[list.front()]; });
+      [&](const auto &list) { 
+        // Check if list is empty
+        if (list.items.size == 0) {
+          return engine.make_error(str("car: cannot take car of empty list"), params);
+        }
+        
+        // Get the first element of the list
+        const auto &elem = engine.values[list.items.front()];
+        
+        // If the element is a list_type, return it as a literal_list_type
+        if (const auto *nested_list = std::get_if<list_type>(&elem.value); nested_list != nullptr) {
+          return SExpr{ literal_list_type{*nested_list} };
+        }
+        
+        return elem;
+      });
   }
 
   [[nodiscard]] static constexpr SExpr applier(cons_expr &engine, LexicalScope &scope, list_type params)
