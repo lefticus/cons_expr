@@ -65,7 +65,7 @@ catch_discover_tests(
   .xml)
 
 # Add a file containing a set of constexpr tests
-add_executable(constexpr_tests constexpr_tests.cpp list_tests.cpp)
+add_executable(constexpr_tests constexpr_tests.cpp list_tests.cpp parser_tests.cpp)
 target_link_libraries(
   constexpr_tests
   PRIVATE cons_expr::cons_expr
@@ -93,7 +93,7 @@ catch_discover_tests(
 
 # Disable the constexpr portion of the test, and build again this allows us to have an executable that we can debug when
 # things go wrong with the constexpr testing
-add_executable(relaxed_constexpr_tests constexpr_tests.cpp list_tests.cpp)
+add_executable(relaxed_constexpr_tests constexpr_tests.cpp list_tests.cpp parser_tests.cpp)
 target_link_libraries(
   relaxed_constexpr_tests
   PRIVATE cons_expr::cons_expr
