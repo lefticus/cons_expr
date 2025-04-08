@@ -456,7 +456,15 @@ template<std::unsigned_integral SizeType> struct Identifier
   using size_type = SizeType;
   IndexedString<size_type> value;
   [[nodiscard]] constexpr auto substr(const size_type from) const { return Identifier{ value.substr(from) }; }
-  [[nodiscard]] constexpr bool operator==(const Identifier &) const noexcept = default;
+  [[nodiscard]] constexpr bool operator==(const Identifier &other) const noexcept = default;
+};
+
+template<std::unsigned_integral SizeType> struct Symbol
+{
+  using size_type = SizeType;
+  IndexedString<size_type> value;
+  [[nodiscard]] constexpr auto substr(const size_type from) const { return Identifier{ value.substr(from) }; }
+  [[nodiscard]] constexpr bool operator==(const Symbol &other) const noexcept = default;
 };
 
 template<std::unsigned_integral SizeType> Identifier(IndexedString<SizeType>) -> Identifier<SizeType>;
@@ -490,6 +498,7 @@ struct cons_expr
   using string_type = IndexedString<size_type>;
   using string_view_type = std::basic_string_view<char_type>;
   using identifier_type = Identifier<size_type>;
+  using symbol_type = Symbol<size_type>;
   using list_type = IndexedList<size_type>;
   using literal_list_type = LiteralList<size_type>;
   using error_type = Error<size_type>;
@@ -525,7 +534,7 @@ struct cons_expr
 
   using LexicalScope = SmallVector<size_type, std::pair<string_type, SExpr>, BuiltInSymbolsSize, list_type>;
   using function_ptr = SExpr (*)(cons_expr &, LexicalScope &, list_type);
-  using Atom = std::variant<std::monostate, bool, int_type, float_type, string_type, identifier_type, UserTypes...>;
+  using Atom = std::variant<std::monostate, bool, int_type, float_type, string_type, identifier_type, symbol_type, UserTypes...>;
 
   struct FunctionPtr
   {
@@ -686,7 +695,7 @@ struct cons_expr
           // note that this doesn't remove escaped characters like it should yet
           // quoted string
           if (token.parsed.ends_with('"')) {
-            const auto string = strings.insert_or_find(token.parsed.substr(1, token.parsed.size() - 2));
+            const auto string = strings.insert_or_find(token.parsed.substr(1,   token.parsed.size() - 2));
             retval.push_back(SExpr{ Atom(string) });
           } else {
             retval.push_back(make_error(str("terminated string"), SExpr{ Atom(strings.insert_or_find(token.parsed)) }));
@@ -695,6 +704,8 @@ struct cons_expr
           retval.push_back(SExpr{ Atom(int_value) });
         } else if (auto [float_did_parse, float_value] = parse_number<float_type>(token.parsed); float_did_parse) {
           retval.push_back(SExpr{ Atom(float_value) });
+        } else if (token.parsed.starts_with('\'')) {
+          retval.push_back(SExpr{ Atom (Symbol{strings.insert_or_find(token.parsed.substr(1))})});
         } else {
           retval.push_back(SExpr{ Atom(Identifier{ strings.insert_or_find(token.parsed) }) });
         }
@@ -836,15 +847,10 @@ struct cons_expr
       if (!indexed_list->empty()) {
         return invoke_function(scope, values[(*indexed_list)[0]], indexed_list->sublist(1));
       }
-    } else if (const auto *id = get_if<identifier_type>(&expr); id != nullptr) {
+  } else if (const auto *id = get_if<identifier_type>(&expr); id != nullptr) {
       for (const auto &[key, value] : scope | std::views::reverse) {
         if (key == id->value) { return value; }
       }
-
-      const auto string = strings.view(id->value);
-
-      // is quoted identifier, handle appropriately
-      if (string.starts_with('\'')) { return SExpr{ Atom{ identifier_type{strings.insert_or_find(strings.view(id->substr(1).value)) }  } }; }
 
       return make_error(str("id not found"), expr);
     }
@@ -1271,6 +1277,14 @@ struct cons_expr
 
     if (const auto *list_front = std::get_if<literal_list_type>(&front.value); list_front != nullptr) {
       result.push_back(SExpr{ list_front->items });
+    } else if (const auto *atom = std::get_if<Atom>(&front.value); atom != nullptr) {
+      if (const auto *identifier_front = std::get_if<symbol_type>(atom); identifier_front != nullptr) {
+        // push an identifier into the list, not a symbol... should maybe fix this
+        // so quoted lists are always lists of symbols?
+        result.push_back(SExpr{ Atom{ identifier_type{ identifier_front->value } } } );
+      } else {
+        result.push_back(front);
+      }
     } else {
       result.push_back(front);
     }

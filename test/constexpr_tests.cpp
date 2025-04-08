@@ -408,7 +408,7 @@ TEST_CASE("simple cons expression", "[builtins]")
   STATIC_CHECK(evaluate_to<bool>("(== (cons 1 (cons 2 (cons 3 '()))) '(1 2 3))") == true);
   
   // Test consing symbols instead of numbers
-  STATIC_CHECK(evaluate_to<bool>("(== (cons 'a '(b c)) '(a b c))") == true);
+STATIC_CHECK(evaluate_to<bool>("(== (cons 'a '(b c)) '(a b c))") ==   true);
   
   // Test sequential consing with symbols
   STATIC_CHECK(evaluate_to<bool>("(== (cons 'a (cons 'b '(c))) '(a b c))") == true);
@@ -735,36 +735,6 @@ TEST_CASE("Quoted symbol equality issues", "[symbols]")
   STATIC_CHECK(evaluate_to<bool>("(== \"hello\" \"hello\")") == true);
 }
 
-TEST_CASE("Symbol equality diagnosis", "[symbols][analysis]")
-{
-  /* Root cause analysis:
-   * 
-   * The issue appears to be how quoted identifiers are processed during evaluation.
-   * 
-   * During parsing, quoted symbols are stored in the string table with the quote mark.
-   * During evaluation (in the eval function ~line 847):
-   * 
-   * if (string.starts_with('\'')) { 
-   *   return SExpr{ Atom{ identifier_type{strings.insert_or_find(strings.view(id->substr(1).value)) } } }; 
-   * }
-   * 
-   * This creates a new identifier without the quote for each occurrence, giving each a 
-   * different index in the string table. When these identifiers are compared with ==, 
-   * it's comparing the indices rather than the string content.
-   * 
-   * In lists, symbols retain their original representation (including the quote),
-   * which is why '('hello) == '('hello) works.
-   * 
-   * Potential fixes:
-   * 1. Modify identifier equality to compare string content instead of indices
-   * 2. Ensure consistent indexing for identical symbols
-   * 3. Create a global symbol table that guarantees a single instance per unique symbol
-   */
-  
-  // Current behavior: these tests document the current behavior and will fail when fixed
-  STATIC_CHECK(evaluate_to<bool>("(== 'hello 'hello)") == false);
-  STATIC_CHECK(evaluate_to<bool>("(define sym 'hello) (== sym sym)") == false);
-}
 
 // Unit tests for internal structures
 
@@ -872,8 +842,8 @@ TEST_CASE("Identifier equality", "[core][identifier]")
 TEST_CASE("Identifier inequality", "[core][identifier]")
 {
   constexpr auto test_identifier_inequality = []() {
-    lefticus::Identifier<uint16_t> id1{lefticus::IndexedString<uint16_t>{5, 10}};
-    lefticus::Identifier<uint16_t> id2{lefticus::IndexedString<uint16_t>{15, 10}};
+    constexpr lefticus::Identifier<uint16_t> id1{lefticus::IndexedString<uint16_t>{5, 10}};
+    constexpr lefticus::Identifier<uint16_t> id2{lefticus::IndexedString<uint16_t>{15, 10}};
     return id1 != id2;
   };
   STATIC_CHECK(test_identifier_inequality());
@@ -992,6 +962,25 @@ TEST_CASE("Parser interprets quoted symbols", "[core][parser][quotes]")
   STATIC_CHECK(token.parsed == "");
   STATIC_CHECK(token.remaining == "");
 }
+
+
+TEST_CASE("Evaluated Identifier Comparison", "[core][parser][quotes]")
+{
+  constexpr auto test_parse_result_equality = []() {
+    using eval_type = lefticus::cons_expr<std::uint16_t, char, int, double>;
+    using identifier_type = eval_type::identifier_type;
+
+    eval_type evaluator;
+
+    auto result1 = evaluator.evaluate_to<identifier_type>("'hello");
+    auto result2 = evaluator.evaluate_to<identifier_type>("'hello");
+
+    // The parse results should be equal
+    return result1 == result2;
+  };
+  STATIC_CHECK(test_parse_result_equality());
+}
+
 
 TEST_CASE("Direct parsing comparison", "[core][parser][quotes]")
 {
