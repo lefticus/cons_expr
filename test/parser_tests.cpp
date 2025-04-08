@@ -339,128 +339,57 @@ TEST_CASE("List structure", "[parser][lists]")
   constexpr auto test_empty_list = []() {
     lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
     
+    // Parse an empty list: ()
     auto [parsed_result, _] = evaluator.parse(std::string_view("()"));
     
-    // Debug output in non-constexpr context
-    #ifndef __INTELLISENSE__
-    #if defined(CATCH_CONFIG_RUNTIME_STATIC_REQUIRE)
-      if (std::holds_alternative<lefticus::cons_expr<>::list_type>(parsed_result.value)) {
-        std::cout << "Empty list test - outer list is correct type\n";
-        const auto &outer_list = std::get<lefticus::cons_expr<>::list_type>(parsed_result.value);
-        std::cout << "Outer list size: " << outer_list.size << "\n";
-        
-        if (outer_list.size == 1) {
-          const auto &inner_elem = evaluator.values[outer_list[0]];
-          std::cout << "Inner element variant index: " << inner_elem.value.index() << "\n";
-          
-          if (std::holds_alternative<lefticus::cons_expr<>::list_type>(inner_elem.value)) {
-            const auto &inner_list = std::get<lefticus::cons_expr<>::list_type>(inner_elem.value);
-            std::cout << "Inner list size: " << inner_list.size << "\n";
-          }
-        }
-      }
-    #endif
-    #endif
+    // Parse always returns a list containing the parsed expressions
+    // For an empty list, we expect a list with one item (which is itself an empty list)
+    const auto *outer_list = std::get_if<lefticus::cons_expr<>::list_type>(&parsed_result.value);
+    if (outer_list == nullptr || outer_list->size != 1) return false;
     
-    // Correct expectation: parse returns a list with one element
-    // That element should be an empty list
-    const auto *outer_list_ptr = std::get_if<lefticus::cons_expr<>::list_type>(&parsed_result.value);
-    if (outer_list_ptr == nullptr || outer_list_ptr->size != 1) return false;
-    
-    const auto &inner_elem = evaluator.values[(*outer_list_ptr)[0]];
-    const auto *inner_list_ptr = std::get_if<lefticus::cons_expr<>::list_type>(&inner_elem.value);
-    return inner_list_ptr != nullptr && inner_list_ptr->size == 0;
+    // Check that the inner element is an empty list
+    const auto &inner_elem = evaluator.values[(*outer_list)[0]];
+    const auto *inner_list = std::get_if<lefticus::cons_expr<>::list_type>(&inner_elem.value);
+    return inner_list != nullptr && inner_list->size == 0;
   };
   
   // Simple list test
   constexpr auto test_simple_list = []() {
     lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
     
+    // Parse a simple list with three elements: (a b c)
     auto [parsed_result, _] = evaluator.parse(std::string_view("(a b c)"));
     
-    // Debug output in non-constexpr context
-    #ifndef __INTELLISENSE__
-    #if defined(CATCH_CONFIG_RUNTIME_STATIC_REQUIRE)
-      if (std::holds_alternative<lefticus::cons_expr<>::list_type>(parsed_result.value)) {
-        std::cout << "Simple list test - outer list is correct type\n";
-        const auto &outer_list = std::get<lefticus::cons_expr<>::list_type>(parsed_result.value);
-        std::cout << "Outer list size: " << outer_list.size << "\n";
-        
-        if (outer_list.size == 1) {
-          const auto &inner_elem = evaluator.values[outer_list[0]];
-          std::cout << "Inner element variant index: " << inner_elem.value.index() << "\n";
-          
-          if (std::holds_alternative<lefticus::cons_expr<>::list_type>(inner_elem.value)) {
-            const auto &inner_list = std::get<lefticus::cons_expr<>::list_type>(inner_elem.value);
-            std::cout << "Inner list size: " << inner_list.size << "\n";
-          }
-        }
-      }
-    #endif
-    #endif
+    // Outer list should contain one item
+    const auto *outer_list = std::get_if<lefticus::cons_expr<>::list_type>(&parsed_result.value);
+    if (outer_list == nullptr || outer_list->size != 1) return false;
     
-    // Correct expectation: parse returns a list with one element
-    // That element should be a list with 3 elements (a, b, c)
-    const auto *outer_list_ptr = std::get_if<lefticus::cons_expr<>::list_type>(&parsed_result.value);
-    if (outer_list_ptr == nullptr || outer_list_ptr->size != 1) return false;
-    
-    const auto &inner_elem = evaluator.values[(*outer_list_ptr)[0]];
-    const auto *inner_list_ptr = std::get_if<lefticus::cons_expr<>::list_type>(&inner_elem.value);
-    return inner_list_ptr != nullptr && inner_list_ptr->size == 3;
+    // Inner list should contain three elements (a, b, c)
+    const auto &inner_elem = evaluator.values[(*outer_list)[0]];
+    const auto *inner_list = std::get_if<lefticus::cons_expr<>::list_type>(&inner_elem.value);
+    return inner_list != nullptr && inner_list->size == 3;
   };
   
   // Nested list test
   constexpr auto test_nested_list = []() {
     lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
     
+    // Parse a list with a nested list: (a (b c) d)
     auto [parsed_result, _] = evaluator.parse(std::string_view("(a (b c) d)"));
     
-    // Debug output in non-constexpr context
-    #ifndef __INTELLISENSE__
-    #if defined(CATCH_CONFIG_RUNTIME_STATIC_REQUIRE)
-      if (std::holds_alternative<lefticus::cons_expr<>::list_type>(parsed_result.value)) {
-        std::cout << "Nested list test - outer list is correct type\n";
-        const auto &outer_list = std::get<lefticus::cons_expr<>::list_type>(parsed_result.value);
-        std::cout << "Outer list size: " << outer_list.size << "\n";
-        
-        if (outer_list.size == 1) {
-          const auto &inner_elem = evaluator.values[outer_list[0]];
-          std::cout << "Inner element variant index: " << inner_elem.value.index() << "\n";
-          
-          if (std::holds_alternative<lefticus::cons_expr<>::list_type>(inner_elem.value)) {
-            const auto &inner_list = std::get<lefticus::cons_expr<>::list_type>(inner_elem.value);
-            std::cout << "Inner list size: " << inner_list.size << "\n";
-            
-            // Check the second element which should be a nested list (b c)
-            if (inner_list.size >= 2) {
-              const auto &nested_elem = evaluator.values[inner_list[1]];
-              std::cout << "Nested element variant index: " << nested_elem.value.index() << "\n";
-              
-              if (std::holds_alternative<lefticus::cons_expr<>::list_type>(nested_elem.value)) {
-                const auto &nested_list = std::get<lefticus::cons_expr<>::list_type>(nested_elem.value);
-                std::cout << "Nested list size: " << nested_list.size << "\n";
-              }
-            }
-          }
-        }
-      }
-    #endif
-    #endif
+    // Outer list should contain one item
+    const auto *outer_list = std::get_if<lefticus::cons_expr<>::list_type>(&parsed_result.value);
+    if (outer_list == nullptr || outer_list->size != 1) return false;
     
-    // Correct expectation: parse returns a list with one element
-    // That element should be a list with 3 elements (a, (b c), d)
-    // Where the second element is itself a list with 2 elements
-    const auto *outer_list_ptr = std::get_if<lefticus::cons_expr<>::list_type>(&parsed_result.value);
-    if (outer_list_ptr == nullptr || outer_list_ptr->size != 1) return false;
+    // Inner list should contain three elements: a, (b c), d
+    const auto &inner_elem = evaluator.values[(*outer_list)[0]];
+    const auto *inner_list = std::get_if<lefticus::cons_expr<>::list_type>(&inner_elem.value);
+    if (inner_list == nullptr || inner_list->size != 3) return false;
     
-    const auto &inner_elem = evaluator.values[(*outer_list_ptr)[0]];
-    const auto *inner_list_ptr = std::get_if<lefticus::cons_expr<>::list_type>(&inner_elem.value);
-    if (inner_list_ptr == nullptr || inner_list_ptr->size != 3) return false;
-    
-    // Check that the second element is a list with 2 elements
-    const auto &nested_elem = evaluator.values[(*inner_list_ptr)[1]];
-    const auto *nested_list_ptr = std::get_if<lefticus::cons_expr<>::list_type>(&nested_elem.value);
-    return nested_list_ptr != nullptr && nested_list_ptr->size == 2;
+    // The second element should be a nested list with 2 elements: b, c
+    const auto &nested_elem = evaluator.values[(*inner_list)[1]];
+    const auto *nested_list = std::get_if<lefticus::cons_expr<>::list_type>(&nested_elem.value);
+    return nested_list != nullptr && nested_list->size == 2;
   };
   
   // Check all individual assertions
@@ -573,25 +502,17 @@ TEST_CASE("Multiple expressions", "[parser][multiple]")
   constexpr auto test_multiple_expressions = []() {
     lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
     
-    // Parse a single expression and verify its structure
+    // Parse a definition expression: (define x 10)
     auto [parsed, _] = evaluator.parse(std::string_view("(define x 10)"));
     
-    // Debug output in non-constexpr context
-    #ifndef __INTELLISENSE__
-    #if defined(CATCH_CONFIG_RUNTIME_STATIC_REQUIRE)
-      std::cout << "Multiple expressions test - simplified to one expression\n";
-    #endif
-    #endif
-    
-    // Get the outer list which contains a single element
+    // Outer list should contain one item
     const auto *outer_list = std::get_if<lefticus::cons_expr<>::list_type>(&parsed.value);
     if (outer_list == nullptr || outer_list->size != 1) return false;
     
-    // Get the inner list which should be (define x 10)
+    // Inner list should contain three elements: define, x, 10
     const auto &inner_elem = evaluator.values[(*outer_list)[0]];
     const auto *inner_list = std::get_if<lefticus::cons_expr<>::list_type>(&inner_elem.value);
     
-    // Just test that we can successfully parse a list with 3 elements
     return inner_list != nullptr && inner_list->size == 3;
   };
   
@@ -604,29 +525,22 @@ TEST_CASE("Complex expressions", "[parser][complex]")
   constexpr auto test_complex_expressions = []() {
     lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
     
-    // Parse a complex expression with nested structures (simplified to just lambda function)
+    // Parse a lambda function: (lambda (x) (+ x 1))
     auto [parsed, _] = evaluator.parse(std::string_view("(lambda (x) (+ x 1))"));
     
-    // Debug output in non-constexpr context
-    #ifndef __INTELLISENSE__
-    #if defined(CATCH_CONFIG_RUNTIME_STATIC_REQUIRE)
-      std::cout << "Complex expressions test - simplified\n";
-    #endif
-    #endif
-    
-    // Get the outer list which contains a single element
+    // Outer list should contain one item
     const auto *outer_list = std::get_if<lefticus::cons_expr<>::list_type>(&parsed.value);
     if (outer_list == nullptr || outer_list->size != 1) return false;
     
-    // Get the inner list which should be (lambda (x) (+ x 1))
+    // Inner list should contain three elements: lambda, (x), (+ x 1)
     const auto &inner_elem = evaluator.values[(*outer_list)[0]];
     const auto *inner_list = std::get_if<lefticus::cons_expr<>::list_type>(&inner_elem.value);
-    if (inner_list == nullptr || inner_list->size != 3) return false; // lambda, params, body
+    if (inner_list == nullptr || inner_list->size != 3) return false;
     
-    // Check that the parameter list exists (element at index 1)
+    // Second element should be a parameter list containing just x
     const auto &params = evaluator.values[(*inner_list)[1]];
     const auto *params_list = std::get_if<lefticus::cons_expr<>::list_type>(&params.value);
-    if (params_list == nullptr || params_list->size != 1) return false; // just x
+    if (params_list == nullptr || params_list->size != 1) return false;
     
     return true;
   };
@@ -666,46 +580,19 @@ TEST_CASE("Mixed content", "[parser][mixed]")
   constexpr auto test_mixed_content = []() {
     lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
     
-    // Parse a list with mixed content types
+    // Parse a list with mixed content types including numbers, strings, booleans, symbols, and nested lists
     auto [mixed_expr, _] = evaluator.parse(std::string_view("(list 123 \"hello\" true 'symbol (nested))"));
     
-    // Debug output in non-constexpr context
-    #ifndef __INTELLISENSE__
-    #if defined(CATCH_CONFIG_RUNTIME_STATIC_REQUIRE)
-      std::cout << "Mixed content test\n";
-      
-      if (std::holds_alternative<lefticus::cons_expr<>::list_type>(mixed_expr.value)) {
-        const auto &outer_list = std::get<lefticus::cons_expr<>::list_type>(mixed_expr.value);
-        std::cout << "Outer list size: " << outer_list.size << "\n";
-        
-        if (outer_list.size == 1) {
-          const auto &inner_elem = evaluator.values[outer_list[0]];
-          
-          if (std::holds_alternative<lefticus::cons_expr<>::list_type>(inner_elem.value)) {
-            const auto &inner_list = std::get<lefticus::cons_expr<>::list_type>(inner_elem.value);
-            std::cout << "Inner list size: " << inner_list.size << "\n";
-            
-            // Check the first element (should be 'list')
-            if (inner_list.size > 0) {
-              const auto &first_elem = evaluator.values[inner_list[0]];
-              std::cout << "First element variant index: " << first_elem.value.index() << "\n";
-            }
-          }
-        }
-      }
-    #endif
-    #endif
-    
-    // Get the outer list which contains a single element
+    // Outer list should contain one item
     const auto *outer_list = std::get_if<lefticus::cons_expr<>::list_type>(&mixed_expr.value);
     if (outer_list == nullptr || outer_list->size != 1) return false;
     
-    // Get the inner list
+    // Inner list should contain six elements: list, 123, "hello", true, 'symbol, (nested)
     const auto &inner_elem = evaluator.values[(*outer_list)[0]];
     const auto *inner_list = std::get_if<lefticus::cons_expr<>::list_type>(&inner_elem.value);
-    if (inner_list == nullptr || inner_list->size != 6) return false; // list, 123, "hello", true, 'symbol, (nested)
+    if (inner_list == nullptr || inner_list->size != 6) return false;
     
-    // Check the types of the first element (the "list" identifier)
+    // First element should be an identifier "list"
     const auto &first_elem = evaluator.values[(*inner_list)[0]];
     const auto *first_atom = std::get_if<lefticus::cons_expr<>::Atom>(&first_elem.value);
     if (first_atom == nullptr) return false;
