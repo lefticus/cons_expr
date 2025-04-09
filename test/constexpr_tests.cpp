@@ -27,7 +27,8 @@ template<typename Result> constexpr bool evaluate_expected(std::string_view inpu
   return evaluator.evaluate_to<Result>(input).value() == result;
 }
 
-template<typename Result> constexpr std::optional<Result> parse_as(auto &evaluator, std::string_view input) {
+template<typename Result> constexpr std::optional<Result> parse_as(auto &evaluator, std::string_view input)
+{
   using eval_type = std::remove_cvref_t<decltype(evaluator)>;
   using list_type = eval_type::list_type;
 
@@ -92,15 +93,15 @@ TEST_CASE("basic integer operators", "[operators]")
   STATIC_CHECK(evaluate_to<IntType>("(/ 4 2 1)") == 2);
   STATIC_CHECK(evaluate_to<IntType>("(- 2 2 1)") == -1);
   STATIC_CHECK(evaluate_to<IntType>("(* 2 2 2 2 2)") == 32);
-  
+
   // Additional complex arithmetic expressions
   STATIC_CHECK(evaluate_to<IntType>("(+ (* 2 3) (- 10 5))") == 11);
   STATIC_CHECK(evaluate_to<IntType>("(* (+ 2 3) (- 10 5))") == 25);
   STATIC_CHECK(evaluate_to<IntType>("(/ (* 8 4) (+ 2 2))") == 8);
 }
 
-TEST_CASE("list comparisons", "[operators]") 
-{ 
+TEST_CASE("list comparisons", "[operators]")
+{
   STATIC_CHECK(evaluate_to<bool>("(== '(1) '(1))") == true);
   STATIC_CHECK(evaluate_to<bool>("(== '(1 2 3) '(1 2 3))") == true);
   STATIC_CHECK(evaluate_to<bool>("(!= '(1 2 3) '(3 2 1))") == true);
@@ -134,7 +135,7 @@ TEST_CASE("basic logical boolean operations", "[operators]")
   STATIC_CHECK(evaluate_to<bool>("(or false false false)") == false);
   STATIC_CHECK(evaluate_to<bool>("(not false)") == true);
   STATIC_CHECK(evaluate_to<bool>("(not true)") == false);
-  
+
   // Compound logical operations
   STATIC_CHECK(evaluate_to<bool>("(and (or true false) (not false))") == true);
   STATIC_CHECK(evaluate_to<bool>("(or (and true false) (not false))") == true);
@@ -160,14 +161,14 @@ TEST_CASE("nested lambda usage", "[lambdas]")
   STATIC_CHECK(evaluate_to<IntType>("(define l (lambda (x) (lambda (y) (let ((z (+ x y))) z)))) ((l 1) 3)") == 4);
   STATIC_CHECK(evaluate_to<IntType>("(define l (lambda (x) (lambda (y) (let ((z 10)) (+ x y z))))) ((l 1) 3)") == 14);
   STATIC_CHECK(evaluate_to<IntType>("((lambda (x) (let ((x (+ x 5))) x)) 2)") == 7);
-  
+
   // Higher-order function tests
   STATIC_CHECK(evaluate_to<IntType>(R"(
     (define apply-twice (lambda (f x) (f (f x))))
     (define add-one (lambda (x) (+ x 1)))
     (apply-twice add-one 10)
   )") == 12);
-  
+
   STATIC_CHECK(evaluate_to<IntType>(R"(
     (define compose (lambda (f g) (lambda (x) (f (g x)))))
     (define square (lambda (x) (* x x)))
@@ -181,7 +182,7 @@ TEST_CASE("basic define usage", "[define]")
   STATIC_CHECK(evaluate_to<IntType>("(define x 32) x") == 32);
   STATIC_CHECK(evaluate_to<IntType>("(define x (lambda (y)(+ y 4))) (x 10)") == 14);
   STATIC_CHECK(evaluate_to<IntType>("(define x 10) (define y 20) (+ x y)") == 30);
-  STATIC_CHECK(evaluate_to<IntType>("(define x 5) (define x 10) x") == 10); // Shadowing
+  STATIC_CHECK(evaluate_to<IntType>("(define x 5) (define x 10) x") == 10);// Shadowing
   STATIC_CHECK(evaluate_to<bool>("(define x true) x") == true);
 }
 
@@ -204,12 +205,12 @@ TEST_CASE("define scoping", "[define]")
 
   // The original test was failing because lambda scoping worked differently
   // than expected in the constexpr context
-  
+
   // In lambda scope, x defined in the lambda body should shadow the global x
   STATIC_CHECK(evaluate_to<IntType>(R"(
     (define x 10)
     ((lambda () (define x 20) x))
-  )") == 10);  // Notice we expect 10 here, not 20, because of how define works
+  )") == 10);// Notice we expect 10 here, not 20, because of how define works
 
   // Outside lambda scope, global 'x' is still 10 (immutable)
   STATIC_CHECK(evaluate_to<IntType>(R"(
@@ -222,10 +223,10 @@ TEST_CASE("define scoping", "[define]")
   STATIC_CHECK(evaluate_to<IntType>(R"(
     ((lambda () (define y 5) y))
   )") == 5);
-  
+
   // This wouldn't work as expected because counter is immutable
   // In cons_expr, defining a global doesn't mutate existing references
-  /* 
+  /*
   STATIC_CHECK(evaluate_to<IntType>(R"(
     (define counter 0)
     (define increment (lambda () (define counter (+ counter 1)) counter))
@@ -266,7 +267,7 @@ TEST_CASE("GPT Generated Tests", "[integration tests]")
   // because they require unbounded recursion
   /*
   STATIC_CHECK(evaluate_to<IntType>(R"(
-(define fib 
+(define fib
   (lambda (n)
     (if (< n 2)
         n
@@ -303,20 +304,20 @@ TEST_CASE("let variables", "[let variables]")
   STATIC_CHECK(evaluate_to<IntType>("(define x 42) (let ((x 10)(y x)) y)") == 42);
 
   STATIC_CHECK(evaluate_to<IntType>("(define x 2) (let ((x (+ x 5))) x)") == 7);
-  
+
   // Additional let tests
   STATIC_CHECK(evaluate_to<IntType>(R"(
     (let ((x 10) (y 20))
       (let ((z (+ x y)))
         (+ x y z)))
   )") == 60);
-  
+
   STATIC_CHECK(evaluate_to<IntType>(R"(
     (let ((x 5) (y 4))
       (let ((x (* x 2)) (y (+ y 3)))
         (* x y)))
   )") == 70);
-  
+
   STATIC_CHECK(evaluate_to<IntType>(R"(
     (define outer 100)
     (let ((outer 50))
@@ -325,18 +326,18 @@ TEST_CASE("let variables", "[let variables]")
   )") == 60);
 }
 
-TEST_CASE("list operations", "[builtins]") 
-{ 
+TEST_CASE("list operations", "[builtins]")
+{
   STATIC_CHECK(evaluate_to<IntType>("(car '(1 2 3 4))") == 1);
   STATIC_CHECK(evaluate_to<bool>("(== (cdr '(1 2 3 4)) '(2 3 4))") == true);
   STATIC_CHECK(evaluate_to<bool>("(== (car (cdr '(1 2 3 4))) 2)") == true);
   STATIC_CHECK(evaluate_to<bool>("(== (car (cdr (cdr '(1 2 3 4)))) 3)") == true);
-  
+
   // List function
   STATIC_CHECK(evaluate_to<bool>("(== (list 1 2 3) '(1 2 3))") == true);
   STATIC_CHECK(evaluate_to<bool>("(== (list) '())") == true);
   STATIC_CHECK(evaluate_to<bool>("(== (list 1) '(1))") == true);
-  
+
   // List with evaluated expressions
   STATIC_CHECK(evaluate_to<bool>("(== (list (+ 1 2) (* 3 4)) '(3 12))") == true);
 }
@@ -374,7 +375,7 @@ TEST_CASE("comments", "[parsing]")
 (+ 10 ; inline comment
    5) ; another comment
 )") == 15);
-  
+
   // Comment in expression
   STATIC_CHECK(evaluate_to<IntType>(
                  R"(
@@ -389,30 +390,30 @@ TEST_CASE("simple cons expression", "[builtins]")
   STATIC_CHECK(evaluate_to<bool>("(== (cons '(1 2 3 4) '(5)) '((1 2 3 4) 5))") == true);
   STATIC_CHECK(evaluate_to<bool>("(== (cons 1 '(5)) '(1 5))") == true);
   STATIC_CHECK(evaluate_to<bool>("(== (cons 'x '(5)) '(x 5))") == true);
-  
+
   // Break down cons tests into simpler incremental cases
-  
+
   // Test consing a single element to empty list
   STATIC_CHECK(evaluate_to<bool>("(== (cons 1 '()) '(1))") == true);
-  
-  // Test consing a single element to an existing list 
+
+  // Test consing a single element to an existing list
   STATIC_CHECK(evaluate_to<bool>("(== (cons 1 '(2)) '(1 2))") == true);
-  
+
   // Test consing an element to a list with two elements
   STATIC_CHECK(evaluate_to<bool>("(== (cons 1 '(2 3)) '(1 2 3))") == true);
-  
+
   // Test consing two elements sequentially to build a list - incremental
   STATIC_CHECK(evaluate_to<bool>("(== (cons 1 (cons 2 '())) '(1 2))") == true);
-  
+
   // Test consing three elements sequentially to build a list - incremental
   STATIC_CHECK(evaluate_to<bool>("(== (cons 1 (cons 2 (cons 3 '()))) '(1 2 3))") == true);
-  
+
   // Test consing symbols instead of numbers
-  STATIC_CHECK(evaluate_to<bool>("(== (cons 'a '(b c)) '(a b c))") ==   true);
-  
+  STATIC_CHECK(evaluate_to<bool>("(== (cons 'a '(b c)) '(a b c))") == true);
+
   // Test sequential consing with symbols
   STATIC_CHECK(evaluate_to<bool>("(== (cons 'a (cons 'b '(c))) '(a b c))") == true);
-  
+
   // Test consing an evaluated expression
   STATIC_CHECK(evaluate_to<bool>("(== (cons (+ 1 2) '(4 5)) '(3 4 5))") == true);
 }
@@ -432,13 +433,13 @@ TEST_CASE("apply expression", "[builtins]")
 (let ((x 20))
   (apply add-x (list 5)))
 )") == 15);
-  
+
   // Apply with lambda expressions
   STATIC_CHECK(evaluate_to<IntType>(
                  R"(
 (apply (lambda (x y) (+ x (* y 2))) '(5 10))
 )") == 25);
-  
+
   STATIC_CHECK(evaluate_to<bool>(
                  R"(
 (apply == '(1 1))
@@ -453,22 +454,22 @@ TEST_CASE("check version number", "[system]")
   STATIC_CHECK(lefticus::cons_expr_version_tweak == cons_expr::cmake::project_version_tweak);
 }
 
-TEST_CASE("eval expression", "[builtins]") 
-{ 
+TEST_CASE("eval expression", "[builtins]")
+{
   STATIC_CHECK(evaluate_to<IntType>("(eval '(+ 3 4))") == 7);
   STATIC_CHECK(evaluate_to<bool>("(eval '(== 1 1))") == true);
   STATIC_CHECK(evaluate_to<IntType>("(eval '(* 2 3))") == 6);
-  
+
   // Standard eval
   STATIC_CHECK(evaluate_to<IntType>("(eval '(+ 5 5))") == 10);
-  
+
   // Nested eval should work since this is a fully constexpr system
   STATIC_CHECK(evaluate_to<IntType>("(eval '(eval '(+ 5 5)))") == 10);
-  
+
   // Creating a new expression with cons and evaluating it
   // It might be failing because the expected result was incorrect
   STATIC_CHECK(evaluate_to<IntType>("(eval (cons '+ '(1 2)))") == 3);
-  
+
   // Try with three arguments to make sure the semantics are correct
   STATIC_CHECK(evaluate_to<IntType>("(eval (cons '+ '(1 2 3)))") == 6);
 }
@@ -478,10 +479,10 @@ TEST_CASE("simple append expression", "[builtins]")
   STATIC_CHECK(evaluate_to<bool>("(== (append '(1 2 3 4) '(5)) '(1 2 3 4 5))") == true);
   STATIC_CHECK(evaluate_to<bool>("(== (append '() '(1 2 3)) '(1 2 3))") == true);
   STATIC_CHECK(evaluate_to<bool>("(== (append '(1 2 3) '()) '(1 2 3))") == true);
-  
+
   // Multiple append operations
   STATIC_CHECK(evaluate_to<bool>("(== (append (append '(1) '(2)) '(3)) '(1 2 3))") == true);
-  
+
   // Append with evaluated expressions
   STATIC_CHECK(evaluate_to<bool>("(== (append (list (+ 1 2)) (list (* 2 2))) '(3 4))") == true);
 }
@@ -492,14 +493,14 @@ TEST_CASE("if expressions", "[builtins]")
   STATIC_CHECK(evaluate_to<IntType>("(if false 1 2)") == 2);
   STATIC_CHECK(evaluate_to<IntType>("(if (== 1 1) 5 10)") == 5);
   STATIC_CHECK(evaluate_to<IntType>("(if (!= 1 1) 5 10)") == 10);
-  
+
   // Nested if expressions
   STATIC_CHECK(evaluate_to<IntType>("(if (> 5 2) (if (< 3 1) 1 2) 3)") == 2);
-  
+
   // If with more complex conditions
   STATIC_CHECK(evaluate_to<IntType>("(if (and (> 5 2) (< 1 3)) 10 20)") == 10);
   STATIC_CHECK(evaluate_to<IntType>("(if (or (> 5 10) (< 1 0)) 10 20)") == 20);
-  
+
   // If with expressions in the branches
   STATIC_CHECK(evaluate_to<IntType>("(if (> 5 2) (+ 10 5) (* 3 4))") == 15);
 }
@@ -561,7 +562,7 @@ TEST_CASE("custom make_callable functionality", "[callables]")
   STATIC_CHECK(evaluate_to<IntType>(R"(
     ((lambda (x) (+ x 5)) 10)
   )") == 15);
-  
+
   // Testing more complex callable patterns
   STATIC_CHECK(evaluate_to<IntType>(R"(
     (define square (lambda (x) (* x x)))
@@ -575,13 +576,13 @@ TEST_CASE("get_list and get_list_range edge cases", "[implementation]")
 {
   // Test empty list handling
   STATIC_CHECK(evaluate_to<bool>("(== '() '())") == true);
-  
+
   // Test boundary cases with lists
   STATIC_CHECK(evaluate_to<bool>(R"(
     (define empty '())
     (== (append empty '(1)) '(1))
   )") == true);
-  
+
   STATIC_CHECK(evaluate_to<bool>(R"(
     (define singleton '(1))
     (== (car singleton) 1)
@@ -624,7 +625,7 @@ TEST_CASE("scoped do expression", "[builtins]")
 TEST_CASE("iterative algorithmic tests", "[algorithms]")
 {
   // Test iterative algorithms that work in constexpr context
-  
+
   // Compute sum of first 10 natural numbers
   STATIC_CHECK(evaluate_to<IntType>(R"(
 (do ((i 1 (+ i 1))
@@ -665,14 +666,14 @@ TEST_CASE("SmallVector memory and optimization", "[implementation]")
   // Test string deduplication behavior
   STATIC_CHECK(evaluate_to<bool>("(== 'hello 'hello)") == true);
   STATIC_CHECK(evaluate_to<bool>("(== \"test\" \"test\")") == true);
-  
+
   // Alternative test for identical identifier equality using define
   STATIC_CHECK(evaluate_to<bool>(R"(
     (define x 'symbol)
     (define y 'symbol)
     (== x y)
   )") == true);
-  
+
   // This test checks if value reuse is working correctly
   STATIC_CHECK(evaluate_to<bool>(R"(
     (define list1 '(1 2 3))
@@ -685,8 +686,8 @@ TEST_CASE("SmallVector memory and optimization", "[implementation]")
 TEST_CASE("token parsing edge cases", "[parsing]")
 {
   // Simple string test that doesn't use escaped quotes
-  STATIC_CHECK(evaluate_expected<std::string_view>(R"("simple string")","simple string"));
-  
+  STATIC_CHECK(evaluate_expected<std::string_view>(R"("simple string")", "simple string"));
+
   // Test with whitespace variations
   STATIC_CHECK(evaluate_to<IntType>("(+ \t1   2\n)") == 3);
 }
@@ -697,40 +698,40 @@ TEST_CASE("Quoted symbol equality issues", "[symbols]")
   // They are included to document expected behavior and prevent regression
 
   // ----------------------------------------
-  // FAILING CASES - Should all return true  
+  // FAILING CASES - Should all return true
   // ----------------------------------------
-  
+
   // 1. Direct quoted symbol equality fails
   STATIC_CHECK(evaluate_to<bool>("(== 'hello 'hello)") == true);
-  
-  // 2. Defined symbols with identical quoted values fail comparison 
+
+  // 2. Defined symbols with identical quoted values fail comparison
   STATIC_CHECK(evaluate_to<bool>("(define x 'hello) (define y 'hello) (== x y)") == true);
-  
+
   // 3. Reference equality of symbols fails
   STATIC_CHECK(evaluate_to<bool>("(define x 'hello) (define y x) (== x y)") == true);
-  
+
   // 4. Car of quoted list equality fails
   STATIC_CHECK(evaluate_to<bool>("(define a (car '('a))) (define b (car '('a))) (== a b)") == true);
-  
+
   // 5. Identity of a symbol fails
   STATIC_CHECK(evaluate_to<bool>("(define sym 'hello) (== sym sym)") == true);
-  
+
   // ----------------------------------------
   // WORKING CASES - For comparison
   // ----------------------------------------
-  
+
   // Lists containing quoted symbols work fine
   STATIC_CHECK(evaluate_to<bool>("(== '('hello) '('hello))") == true);
-  
+
   // Car of list with quoted symbols also works
   STATIC_CHECK(evaluate_to<bool>("(== (car '('hello)) (car '('hello)))") == true);
-  
+
   // Symbols in the same list compare equal
   STATIC_CHECK(evaluate_to<bool>("(define lst '(x x)) (== (car lst) (car (cdr lst)))") == true);
-  
+
   // Integer equality works
   STATIC_CHECK(evaluate_to<bool>("(== 1 1)") == true);
-  
+
   // String equality works
   STATIC_CHECK(evaluate_to<bool>("(== \"hello\" \"hello\")") == true);
 }
@@ -742,7 +743,7 @@ TEST_CASE("Quoted symbol equality issues", "[symbols]")
 TEST_CASE("IndexedString creation and comparison", "[core][indexedstring]")
 {
   constexpr auto test_indexed_string_creation = []() {
-    lefticus::IndexedString<uint16_t> str{5, 10};
+    lefticus::IndexedString<uint16_t> str{ 5, 10 };
     return str.start == 5 && str.size == 10;
   };
   STATIC_CHECK(test_indexed_string_creation());
@@ -751,8 +752,8 @@ TEST_CASE("IndexedString creation and comparison", "[core][indexedstring]")
 TEST_CASE("IndexedString equality", "[core][indexedstring]")
 {
   constexpr auto test_indexed_string_equality = []() {
-    lefticus::IndexedString<uint16_t> str1{5, 10};
-    lefticus::IndexedString<uint16_t> str2{5, 10};
+    lefticus::IndexedString<uint16_t> str1{ 5, 10 };
+    lefticus::IndexedString<uint16_t> str2{ 5, 10 };
     return str1 == str2;
   };
   STATIC_CHECK(test_indexed_string_equality());
@@ -761,8 +762,8 @@ TEST_CASE("IndexedString equality", "[core][indexedstring]")
 TEST_CASE("IndexedString inequality", "[core][indexedstring]")
 {
   constexpr auto test_indexed_string_inequality = []() {
-    lefticus::IndexedString<uint16_t> str1{5, 10};
-    lefticus::IndexedString<uint16_t> str2{15, 10};
+    lefticus::IndexedString<uint16_t> str1{ 5, 10 };
+    lefticus::IndexedString<uint16_t> str2{ 15, 10 };
     return str1 != str2;
   };
   STATIC_CHECK(test_indexed_string_inequality());
@@ -771,7 +772,7 @@ TEST_CASE("IndexedString inequality", "[core][indexedstring]")
 TEST_CASE("IndexedString substr", "[core][indexedstring]")
 {
   constexpr auto test_indexed_string_substr = []() {
-    lefticus::IndexedString<uint16_t> str{5, 10};
+    lefticus::IndexedString<uint16_t> str{ 5, 10 };
     auto substr = str.substr(2);
     return substr.start == 7 && substr.size == 8;
   };
@@ -782,7 +783,7 @@ TEST_CASE("IndexedString substr", "[core][indexedstring]")
 TEST_CASE("IndexedList creation and properties", "[core][indexedlist]")
 {
   constexpr auto test_indexed_list_creation = []() {
-    lefticus::IndexedList<uint16_t> list{10, 5};
+    lefticus::IndexedList<uint16_t> list{ 10, 5 };
     return list.start == 10 && list.size == 5 && !list.empty();
   };
   STATIC_CHECK(test_indexed_list_creation());
@@ -791,8 +792,8 @@ TEST_CASE("IndexedList creation and properties", "[core][indexedlist]")
 TEST_CASE("IndexedList equality", "[core][indexedlist]")
 {
   constexpr auto test_indexed_list_equality = []() {
-    lefticus::IndexedList<uint16_t> list1{10, 5};
-    lefticus::IndexedList<uint16_t> list2{10, 5};
+    lefticus::IndexedList<uint16_t> list1{ 10, 5 };
+    lefticus::IndexedList<uint16_t> list2{ 10, 5 };
     return list1 == list2;
   };
   STATIC_CHECK(test_indexed_list_equality());
@@ -801,7 +802,7 @@ TEST_CASE("IndexedList equality", "[core][indexedlist]")
 TEST_CASE("IndexedList element access", "[core][indexedlist]")
 {
   constexpr auto test_indexed_list_access = []() {
-    lefticus::IndexedList<uint16_t> list{10, 5};
+    lefticus::IndexedList<uint16_t> list{ 10, 5 };
     return list.front() == 10 && list[2] == 12 && list.back() == 14;
   };
   STATIC_CHECK(test_indexed_list_access());
@@ -810,11 +811,10 @@ TEST_CASE("IndexedList element access", "[core][indexedlist]")
 TEST_CASE("IndexedList sublist operations", "[core][indexedlist]")
 {
   constexpr auto test_indexed_list_sublist = []() {
-    lefticus::IndexedList<uint16_t> list{10, 5};
+    lefticus::IndexedList<uint16_t> list{ 10, 5 };
     auto sublist1 = list.sublist(2);
     auto sublist2 = list.sublist(1, 3);
-    return (sublist1.start == 12 && sublist1.size == 3) &&
-           (sublist2.start == 11 && sublist2.size == 3);
+    return (sublist1.start == 12 && sublist1.size == 3) && (sublist2.start == 11 && sublist2.size == 3);
   };
   STATIC_CHECK(test_indexed_list_sublist());
 }
@@ -823,7 +823,7 @@ TEST_CASE("IndexedList sublist operations", "[core][indexedlist]")
 TEST_CASE("Identifier creation and properties", "[core][identifier]")
 {
   constexpr auto test_identifier_creation = []() {
-    lefticus::Identifier<uint16_t> id{lefticus::IndexedString<uint16_t>{5, 10}};
+    lefticus::Identifier<uint16_t> id{ lefticus::IndexedString<uint16_t>{ 5, 10 } };
     return id.value.start == 5 && id.value.size == 10;
   };
   STATIC_CHECK(test_identifier_creation());
@@ -832,8 +832,8 @@ TEST_CASE("Identifier creation and properties", "[core][identifier]")
 TEST_CASE("Identifier equality", "[core][identifier]")
 {
   constexpr auto test_identifier_equality = []() {
-    lefticus::Identifier<uint16_t> id1{lefticus::IndexedString<uint16_t>{5, 10}};
-    lefticus::Identifier<uint16_t> id2{lefticus::IndexedString<uint16_t>{5, 10}};
+    lefticus::Identifier<uint16_t> id1{ lefticus::IndexedString<uint16_t>{ 5, 10 } };
+    lefticus::Identifier<uint16_t> id2{ lefticus::IndexedString<uint16_t>{ 5, 10 } };
     return id1 == id2;
   };
   STATIC_CHECK(test_identifier_equality());
@@ -842,8 +842,8 @@ TEST_CASE("Identifier equality", "[core][identifier]")
 TEST_CASE("Identifier inequality", "[core][identifier]")
 {
   constexpr auto test_identifier_inequality = []() {
-    constexpr lefticus::Identifier<uint16_t> id1{lefticus::IndexedString<uint16_t>{5, 10}};
-    constexpr lefticus::Identifier<uint16_t> id2{lefticus::IndexedString<uint16_t>{15, 10}};
+    constexpr lefticus::Identifier<uint16_t> id1{ lefticus::IndexedString<uint16_t>{ 5, 10 } };
+    constexpr lefticus::Identifier<uint16_t> id2{ lefticus::IndexedString<uint16_t>{ 15, 10 } };
     return id1 != id2;
   };
   STATIC_CHECK(test_identifier_inequality());
@@ -852,7 +852,7 @@ TEST_CASE("Identifier inequality", "[core][identifier]")
 TEST_CASE("Identifier substr", "[core][identifier]")
 {
   constexpr auto test_identifier_substr = []() {
-    lefticus::Identifier<uint16_t> id{lefticus::IndexedString<uint16_t>{5, 10}};
+    lefticus::Identifier<uint16_t> id{ lefticus::IndexedString<uint16_t>{ 5, 10 } };
     auto substr = id.substr(2);
     return substr.value.start == 7 && substr.value.size == 8;
   };
@@ -1006,7 +1006,7 @@ TEST_CASE("deeply nested expressions", "[nesting]")
   STATIC_CHECK(evaluate_to<IntType>(R"(
     (+ 1 (* 2 (- 10 (/ 8 (+ 1 1)))))
   )") == 13);
-  
+
   // Test deeply nested lists
   STATIC_CHECK(evaluate_to<bool>(R"(
     (== (cons 1 (cons 2 (cons 3 (cons 4 (cons 5 '()))))) '(1 2 3 4 5))
@@ -1018,26 +1018,26 @@ TEST_CASE("quote function", "[builtins][quote]")
   // Basic quote tests with lists
   STATIC_CHECK(evaluate_to<bool>("(== (quote (1 2 3)) '(1 2 3))") == true);
   STATIC_CHECK(evaluate_to<bool>("(== (quote ()) '())") == true);
-  
+
   // Quote with symbols
   STATIC_CHECK(evaluate_to<bool>("(== (quote hello) 'hello)") == true);
-  
+
   // Quote prevents evaluation
   STATIC_CHECK(evaluate_to<bool>("(== (quote (+ 1 2)) '(+ 1 2))") == true);
-  
+
   // Quote vs eval
   STATIC_CHECK(evaluate_to<IntType>("(eval (quote (+ 1 2)))") == 3);
-  
+
   // Compare quote and the ' shorthand
   STATIC_CHECK(evaluate_to<bool>("(== (quote (1 2 3)) '(1 2 3))") == true);
   STATIC_CHECK(evaluate_to<bool>("(== (quote x) 'x)") == true);
-  
+
   // Quote in different contexts
   STATIC_CHECK(evaluate_to<bool>(R"(
     (define x 10)
     (== (quote x) 'x)
   )") == true);
-  
+
   // Quote for expressions that would otherwise error
   STATIC_CHECK(evaluate_to<bool>("(== (quote (undefined-function 1 2)) '(undefined-function 1 2))") == true);
 }

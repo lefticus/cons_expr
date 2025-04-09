@@ -534,7 +534,8 @@ struct cons_expr
 
   using LexicalScope = SmallVector<size_type, std::pair<string_type, SExpr>, BuiltInSymbolsSize, list_type>;
   using function_ptr = SExpr (*)(cons_expr &, LexicalScope &, list_type);
-  using Atom = std::variant<std::monostate, bool, int_type, float_type, string_type, identifier_type, symbol_type, UserTypes...>;
+  using Atom =
+    std::variant<std::monostate, bool, int_type, float_type, string_type, identifier_type, symbol_type, UserTypes...>;
 
   struct FunctionPtr
   {
@@ -695,7 +696,7 @@ struct cons_expr
           // note that this doesn't remove escaped characters like it should yet
           // quoted string
           if (token.parsed.ends_with('"')) {
-            const auto string = strings.insert_or_find(token.parsed.substr(1,   token.parsed.size() - 2));
+            const auto string = strings.insert_or_find(token.parsed.substr(1, token.parsed.size() - 2));
             retval.push_back(SExpr{ Atom(string) });
           } else {
             retval.push_back(make_error(str("terminated string"), SExpr{ Atom(strings.insert_or_find(token.parsed)) }));
@@ -705,7 +706,7 @@ struct cons_expr
         } else if (auto [float_did_parse, float_value] = parse_number<float_type>(token.parsed); float_did_parse) {
           retval.push_back(SExpr{ Atom(float_value) });
         } else if (token.parsed.starts_with('\'')) {
-          retval.push_back(SExpr{ Atom (Symbol{strings.insert_or_find(token.parsed.substr(1))})});
+          retval.push_back(SExpr{ Atom(Symbol{ strings.insert_or_find(token.parsed.substr(1)) }) });
         } else {
           retval.push_back(SExpr{ Atom(Identifier{ strings.insert_or_find(token.parsed) }) });
         }
@@ -848,7 +849,7 @@ struct cons_expr
       if (!indexed_list->empty()) {
         return invoke_function(scope, values[(*indexed_list)[0]], indexed_list->sublist(1));
       }
-  } else if (const auto *id = get_if<identifier_type>(&expr); id != nullptr) {
+    } else if (const auto *id = get_if<identifier_type>(&expr); id != nullptr) {
       for (const auto &[key, value] : scope | std::views::reverse) {
         if (key == id->value) { return value; }
       }
@@ -1282,7 +1283,7 @@ struct cons_expr
       if (const auto *identifier_front = std::get_if<symbol_type>(atom); identifier_front != nullptr) {
         // push an identifier into the list, not a symbol... should maybe fix this
         // so quoted lists are always lists of symbols?
-        result.push_back(SExpr{ Atom{ identifier_type{ identifier_front->value } } } );
+        result.push_back(SExpr{ Atom{ identifier_type{ identifier_front->value } } });
       } else {
         result.push_back(front);
       }
@@ -1307,34 +1308,32 @@ struct cons_expr
 
   [[nodiscard]] static constexpr SExpr cdr(cons_expr &engine, LexicalScope &scope, list_type params)
   {
-    return error_or_else(engine.eval_to<literal_list_type>(scope, params, str("(cdr LiteralList)")),
-      [&](const auto &list) { 
+    return error_or_else(
+      engine.eval_to<literal_list_type>(scope, params, str("(cdr LiteralList)")), [&](const auto &list) {
         // If the list has one or zero elements, return empty list
         if (list.items.size <= 1) {
           static constexpr IndexedList<size_type> empty_list{ 0, 0 };
           return SExpr{ literal_list_type{ empty_list } };
         }
-        return SExpr{ list.sublist(1) }; 
+        return SExpr{ list.sublist(1) };
       });
   }
 
   [[nodiscard]] static constexpr SExpr car(cons_expr &engine, LexicalScope &scope, list_type params)
   {
-    return error_or_else(engine.eval_to<literal_list_type>(scope, params, str("(car Non-Empty-LiteralList)")),
-      [&](const auto &list) { 
+    return error_or_else(
+      engine.eval_to<literal_list_type>(scope, params, str("(car Non-Empty-LiteralList)")), [&](const auto &list) {
         // Check if list is empty
-        if (list.items.size == 0) {
-          return engine.make_error(str("car: cannot take car of empty list"), params);
-        }
-        
+        if (list.items.size == 0) { return engine.make_error(str("car: cannot take car of empty list"), params); }
+
         // Get the first element of the list
         const auto &elem = engine.values[list.items.front()];
-        
+
         // If the element is a list_type, return it as a literal_list_type
         if (const auto *nested_list = std::get_if<list_type>(&elem.value); nested_list != nullptr) {
-          return SExpr{ literal_list_type{*nested_list} };
+          return SExpr{ literal_list_type{ *nested_list } };
         }
-        
+
         return elem;
       });
   }
@@ -1381,13 +1380,13 @@ struct cons_expr
 
     return SExpr{ Atom{ std::monostate{} } };
   }
-  
+
   [[nodiscard]] static constexpr SExpr quoter(cons_expr &engine, LexicalScope &, list_type params)
   {
     if (params.size != 1) { return engine.make_error(str("(quote expr)"), params); }
-    
+
     const auto &expr = engine.values[params[0]];
-    
+
     // If it's a list, convert it to a literal list
     if (const auto *list = std::get_if<list_type>(&expr.value); list != nullptr) {
       // Special case for empty lists - use a canonical empty list with start index 0
@@ -1403,7 +1402,7 @@ struct cons_expr
         return SExpr{ Atom{ symbol_type{ id->value } } };
       }
     }
-    
+
     // Otherwise return as is
     return expr;
   }
