@@ -648,21 +648,26 @@ struct cons_expr
       }
 
       // Closures contain all of their own scope
-      LexicalScope new_scope;
+      LexicalScope param_scope;
+
+      // overwrite scope with the things we know we need params to be named
 
       // set up params
       // technically I'm evaluating the params lazily while invoking the lambda, not before. Does it matter?
       for (const auto [name, parameter] : std::views::zip(engine.values[parameter_names], engine.values[params])) {
-        new_scope.emplace_back(engine.get_if<identifier_type>(&name)->value, engine.eval(scope, parameter));
+        param_scope.emplace_back(engine.get_if<identifier_type>(&name)->value, engine.eval(scope, parameter));
       }
 
       Scratch fixed_statements{ engine.object_scratch };
       for (const auto &statement : engine.values[statements]) {
-        fixed_statements.push_back(engine.fix_identifiers(statement, {}, new_scope));
+        fixed_statements.push_back(engine.fix_identifiers(statement, {}, param_scope));
       }
 
+      auto final_scope = scope;
+      for (const auto &param : param_scope) { final_scope.insert(param); }
+
       // TODO set up tail call elimination for last element of the sequence being evaluated?
-      return engine.sequence(new_scope, engine.values.insert_or_find(fixed_statements));
+      return engine.sequence(final_scope, engine.values.insert_or_find(fixed_statements));
     }
   };
 
