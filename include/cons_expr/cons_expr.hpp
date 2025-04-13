@@ -658,13 +658,8 @@ struct cons_expr
         param_scope.emplace_back(engine.get_if<identifier_type>(&name)->value, engine.eval(scope, parameter));
       }
 
-      Scratch fixed_statements{ engine.object_scratch };
-      for (const auto &statement : engine.values[statements]) {
-        fixed_statements.push_back(engine.fix_identifiers(statement, {}, param_scope));
-      }
-
       // TODO set up tail call elimination for last element of the sequence being evaluated?
-      return engine.sequence(param_scope, engine.values.insert_or_find(fixed_statements));
+      return engine.sequence(param_scope, statements);
     }
   };
 
@@ -910,6 +905,7 @@ struct cons_expr
     auto locals = engine.get_lambda_parameter_names(engine.values[params[0]]);
 
     // replace all references to captured values with constant copies
+    // this is how we create the closure object
     Scratch fixed_statements{ engine.object_scratch };
 
     for (const auto &statement : engine.values[params.sublist(1)]) {
