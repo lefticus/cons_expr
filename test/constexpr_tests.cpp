@@ -531,6 +531,14 @@ TEST_CASE("get_list and get_list_range edge cases", "[implementation]")
   )") == true);
 }
 
+TEST_CASE("begin", "[builtins]")
+{
+  STATIC_CHECK(evaluate_to<bool>("(begin true)") == true);
+  STATIC_CHECK(evaluate_to<bool>("(begin true false)") == false);
+  STATIC_CHECK(evaluate_to<int>("(begin true false 1)") == 1);
+  STATIC_CHECK(evaluate_to<int>("(begin true false (* 3 3))") == 9);
+}
+
 TEST_CASE("basic for-each usage", "[builtins]")
 {
   // STATIC_CHECK_NOTHROW(evaluate_to<std::monostate>("(for-each display '(1 2 3 4))"));

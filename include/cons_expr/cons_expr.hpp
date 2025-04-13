@@ -742,6 +742,7 @@ struct cons_expr
     add(str("eval"), SExpr{ FunctionPtr{ evaler, FunctionPtr::Type::other } });
     add(str("apply"), SExpr{ FunctionPtr{ applier, FunctionPtr::Type::other } });
     add(str("quote"), SExpr{ FunctionPtr{ quoter, FunctionPtr::Type::other } });
+    add(str("begin"), SExpr{ FunctionPtr{ begin, FunctionPtr::Type::other } });
   }
 
   [[nodiscard]] constexpr SExpr sequence(LexicalScope &scope, list_type expressions)
@@ -1212,6 +1213,11 @@ struct cons_expr
       [&](const auto &evaled_params) {
         return engine.invoke_function(scope, std::get<0>(evaled_params), std::get<1>(evaled_params).items);
       });
+  }
+
+  [[nodiscard]] static constexpr SExpr begin(cons_expr &engine, LexicalScope &scope, list_type params)
+  {
+    return engine.sequence(scope, params);
   }
 
 
