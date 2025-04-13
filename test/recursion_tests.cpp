@@ -23,7 +23,7 @@ template<typename Result> constexpr bool evaluate_expected(std::string_view inpu
 TEST_CASE("Y-Combinator", "[recursion]")
 {
   STATIC_CHECK(evaluate_to<int>(
-R"(
+                 R"(
 ;; Y combinator definition
 (define Y
   (lambda (f)
@@ -46,7 +46,7 @@ R"(
 TEST_CASE("expressive 'define' 1 level", "[recursion]")
 {
   STATIC_CHECK(evaluate_to<int>(
-R"(
+                 R"(
 (define factorial
   (lambda (n)
     (if (== n 0)
@@ -60,7 +60,7 @@ R"(
 TEST_CASE("expressive 'define' 5 levels", "[recursion]")
 {
   STATIC_CHECK(evaluate_to<int>(
-R"(
+                 R"(
 (define factorial
   (lambda (n)
     (if (== n 0)
