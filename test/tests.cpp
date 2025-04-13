@@ -54,25 +54,7 @@ TEST_CASE("basic callable usage", "[c++ api]")
   CHECK(func2(evaluator, 10) == 100);
 }
 
-TEST_CASE("GPT Generated Tests", "[integration tests]")
-{
-  CHECK(evaluate_to<typename cons_expr_type<char>::int_type, char>(R"(
-(define make-adder-multiplier
-  (lambda (a)
-    (lambda (b)
-      (do ((i 0 (+ i 1))
-           (sum 0 (+ sum (let ((x (+ a i)))
-                            (if (>= x b)
-                                (define y (* x 2))
-                                (define y (* x 3)))
-                            (do ((j 0 (+ j 1))
-                                 (inner-sum 0 (+ inner-sum y)))
-                                ((>= j i) inner-sum))))))
-          ((>= i 5) sum)))))
 
-((make-adder-multiplier 2) 3)
-)") == 100);
-}
 
 TEST_CASE("member functions", "[function]")
 {

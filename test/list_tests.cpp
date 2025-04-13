@@ -226,14 +226,4 @@ TEST_CASE("List manipulation algorithms", "[lists][algorithms]")
     (simple-fn '())
   )") == true);
 
-  // Create a list of numbers using do
-  STATIC_CHECK(evaluate_to<bool>(R"(
-    (define make-list
-      (lambda (n)
-        (do ((i n (- i 1))
-             (result '() (cons i result)))
-            ((<= i 0) result))))
-    
-    (== (make-list 3) '(1 2 3))
-  )") == true);
 }

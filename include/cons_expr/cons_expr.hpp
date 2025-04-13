@@ -733,7 +733,6 @@ struct cons_expr
     add(str("for-each"), SExpr{ FunctionPtr{ for_each, FunctionPtr::Type::other } });
     add(str("list"), SExpr{ FunctionPtr{ list, FunctionPtr::Type::other } });
     add(str("lambda"), SExpr{ FunctionPtr{ lambda, FunctionPtr::Type::lambda_expr } });
-    add(str("do"), SExpr{ FunctionPtr{ doer, FunctionPtr::Type::do_expr } });
     add(str("define"), SExpr{ FunctionPtr{ definer, FunctionPtr::Type::define_expr } });
     add(str("let"), SExpr{ FunctionPtr{ letter, FunctionPtr::Type::let_expr } });
     add(str("car"), SExpr{ FunctionPtr{ car, FunctionPtr::Type::other } });
@@ -942,56 +941,6 @@ struct cons_expr
     return values[*list];
   }
 
-  [[nodiscard]] constexpr SExpr fix_do_identifiers(list_type list,
-    size_type first_index,
-    std::span<const string_type> local_identifiers,
-    const LexicalScope &local_constants)
-  {
-    Scratch new_locals{ string_scratch, local_identifiers };
-    Scratch new_params{ object_scratch };
-
-    // collect all locals
-    const auto params = get_list(values[first_index + 1], str("malformed do expression"));
-    if (!params) { return params.error(); }
-
-    for (const auto &param : values[*params]) {
-      const auto param_list = get_list(param, str("malformed do expression"), 2);
-      if (!param_list) { return params.error(); }
-
-      auto id = get_if<identifier_type>(&values[(*param_list)[0]]);
-      if (id == nullptr) { return make_error(str("malformed do expression"), list); }
-      new_locals.push_back(id->value);
-    }
-
-    for (const auto &param : values[*params]) {
-      const auto param_list = get_list(param, str("malformed do expression"), 2);
-      if (!param_list) { return params.error(); }
-
-      std::array<SExpr, 3> new_param{ values[(*param_list)[0]],
-        fix_identifiers(values[(*param_list)[1]], local_identifiers, local_constants) };
-
-      // increment thingy (optional)
-      if (param_list->size == 3) {
-        new_param[2] = (fix_identifiers(values[(*param_list)[2]], new_locals, local_constants));
-      }
-      new_params.push_back(
-        SExpr{ values.insert_or_find(std::span{ new_param.begin(), param_list->size == 3u ? 3u : 2u }) });
-    }
-
-    Scratch new_do{ object_scratch };
-
-    // fixup pointer to "do" function
-    new_do.push_back(fix_identifiers(values[first_index], new_locals, local_constants));
-
-    // add parameter setup
-    new_do.push_back(SExpr{ values.insert_or_find(new_params) });
-
-    for (auto value : values[list.sublist(2)]) {
-      new_do.push_back(fix_identifiers(value, new_locals, local_constants));
-    }
-
-    return SExpr{ values.insert_or_find(new_do) };
-  }
 
   [[nodiscard]] constexpr SExpr fix_let_identifiers(list_type list,
     size_type first_index,
@@ -1087,8 +1036,6 @@ struct cons_expr
           return fix_let_identifiers(*list, first_index, local_identifiers, local_constants);
         } else if (fp_type == FunctionPtr::Type::define_expr || id == str("define")) {
           return fix_define_identifiers(first_index, local_identifiers, local_constants);
-        } else if (fp_type == FunctionPtr::Type::do_expr || id == str("do")) {
-          return fix_do_identifiers(*list, first_index, local_identifiers, local_constants);
         }
       }
 
@@ -1148,83 +1095,6 @@ struct cons_expr
 
     // evaluate body
     return engine.sequence(new_scope, params.sublist(1));
-  }
-
-
-  [[nodiscard]] static constexpr SExpr doer(cons_expr &engine, LexicalScope &scope, list_type params)
-  {
-    if (params.size < 2) {
-      return engine.make_error(
-        str("(do ((var1 val1 [iter_expr1]) ...) (terminate_condition [result...]) [body...])"), params);
-    }
-
-    Scratch variables{ engine.variables_scratch };
-
-    auto *variable_list = engine.get_if<list_type>(&engine.values[params[0]]);
-
-    if (variable_list == nullptr) {
-      return engine.make_error(str("((var1 val1 [iter_expr1]) ...)"), engine.values[params[0]]);
-    }
-
-    auto new_scope = scope;
-
-    for (const auto &variable : engine.values[*variable_list]) {
-      auto *variable_parts = engine.get_if<list_type>(&variable);
-      if (variable_parts == nullptr || variable_parts->size < 2 || variable_parts->size > 3) {
-        return engine.make_error(str("(var1 val1 [iter_expr1])"), variable);
-      }
-
-      auto variable_parts_list = engine.values[*variable_parts];
-
-      const auto index = new_scope.size();
-      const auto id = engine.eval_to<identifier_type>(scope, variable_parts_list[0]);
-
-      if (!id) { return engine.make_error(str("identifier"), id.error()); }
-
-      // initial value
-      new_scope.emplace_back(id->value, engine.eval(scope, variable_parts_list[1]));
-
-      // increment expression
-      if (variable_parts->size == 3) { variables.emplace_back(index, variable_parts_list[2]); }
-    }
-
-    Scratch variable_names{ engine.string_scratch };
-    for (auto &[index, value] : variables) { value = engine.fix_identifiers(value, variable_names, scope); }
-
-    for (const auto &local : new_scope) { variable_names.push_back(local.first); }
-
-    const auto terminator_param = engine.values[params[1]];
-    const auto *terminator_list = engine.get_if<list_type>(&terminator_param);
-    if (terminator_list == nullptr || terminator_list->size == 0) {
-      return engine.make_error(str("(terminator_condition [result...])"), terminator_param);
-    }
-    const auto terminators = engine.values[*terminator_list];
-
-    auto fixed_up_terminator = engine.fix_identifiers(terminators[0], variable_names, scope);
-
-    // continue while terminator test is false
-
-    bool end = false;
-    while (!end) {
-      const auto condition = engine.eval_to<bool>(new_scope, fixed_up_terminator);
-      if (!condition) { return engine.make_error(str("boolean condition"), condition.error()); }
-      end = *condition;
-      if (!end) {
-        // evaluate body
-        [[maybe_unused]] const auto result = engine.sequence(new_scope, params.sublist(2));
-
-        Scratch new_values{ engine.variables_scratch };
-
-        // iterate loop variables
-        for (const auto &[index, expr] : variables) { new_values.emplace_back(index, engine.eval(new_scope, expr)); }
-
-        // update values
-        for (auto &[index, value] : new_values) { new_scope[index].second = value; }
-      }
-    }
-
-    // evaluate sequence of termination expressions
-    return engine.sequence(new_scope, terminator_list->sublist(1));
   }
 
   template<typename Type>
@@ -1343,6 +1213,7 @@ struct cons_expr
         return engine.invoke_function(scope, std::get<0>(evaled_params), std::get<1>(evaled_params).items);
       });
   }
+
 
   [[nodiscard]] static constexpr SExpr evaler(cons_expr &engine, LexicalScope &scope, list_type params)
   {

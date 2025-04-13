@@ -263,25 +263,6 @@ TEST_CASE("GPT Generated Tests", "[integration tests]")
     (+ x y)))
 )") == 5);
 
-  // Recursive functions like Fibonacci can't be evaluated at compile-time
-  // because they require unbounded recursion
-  /*
-  STATIC_CHECK(evaluate_to<IntType>(R"(
-(define fib
-  (lambda (n)
-    (if (< n 2)
-        n
-        (+ (fib (- n 1)) (fib (- n 2))))))
-(fib 6)
-)") == 8);
-  */
-
-  // Instead we use the `do` construct for iteration, which works well in constexpr
-  STATIC_CHECK(evaluate_to<IntType>(R"(
-(do ((n 5 (- n 1))
-     (result 1 (* result n)))
-    ((<= n 1) result))
-)") == 120);
 }
 
 TEST_CASE("binary short circuiting", "[short circuiting]")
@@ -505,50 +486,11 @@ TEST_CASE("if expressions", "[builtins]")
   STATIC_CHECK(evaluate_to<IntType>("(if (> 5 2) (+ 10 5) (* 3 4))") == 15);
 }
 
-TEST_CASE("do expression", "[builtins]")
-{
-  STATIC_CHECK(evaluate_to<IntType>("(do () (true 0))") == 0);
-
-  // Sum numbers from 1 to 10
-  STATIC_CHECK(evaluate_to<IntType>(R"(
-(do ((i 1 (+ i 1))
-     (sum 0 (+ sum i)))
-    ((> i 10) sum)
-)
-)") == 55);
-
-  // Compute factorial of 5
-  STATIC_CHECK(evaluate_to<IntType>(R"(
-(do ((n 5 (- n 1))
-     (result 1 (* result n)))
-    ((<= n 1) result))
-)") == 120);
-
-  // Compute the 7th Fibonacci number (0-indexed)
-  STATIC_CHECK(evaluate_to<IntType>(R"(
-(do ((i 0 (+ i 1))
-     (a 0 b)
-     (b 1 (+ a b)))
-    ((>= i 7) a))
-)") == 13);
-
-  // Count by twos
-  STATIC_CHECK(evaluate_to<IntType>(R"(
-(do ((i 0 (+ i 2))
-     (count 0 (+ count 1)))
-    ((>= i 10) count))
-)") == 5);
-}
 
 TEST_CASE("simple error handling", "[errors]")
 {
   evaluate_to<lefticus::cons_expr<>::error_type>(R"(
 (+ 1 2.3)
-)");
-
-  evaluate_to<lefticus::cons_expr<>::error_type>(R"(
-(define x (do (b) (true 0)))
-(eval x)
 )");
 
   evaluate_to<lefticus::cons_expr<>::error_type>(R"(
@@ -587,73 +529,6 @@ TEST_CASE("get_list and get_list_range edge cases", "[implementation]")
     (define singleton '(1))
     (== (car singleton) 1)
   )") == true);
-}
-
-TEST_CASE("scoped do expression", "[builtins]")
-{
-  STATIC_CHECK(evaluate_to<IntType>(R"(
-
-((lambda (count)
-   (do ((i 1 (+ i 1))
-         (sum 0 (+ sum i)))
-        ((> i count) sum)
-   )
-) 10)
-
-)") == 55);
-
-  // More complex examples
-  STATIC_CHECK(evaluate_to<IntType>(R"(
-(define sum-to
-  (lambda (n)
-    (do ((i 1 (+ i 1))
-         (sum 0 (+ sum i)))
-        ((> i n) sum))))
-(sum-to 100)
-)") == 5050);
-
-  // Do with multiple statements in body
-  STATIC_CHECK(evaluate_to<IntType>(R"(
-(do ((i 1 (+ i 1))
-     (sum 0 (+ sum i)))
-    ((> i 5) sum)
-  (define temp (* i 2))
-  (* temp 1))
-)") == 15);
-}
-
-TEST_CASE("iterative algorithmic tests", "[algorithms]")
-{
-  // Test iterative algorithms that work in constexpr context
-
-  // Compute sum of first 10 natural numbers
-  STATIC_CHECK(evaluate_to<IntType>(R"(
-(do ((i 1 (+ i 1))
-     (sum 0 (+ sum i)))
-    ((> i 10) sum))
-)") == 55);
-
-  // Count even numbers from 1 to 10
-  // The test was failing because integer division behaves like C++
-  // We need to check if i mod 2 equals 0
-  STATIC_CHECK(evaluate_to<IntType>(R"(
-(do ((i 1 (+ i 1))
-     (count 0 (if (== (- i (* (/ i 2) 2)) 0) (+ count 1) count)))
-    ((> i 10) count))
-)") == 5);
-
-  // Square calculation
-  STATIC_CHECK(evaluate_to<IntType>(R"(
-(define square (lambda (x) (* x x)))
-(square 6)
-)") == 36);
-
-  // Iterative GCD calculation instead of recursive
-  STATIC_CHECK(evaluate_to<IntType>(R"(
-(do ((a 48 b)
-     (b 18 (- a (* (/ a b) b))))
-    ((== b 0) a))
-)") == 6);
 }
 
 TEST_CASE("basic for-each usage", "[builtins]")
