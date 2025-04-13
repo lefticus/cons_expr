@@ -648,7 +648,7 @@ struct cons_expr
       }
 
       // Closures contain all of their own scope
-      LexicalScope param_scope;
+      LexicalScope param_scope = scope;
 
       // overwrite scope with the things we know we need params to be named
 
@@ -663,11 +663,8 @@ struct cons_expr
         fixed_statements.push_back(engine.fix_identifiers(statement, {}, param_scope));
       }
 
-      auto final_scope = scope;
-      for (const auto &param : param_scope) { final_scope.insert(param); }
-
       // TODO set up tail call elimination for last element of the sequence being evaluated?
-      return engine.sequence(final_scope, engine.values.insert_or_find(fixed_statements));
+      return engine.sequence(param_scope, engine.values.insert_or_find(fixed_statements));
     }
   };
 
