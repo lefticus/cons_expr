@@ -531,6 +531,17 @@ TEST_CASE("get_list and get_list_range edge cases", "[implementation]")
   )") == true);
 }
 
+TEST_CASE("cond", "[builtins]")
+{
+  STATIC_CHECK(evaluate_to<int>("(cond (else 42))") == 42);
+  STATIC_CHECK(evaluate_to<int>("(cond (false 1) (else 42))") == 42);
+  STATIC_CHECK(evaluate_to<int>("(cond (true 1) (else 42))") == 1);
+  STATIC_CHECK(evaluate_to<int>("(cond (false 1) (true 2) (else 42))") == 2);
+  STATIC_CHECK(evaluate_to<int>("(cond (true 1) (true 2) (else 42))") == 1);
+  STATIC_CHECK(evaluate_to<int>("(cond (false 1) (false 2) (else 42))") == 42);
+  STATIC_CHECK(evaluate_to<int>("(cond ((== 1 1) 1) (else 42))") == 1);
+}
+
 TEST_CASE("begin", "[builtins]")
 {
   STATIC_CHECK(evaluate_to<bool>("(begin true)") == true);

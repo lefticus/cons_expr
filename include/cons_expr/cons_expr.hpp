@@ -743,6 +743,8 @@ struct cons_expr
     add(str("apply"), SExpr{ FunctionPtr{ applier, FunctionPtr::Type::other } });
     add(str("quote"), SExpr{ FunctionPtr{ quoter, FunctionPtr::Type::other } });
     add(str("begin"), SExpr{ FunctionPtr{ begin, FunctionPtr::Type::other } });
+    add(str("cond"), SExpr{ FunctionPtr{ cond, FunctionPtr::Type::other } });
+
   }
 
   [[nodiscard]] constexpr SExpr sequence(LexicalScope &scope, list_type expressions)
@@ -1226,6 +1228,31 @@ struct cons_expr
     return error_or_else(engine.eval_to<literal_list_type>(scope, params, str("(eval LiteralList)")),
       [&](const auto &list) { return engine.eval(engine.global_scope, SExpr{ list.items }); });
   }
+
+  [[nodiscard]] static constexpr SExpr cond(cons_expr &engine, LexicalScope &scope, list_type params)
+  {
+    for (const auto &entry : engine.values[params]) {
+      const auto cond = engine.eval_to<list_type>(scope, entry);
+      if (!cond || cond->size != 2) { return engine.make_error(str("(condition statement)"), cond.error()); }
+
+      if (const auto *cond_str = get_if<identifier_type>(&engine.values[(*cond)[0]]); 
+          cond_str != nullptr && engine.strings.view(cond_str->value) == str("else")) { 
+        // we've reached the "else" condition
+        return engine.eval(scope, engine.values[(*cond)[1]]);
+      } else {
+        const auto condition = engine.eval_to<bool>(scope, engine.values[(*cond)[0]]);
+        // does the condition case evaluate to true?
+        if (!condition) { return engine.make_error(str("boolean condition"), condition.error()); }
+
+        if (*condition) {
+          return engine.eval(scope, engine.values[(*cond)[1]]);
+        }
+      }
+    }
+
+    return engine.make_error(str("No matching condition found"), params);
+  }
+
 
   [[nodiscard]] static constexpr SExpr ifer(cons_expr &engine, LexicalScope &scope, list_type params)
   {
