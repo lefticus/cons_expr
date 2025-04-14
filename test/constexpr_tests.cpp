@@ -968,3 +968,82 @@ TEST_CASE("quote function", "[builtins][quote]")
   // Quote for expressions that would otherwise error
   STATIC_CHECK(evaluate_to<bool>("(== (quote (undefined-function 1 2)) '(undefined-function 1 2))") == true);
 }
+
+TEST_CASE("Type mismatch error handling", "[errors][types]")
+{
+  // Test mismatched type comparison errors
+  STATIC_CHECK(evaluate_to<bool>("(error? (< 1 \"string\"))") == true);
+  STATIC_CHECK(evaluate_to<bool>("(error? (> 1.0 '(1 2 3)))") == true);
+  STATIC_CHECK(evaluate_to<bool>("(error? (== \"hello\" 123))") == true);
+  STATIC_CHECK(evaluate_to<bool>("(error? (!= true 42))") == true);
+  
+  // Test arithmetic with mismatched types
+  STATIC_CHECK(evaluate_to<bool>("(error? (+ 1 \"2\"))") == true);
+  STATIC_CHECK(evaluate_to<bool>("(error? (* 3.14 \"pi\"))") == true);
+  
+  // Test errors from applying functions to wrong types
+  STATIC_CHECK(evaluate_to<bool>("(error? (car 42))") == true);
+  STATIC_CHECK(evaluate_to<bool>("(error? (cdr \"not a list\"))") == true);
+}
+
+TEST_CASE("Error handling in diverse contexts", "[errors][edge]")
+{
+  // Test error from get_list with wrong size
+  STATIC_CHECK(evaluate_to<bool>("(error? (let ((x 1)) (apply + (x))))") == true);
+  
+  // Test divide by zero error
+  STATIC_CHECK(evaluate_to<bool>("(error? (/ 1 0))") == true);
+  
+  // Test undefined variable access
+  STATIC_CHECK(evaluate_to<bool>("(error? undefined-var)") == true);
+  
+  // Test invalid function call
+  STATIC_CHECK(evaluate_to<bool>("(error? (1 2 3))") == true);
+  
+  // Test error in cond expression
+  STATIC_CHECK(evaluate_to<bool>("(error? (cond ((+ 1 \"x\") 10) (else 20)))") == true);
+  
+  // Test error in if condition
+  STATIC_CHECK(evaluate_to<bool>("(error? (if (< \"a\" 1) 10 20))") == true);
+}
+
+TEST_CASE("Edge case behavior", "[edge][misc]")
+{
+  // Test nested expression evaluation with type errors
+  STATIC_CHECK(evaluate_to<bool>("(error? (+ 1 (+ 2 \"3\")))") == true);
+  
+  // Test lambda with mismatched argument counts
+  STATIC_CHECK(evaluate_to<bool>("(error? ((lambda (x y) (+ x y)) 1))") == true);
+  
+  // Test let with malformed bindings
+  STATIC_CHECK(evaluate_to<bool>("(error? (let (x 1) x))") == true);
+  STATIC_CHECK(evaluate_to<bool>("(error? (let ((x)) x))") == true);
+  
+  // Test define with non-identifier as first param
+  STATIC_CHECK(evaluate_to<bool>("(error? (define 123 456))") == true);
+  
+  // Test cons with too many arguments
+  STATIC_CHECK(evaluate_to<bool>("(error? (cons 1 2 3))") == true);
+  
+  // Test cond with non-boolean condition
+  STATIC_CHECK(evaluate_to<bool>("(error? (cond (123 456) (else 789)))") == false);
+}
+
+TEST_CASE("for-each function without side effects", "[builtins][for-each]")
+{
+  // Test for-each using immutable approach
+  STATIC_CHECK(evaluate_to<IntType>(R"(
+    (let ((counter (lambda (count)
+            (lambda (x) (+ count 1)))))
+      (let ((result (for-each (counter 0) '(1 2 3 4 5))))
+        5))
+  )") == 5);
+  
+  // Test for-each with empty list
+  STATIC_CHECK(evaluate_to<std::monostate>(R"(
+    (for-each (lambda (x) x) '())
+  )") == std::monostate{});
+  
+  // Test for-each with non-list argument (should error)
+  STATIC_CHECK(evaluate_to<bool>("(error? (for-each (lambda (x) x) 42))") == true);
+}

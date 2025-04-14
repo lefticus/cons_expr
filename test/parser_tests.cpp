@@ -735,3 +735,36 @@ TEST_CASE("Special characters", "[parser][special-chars]")
 
   STATIC_CHECK(test_special_chars());
 }
+
+// Number Parsing Edge Cases
+TEST_CASE("Number parsing edge cases", "[parser][numbers][edge]")
+{
+  // Test exponent parsing in integers (should fail)
+  constexpr auto test_int_with_exponent = []() {
+    auto [success, _] = lefticus::parse_number<int>(std::string_view("123e4"));
+    return !success; // Should fail for integers
+  };
+  
+  // Test exponent start with no digits
+  constexpr auto test_empty_exponent = []() {
+    auto [success, _] = lefticus::parse_number<double>(std::string_view("123e"));
+    return !success; // Should fail due to missing exponent value
+  };
+  
+  // Test invalid character in exponent
+  constexpr auto test_invalid_exponent = []() {
+    auto [success, _] = lefticus::parse_number<double>(std::string_view("123ex"));
+    return !success; // Should fail due to invalid character
+  };
+  
+  // Test float with exponent but no integer part
+  constexpr auto test_float_no_integer = []() {
+    auto [success, value] = lefticus::parse_number<double>(std::string_view(".123e2"));
+    return !success; // Should fail in current implementation
+  };
+  
+  STATIC_CHECK(test_int_with_exponent());
+  STATIC_CHECK(test_empty_exponent());
+  STATIC_CHECK(test_invalid_exponent());
+  STATIC_CHECK(test_float_no_integer());
+}
