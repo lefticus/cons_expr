@@ -262,7 +262,6 @@ TEST_CASE("GPT Generated Tests", "[integration tests]")
   (let ((y 3))
     (+ x y)))
 )") == 5);
-
 }
 
 TEST_CASE("binary short circuiting", "[short circuiting]")
@@ -717,8 +716,8 @@ TEST_CASE("IndexedList sublist operations", "[core][indexedlist]")
 TEST_CASE("Identifier creation and properties", "[core][identifier]")
 {
   constexpr auto test_identifier_creation = []() {
-    lefticus::Identifier<uint16_t> id{ lefticus::IndexedString<uint16_t>{ 5, 10 } };
-    return id.value.start == 5 && id.value.size == 10;
+    lefticus::Identifier<uint16_t> id{ 5, 10 };
+    return id.start == 5 && id.size == 10;
   };
   STATIC_CHECK(test_identifier_creation());
 }
@@ -726,8 +725,8 @@ TEST_CASE("Identifier creation and properties", "[core][identifier]")
 TEST_CASE("Identifier equality", "[core][identifier]")
 {
   constexpr auto test_identifier_equality = []() {
-    lefticus::Identifier<uint16_t> id1{ lefticus::IndexedString<uint16_t>{ 5, 10 } };
-    lefticus::Identifier<uint16_t> id2{ lefticus::IndexedString<uint16_t>{ 5, 10 } };
+    lefticus::Identifier<uint16_t> id1{ 5, 10 };
+    lefticus::Identifier<uint16_t> id2{ 5, 10 };
     return id1 == id2;
   };
   STATIC_CHECK(test_identifier_equality());
@@ -736,8 +735,8 @@ TEST_CASE("Identifier equality", "[core][identifier]")
 TEST_CASE("Identifier inequality", "[core][identifier]")
 {
   constexpr auto test_identifier_inequality = []() {
-    constexpr lefticus::Identifier<uint16_t> id1{ lefticus::IndexedString<uint16_t>{ 5, 10 } };
-    constexpr lefticus::Identifier<uint16_t> id2{ lefticus::IndexedString<uint16_t>{ 15, 10 } };
+    constexpr lefticus::Identifier<uint16_t> id1{ 5, 10 };
+    constexpr lefticus::Identifier<uint16_t> id2{ 15, 10 };
     return id1 != id2;
   };
   STATIC_CHECK(test_identifier_inequality());
@@ -746,9 +745,9 @@ TEST_CASE("Identifier inequality", "[core][identifier]")
 TEST_CASE("Identifier substr", "[core][identifier]")
 {
   constexpr auto test_identifier_substr = []() {
-    lefticus::Identifier<uint16_t> id{ lefticus::IndexedString<uint16_t>{ 5, 10 } };
+    lefticus::Identifier<uint16_t> id{ 5, 10 };
     auto substr = id.substr(2);
-    return substr.value.start == 7 && substr.value.size == 8;
+    return substr.start == 7 && substr.size == 8;
   };
   STATIC_CHECK(test_identifier_substr());
 }

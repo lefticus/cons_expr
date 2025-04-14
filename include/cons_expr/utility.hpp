@@ -71,9 +71,9 @@ template<ConsExpr Eval>
 std::string to_string(const Eval &engine, bool annotate, const typename Eval::identifier_type &id)
 {
   if (annotate) {
-    return std::format("[identifier] {{{}, {}}} {}", id.value.start, id.value.size, engine.strings.view(id.value));
+    return std::format("[identifier] {{{}, {}}} {}", id.start, id.size, engine.strings.view(to_string(id)));
   } else {
-    return std::string{ engine.strings.view(id.value) };
+    return std::string{ engine.strings.view(to_string(id)) };
   }
 }
 

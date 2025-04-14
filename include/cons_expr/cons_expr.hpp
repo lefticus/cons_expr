@@ -192,7 +192,6 @@ struct SmallVector
     }
   }
 
-
   constexpr KeyType insert_or_find(SpanType values) noexcept
   {
     if (const auto small_found = std::search(begin(), end(), values.begin(), values.end()); small_found != end()) {
@@ -402,18 +401,40 @@ template<typename CharType> [[nodiscard]] constexpr Token<CharType> next_token(s
   return make_token(input, static_cast<std::size_t>(std::distance(input.begin(), value.begin())));
 }
 
-template<std::unsigned_integral SizeType> struct IndexedString
+// Tagged string base template
+template<std::unsigned_integral SizeType, typename Tag> struct TaggedIndexedString
 {
   using size_type = SizeType;
   size_type start{ 0 };
   size_type size{ 0 };
-  [[nodiscard]] constexpr bool operator==(const IndexedString &) const noexcept = default;
+  [[nodiscard]] constexpr bool operator==(const TaggedIndexedString &) const noexcept = default;
   [[nodiscard]] constexpr auto front() const noexcept { return start; }
   [[nodiscard]] constexpr auto substr(const size_type from) const noexcept
   {
-    return IndexedString{ static_cast<size_type>(start + from), static_cast<size_type>(size - from) };
+    return TaggedIndexedString{ static_cast<size_type>(start + from), static_cast<size_type>(size - from) };
   }
 };
+
+// Type aliases for the concrete string types
+template<std::unsigned_integral SizeType> using IndexedString = TaggedIndexedString<SizeType, struct StringTag>;
+template<std::unsigned_integral SizeType> using Identifier = TaggedIndexedString<SizeType, struct IdentifierTag>;
+template<std::unsigned_integral SizeType> using Symbol = TaggedIndexedString<SizeType, struct SymbolTag>;
+
+template<std::unsigned_integral SizeType, typename Tag>
+[[nodiscard]] constexpr auto to_string(const TaggedIndexedString<SizeType, Tag> input)
+{
+  return IndexedString<SizeType>{ input.start, input.size };
+}
+template<std::unsigned_integral SizeType, typename Tag>
+[[nodiscard]] constexpr auto to_identifier(const TaggedIndexedString<SizeType, Tag> input)
+{
+  return Identifier<SizeType>{ input.start, input.size };
+}
+template<std::unsigned_integral SizeType, typename Tag>
+[[nodiscard]] constexpr auto to_symbol(const TaggedIndexedString<SizeType, Tag> input)
+{
+  return Symbol<SizeType>{ input.start, input.size };
+}
 
 template<std::unsigned_integral SizeType> struct IndexedList
 {
@@ -447,27 +468,6 @@ template<std::unsigned_integral SizeType> struct LiteralList
   }
   [[nodiscard]] constexpr bool operator==(const LiteralList &) const noexcept = default;
 };
-
-template<std::unsigned_integral SizeType> LiteralList(IndexedList<SizeType>) -> LiteralList<SizeType>;
-
-
-template<std::unsigned_integral SizeType> struct Identifier
-{
-  using size_type = SizeType;
-  IndexedString<size_type> value;
-  [[nodiscard]] constexpr auto substr(const size_type from) const { return Identifier{ value.substr(from) }; }
-  [[nodiscard]] constexpr bool operator==(const Identifier &other) const noexcept = default;
-};
-
-template<std::unsigned_integral SizeType> struct Symbol
-{
-  using size_type = SizeType;
-  IndexedString<size_type> value;
-  [[nodiscard]] constexpr auto substr(const size_type from) const { return Identifier{ value.substr(from) }; }
-  [[nodiscard]] constexpr bool operator==(const Symbol &other) const noexcept = default;
-};
-
-template<std::unsigned_integral SizeType> Identifier(IndexedString<SizeType>) -> Identifier<SizeType>;
 
 
 template<std::unsigned_integral SizeType> struct Error
@@ -655,7 +655,7 @@ struct cons_expr
       // set up params
       // technically I'm evaluating the params lazily while invoking the lambda, not before. Does it matter?
       for (const auto [name, parameter] : std::views::zip(engine.values[parameter_names], engine.values[params])) {
-        param_scope.emplace_back(engine.get_if<identifier_type>(&name)->value, engine.eval(scope, parameter));
+        param_scope.emplace_back(to_string(*engine.get_if<identifier_type>(&name)), engine.eval(scope, parameter));
       }
 
       // TODO set up tail call elimination for last element of the sequence being evaluated?
@@ -703,9 +703,9 @@ struct cons_expr
         } else if (auto [float_did_parse, float_value] = parse_number<float_type>(token.parsed); float_did_parse) {
           retval.push_back(SExpr{ Atom(float_value) });
         } else if (token.parsed.starts_with('\'')) {
-          retval.push_back(SExpr{ Atom(Symbol{ strings.insert_or_find(token.parsed.substr(1)) }) });
+          retval.push_back(SExpr{ Atom(to_symbol(strings.insert_or_find(token.parsed.substr(1)))) });
         } else {
-          retval.push_back(SExpr{ Atom(Identifier{ strings.insert_or_find(token.parsed) }) });
+          retval.push_back(SExpr{ Atom(to_identifier(strings.insert_or_find(token.parsed))) });
         }
       }
       token = next_token(token.remaining);
@@ -744,7 +744,6 @@ struct cons_expr
     add(str("quote"), SExpr{ FunctionPtr{ quoter, FunctionPtr::Type::other } });
     add(str("begin"), SExpr{ FunctionPtr{ begin, FunctionPtr::Type::other } });
     add(str("cond"), SExpr{ FunctionPtr{ cond, FunctionPtr::Type::other } });
-
   }
 
   [[nodiscard]] constexpr SExpr sequence(LexicalScope &scope, list_type expressions)
@@ -850,7 +849,7 @@ struct cons_expr
       }
     } else if (const auto *id = get_if<identifier_type>(&expr); id != nullptr) {
       for (const auto &[key, value] : scope | std::views::reverse) {
-        if (key == id->value) { return value; }
+        if (key == to_string(*id)) { return value; }
       }
 
       return make_error(str("id not found"), expr);
@@ -894,7 +893,9 @@ struct cons_expr
     Scratch retval{ string_scratch };
     if (auto *parameter_list = get_if<list_type>(&sexpr); parameter_list != nullptr) {
       for (const auto &expr : values[*parameter_list]) {
-        if (auto *local_id = get_if<identifier_type>(&expr); local_id != nullptr) { retval.push_back(local_id->value); }
+        if (auto *local_id = get_if<identifier_type>(&expr); local_id != nullptr) {
+          retval.push_back(to_string(*local_id));
+        }
       }
     }
     return retval;
@@ -964,7 +965,7 @@ struct cons_expr
 
       auto *id = get_if<identifier_type>(&values[(*param_list)[0]]);
       if (id == nullptr) { return make_error(str("malformed let expression"), list); }
-      new_locals.push_back(id->value);
+      new_locals.push_back(to_string(*id));
 
       std::array new_param{ values[(*param_list)[0]],
         fix_identifiers(values[(*param_list)[1]], local_identifiers, local_constants) };
@@ -993,7 +994,7 @@ struct cons_expr
     const auto *id = get_if<identifier_type>(&values[static_cast<size_type>(first_index + 1)]);
 
     if (id == nullptr) { return make_error(str("malformed define expression"), values[first_index + 1]); }
-    new_locals.push_back(id->value);
+    new_locals.push_back(to_string(*id));
 
     std::array<SExpr, 3> new_define{ fix_identifiers(values[first_index], local_identifiers, local_constants),
       values[first_index + 1],
@@ -1030,7 +1031,9 @@ struct cons_expr
         const auto &elem = values[first_index];
         string_view_type id;
         auto fp_type = FunctionPtr::Type::other;
-        if (auto *id_atom = get_if<identifier_type>(&elem); id_atom != nullptr) { id = strings.view(id_atom->value); }
+        if (auto *id_atom = get_if<identifier_type>(&elem); id_atom != nullptr) {
+          id = strings.view(to_string(*id_atom));
+        }
         if (auto *fp = get_if<FunctionPtr>(&elem); fp != nullptr) { fp_type = fp->type; }
 
         if (fp_type == FunctionPtr::Type::lambda_expr || id == str("lambda")) {
@@ -1051,11 +1054,11 @@ struct cons_expr
     } else if (auto *id = get_if<identifier_type>(&input); id != nullptr) {
       for (const auto &local : local_identifiers | std::views::reverse) {
         // do something smarter later, but abort for now because it's in the variable scope
-        if (local == id->value) { return input; }
+        if (local == to_string(*id)) { return input; }
       }
 
       for (const auto &object : local_constants | std::views::reverse) {
-        if (object.first == id->value) { return object.second; }
+        if (object.first == to_string(*id)) { return object.second; }
       }
 
       return input;
@@ -1093,7 +1096,7 @@ struct cons_expr
 
       auto variable_id = engine.eval_to<identifier_type>(scope, (*variable_elements)[0]);
       if (!variable_id) { return engine.make_error(str("expected identifier"), variable_id.error()); }
-      new_scope.emplace_back(variable_id->value, engine.eval(scope, (*variable_elements)[1]));
+      new_scope.emplace_back(to_string(*variable_id), engine.eval(scope, (*variable_elements)[1]));
     }
 
     // evaluate body
@@ -1153,8 +1156,7 @@ struct cons_expr
     } else if (const auto *atom = std::get_if<Atom>(&front.value); atom != nullptr) {
       if (const auto *identifier_front = std::get_if<symbol_type>(atom); identifier_front != nullptr) {
         // push an identifier into the list, not a symbol... should maybe fix this
-        // so quoted lists are always lists of symbols?
-        result.push_back(SExpr{ Atom{ identifier_type{ identifier_front->value } } });
+        result.push_back(SExpr{ Atom{ to_identifier(*identifier_front) } });
       } else {
         result.push_back(front);
       }
@@ -1235,8 +1237,8 @@ struct cons_expr
       const auto cond = engine.eval_to<list_type>(scope, entry);
       if (!cond || cond->size != 2) { return engine.make_error(str("(condition statement)"), cond.error()); }
 
-      if (const auto *cond_str = get_if<identifier_type>(&engine.values[(*cond)[0]]); 
-          cond_str != nullptr && engine.strings.view(cond_str->value) == str("else")) { 
+      if (const auto *cond_str = get_if<identifier_type>(&engine.values[(*cond)[0]]);
+        cond_str != nullptr && engine.strings.view(to_string(*cond_str)) == str("else")) {
         // we've reached the "else" condition
         return engine.eval(scope, engine.values[(*cond)[1]]);
       } else {
@@ -1244,9 +1246,7 @@ struct cons_expr
         // does the condition case evaluate to true?
         if (!condition) { return engine.make_error(str("boolean condition"), condition.error()); }
 
-        if (*condition) {
-          return engine.eval(scope, engine.values[(*cond)[1]]);
-        }
+        if (*condition) { return engine.eval(scope, engine.values[(*cond)[1]]); }
       }
     }
 
@@ -1301,7 +1301,7 @@ struct cons_expr
     // If it's an identifier, convert it to a symbol
     else if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
       if (const auto *id = std::get_if<identifier_type>(atom); id != nullptr) {
-        return SExpr{ Atom{ symbol_type{ id->value } } };
+        return SExpr{ Atom{ symbol_type{ to_symbol(*id) } } };
       }
     }
 
@@ -1313,7 +1313,7 @@ struct cons_expr
   {
     return error_or_else(engine.eval_to<identifier_type, SExpr>(scope, params, str("(define Identifier Expression)")),
       [&](const auto &evaled) {
-        scope.emplace_back(std::get<0>(evaled).value, engine.fix_identifiers(std::get<1>(evaled), {}, scope));
+        scope.emplace_back(to_string(std::get<0>(evaled)), engine.fix_identifiers(std::get<1>(evaled), {}, scope));
         return SExpr{ Atom{ std::monostate{} } };
       });
   }

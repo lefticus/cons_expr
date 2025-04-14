@@ -57,6 +57,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Header files follow #ifndef/#define guard pattern
 - Entire system is `constexpr` capable unless it uses IO
 - Use modern C++ style casts over C-style casts
+- Avoid macros completely except for header guards
+- Prefer templates, constexpr functions or concepts over macros
 
 ## Naming and Structure
 - Namespace: lefticus
