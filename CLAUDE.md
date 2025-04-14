@@ -59,6 +59,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Use modern C++ style casts over C-style casts
 - Avoid macros completely except for header guards
 - Prefer templates, constexpr functions or concepts over macros
+- Use `static constexpr` for compile-time known constants
+- Prefer local constants within functions over function variables for readability
 
 ## Naming and Structure
 - Namespace: lefticus

@@ -85,13 +85,25 @@ SOFTWARE.
 // * no exceptions or dynamic allocations
 
 /// Notes
-// it's a scheme-like language with a few caveats:
+// This is a scheme-like language with a few caveats:
 // * Once an object is captured or used, it's immutable
 // * `==` `true` and `false` stray from `=` `#t` and `#f` of scheme
 // * Pair types don't exist, only lists
-// * only indices and values are passed, for safety during resize of `values` object
+// * Only indices and values are passed, for safety during resize of `values` object
 // Triviality of types is critical to design and structure of this system
 // Triviality lets us greatly simplify the copy/move/forward discussion
+//
+// Supported Scheme Features:
+// * Core Data Types: numbers (int/float), strings, booleans, lists, symbols
+// * List Operations: car, cdr, cons, append, list, quote
+// * Control Structures: if, cond, begin
+// * Variable Binding: let, define
+// * Functions: lambda, apply
+// * Higher-order Functions: for-each
+// * Evaluation Control: eval
+// * Basic Arithmetic: +, -, *, /
+// * Comparisons: <, >, ==, !=, <=, >=
+// * Boolean Logic: and, or, not
 
 /// To do
 // * We probably want some sort of "defragment" at some point
@@ -881,8 +893,11 @@ struct cons_expr
     return eval_to<Type>(scope, eval(scope, expr));
   }
 
+  // (list 1 2 3) -> '(1 2 3)
+  // (list (+ 1 2) (+ 3 4)) -> '(3 7)
   [[nodiscard]] static constexpr SExpr list(cons_expr &engine, LexicalScope &scope, list_type params)
   {
+    // Evaluate each parameter and add it to a new list
     Scratch result{ engine.object_scratch };
     for (const auto &param : engine.values[params]) { result.push_back(engine.eval(scope, param)); }
     return SExpr{ LiteralList{ engine.values.insert_or_find(result) } };
@@ -901,21 +916,25 @@ struct cons_expr
     return retval;
   }
 
+  // (lambda (x y) (+ x y)) -> #<closure>
+  // ((lambda (x) (* x x)) 5) -> 25
   [[nodiscard]] static constexpr SExpr lambda(cons_expr &engine, LexicalScope &scope, list_type params)
   {
     if (params.size < 2) { return engine.make_error(str("(lambda ([params...]) [statement...])"), params); }
 
+    // Extract parameter names from first argument
     auto locals = engine.get_lambda_parameter_names(engine.values[params[0]]);
 
-    // replace all references to captured values with constant copies
-    // this is how we create the closure object
+    // Replace all references to captured values with constant copies
+    // This is how we create the closure object - by fixing all identifiers
     Scratch fixed_statements{ engine.object_scratch };
 
     for (const auto &statement : engine.values[params.sublist(1)]) {
-      // all of current scope is const and capturable
+      // All of current scope is const and capturable
       fixed_statements.push_back(engine.fix_identifiers(statement, locals, scope));
     }
 
+    // Create the closure with parameter list and fixed statements
     const auto list = engine.get_if<list_type>(&engine.values[params[0]]);
     if (list) { return SExpr{ Closure{ *list, { engine.values.insert_or_find(fixed_statements) } } }; }
 
@@ -1143,6 +1162,8 @@ struct cons_expr
     return SExpr{ LiteralList{ engine.values.insert_or_find(result) } };
   }
 
+  // (cons 1 '(2 3)) -> '(1 2 3)
+  // (cons '(a) '(b c)) -> '((a) b c)
   [[nodiscard]] static constexpr SExpr cons(cons_expr &engine, LexicalScope &scope, list_type params)
   {
     auto evaled_params = engine.eval_to<SExpr, literal_list_type>(scope, params, str("(cons Expr LiteralList)"));
@@ -1152,23 +1173,31 @@ struct cons_expr
     Scratch result{ engine.object_scratch };
 
     if (const auto *list_front = std::get_if<literal_list_type>(&front.value); list_front != nullptr) {
+      // First element is a list, add it as a nested list
       result.push_back(SExpr{ list_front->items });
     } else if (const auto *atom = std::get_if<Atom>(&front.value); atom != nullptr) {
       if (const auto *identifier_front = std::get_if<symbol_type>(atom); identifier_front != nullptr) {
-        // push an identifier into the list, not a symbol... should maybe fix this
+        // Convert symbol to identifier when adding to result list
+        // Note: should maybe fix this so quoted lists are always lists of symbols?
         result.push_back(SExpr{ Atom{ to_identifier(*identifier_front) } });
       } else {
+        // Regular atom, keep as-is
         result.push_back(front);
       }
     } else {
+      // Any other expression type
       result.push_back(front);
     }
 
+    // Add the remaining elements from the second list
     for (const auto &value : engine.values[list.items]) { result.push_back(value); }
 
     return SExpr{ LiteralList{ engine.values.insert_or_find(result) } };
   }
 
+  // Helper for monadic-style error handling
+  // If operation succeeded, calls callable with the result
+  // If operation failed, propagates the error
   template<typename ValueType>
   [[nodiscard]] static constexpr SExpr error_or_else(const std::expected<ValueType, SExpr> &obj, auto callable)
   {
@@ -1179,19 +1208,25 @@ struct cons_expr
     }
   }
 
+  // Empty indexed list for reuse
+  static constexpr IndexedList<size_type> empty_indexed_list{ 0, 0 };
+  
+  // (cdr '(1 2 3)) -> '(2 3)
+  // (cdr '(1)) -> '()
   [[nodiscard]] static constexpr SExpr cdr(cons_expr &engine, LexicalScope &scope, list_type params)
   {
     return error_or_else(
       engine.eval_to<literal_list_type>(scope, params, str("(cdr LiteralList)")), [&](const auto &list) {
         // If the list has one or zero elements, return empty list
         if (list.items.size <= 1) {
-          static constexpr IndexedList<size_type> empty_list{ 0, 0 };
-          return SExpr{ literal_list_type{ empty_list } };
+          return SExpr{ literal_list_type{ empty_indexed_list } };
         }
         return SExpr{ list.sublist(1) };
       });
   }
 
+  // (car '(1 2 3)) -> 1
+  // (car '((a b) c)) -> '(a b)
   [[nodiscard]] static constexpr SExpr car(cons_expr &engine, LexicalScope &scope, list_type params)
   {
     return error_or_else(
@@ -1231,42 +1266,52 @@ struct cons_expr
       [&](const auto &list) { return engine.eval(engine.global_scope, SExpr{ list.items }); });
   }
 
+  // (cond ((< 5 10) "less") ((> 5 10) "greater") (else "equal")) -> "less"
+  // (cond ((= 5 10) "equal") ((> 5 10) "greater") (else "less")) -> "less"
   [[nodiscard]] static constexpr SExpr cond(cons_expr &engine, LexicalScope &scope, list_type params)
   {
+    // Evaluate each condition pair in sequence
     for (const auto &entry : engine.values[params]) {
       const auto cond = engine.eval_to<list_type>(scope, entry);
       if (!cond || cond->size != 2) { return engine.make_error(str("(condition statement)"), cond.error()); }
 
+      // Check for the special 'else' case - always matches and returns its expression
       if (const auto *cond_str = get_if<identifier_type>(&engine.values[(*cond)[0]]);
         cond_str != nullptr && engine.strings.view(to_string(*cond_str)) == str("else")) {
         // we've reached the "else" condition
         return engine.eval(scope, engine.values[(*cond)[1]]);
       } else {
+        // Evaluate the condition to check if it's true
         const auto condition = engine.eval_to<bool>(scope, engine.values[(*cond)[0]]);
-        // does the condition case evaluate to true?
         if (!condition) { return engine.make_error(str("boolean condition"), condition.error()); }
 
+        // If this condition matches, evaluate and return its expression
         if (*condition) { return engine.eval(scope, engine.values[(*cond)[1]]); }
       }
     }
 
+    // No matching condition, including no else clause
     return engine.make_error(str("No matching condition found"), params);
   }
 
 
+  // (if true 1 2) -> 1
+  // (if false 1 2) -> 2
+  // (if (< 5 10) (+ 1 2) (- 10 5)) -> 3
   [[nodiscard]] static constexpr SExpr ifer(cons_expr &engine, LexicalScope &scope, list_type params)
   {
     // need to be careful to not execute unexecuted branches
     if (params.size != 3) { return engine.make_error(str("(if bool-cond then else)"), params); }
 
+    // Evaluate the condition to a boolean
     const auto condition = engine.eval_to<bool>(scope, engine.values[params[0]]);
-
     if (!condition) { return engine.make_error(str("boolean condition"), condition.error()); }
 
+    // Only evaluate the branch that needs to be taken
     if (*condition) {
-      return engine.eval(scope, engine.values[params[1]]);
+      return engine.eval(scope, engine.values[params[1]]);  // true branch
     } else {
-      return engine.eval(scope, engine.values[params[2]]);
+      return engine.eval(scope, engine.values[params[2]]);  // false branch
     }
   }
 
@@ -1293,8 +1338,7 @@ struct cons_expr
     if (const auto *list = std::get_if<list_type>(&expr.value); list != nullptr) {
       // Special case for empty lists - use a canonical empty list with start index 0
       if (list->size == 0) {
-        static constexpr IndexedList<size_type> empty_list{ 0, 0 };
-        return SExpr{ literal_list_type{ empty_list } };
+        return SExpr{ literal_list_type{ empty_indexed_list } };
       }
       return SExpr{ literal_list_type{ *list } };
     }
