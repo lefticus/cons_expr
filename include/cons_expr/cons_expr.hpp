@@ -316,7 +316,7 @@ template<typename T, typename CharType>
       if (ch == chars<CharType>::ch('.')) {
         state = State::FractionPart;
       } else if (ch == chars<CharType>::ch('e') || ch == chars<CharType>::ch('E')) {
-        state = State::ExponentPart;
+        state = State::ExponentStart;
       } else if (!parse_digit(value, ch)) {
         return failure;
       }
@@ -793,6 +793,7 @@ struct cons_expr
     add(str("quote"), SExpr{ FunctionPtr{ quoter, FunctionPtr::Type::other } });
     add(str("begin"), SExpr{ FunctionPtr{ begin, FunctionPtr::Type::other } });
     add(str("cond"), SExpr{ FunctionPtr{ cond, FunctionPtr::Type::other } });
+    add(str("error?"), SExpr{ FunctionPtr{ error_p, FunctionPtr::Type::other } });
   }
 
   [[nodiscard]] constexpr SExpr sequence(LexicalScope &scope, list_type expressions)
@@ -1363,6 +1364,20 @@ struct cons_expr
     }
 
     return SExpr{ Atom{ std::monostate{} } };
+  }
+  
+  // error?: Check if the expression is an error
+  [[nodiscard]] static constexpr SExpr error_p(cons_expr &engine, LexicalScope &scope, list_type params)
+  {
+    if (params.size != 1) { return engine.make_error(str("(error? expr)"), params); }
+    
+    // Evaluate the expression
+    auto expr = engine.eval(scope, engine.values[params[0]]);
+    
+    // Check if it's an error type
+    const bool is_error = std::holds_alternative<error_type>(expr.value);
+    
+    return SExpr{ Atom(is_error) };
   }
 
   [[nodiscard]] static constexpr SExpr quoter(cons_expr &engine, LexicalScope &, list_type params)
