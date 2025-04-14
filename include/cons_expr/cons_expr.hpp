@@ -927,8 +927,14 @@ struct cons_expr
         }
       }
     }
-    if (const auto *err = std::get_if<error_type>(&expr.value); err != nullptr) { return std::unexpected(expr); }
-    return eval_to<Type>(scope, eval(scope, expr));
+
+    // if things aren't changing, then we abort, because it's not going to happen
+    // this should be cleaned up somehow to avoid move
+    if (auto next = eval(scope, expr); next == expr) {
+      return std::unexpected(expr);
+    } else {
+      return eval_to<Type>(scope, std::move(next));
+    }
   }
 
   // (list 1 2 3) -> '(1 2 3)

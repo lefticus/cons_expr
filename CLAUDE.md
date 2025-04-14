@@ -16,6 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `constexpr_tests` target compiles tests with static assertions
   - Will fail to compile if tests fail since they use static assertions
   - Makes debugging difficult as you won't see which specific test failed
+  - Will always fail to compile if there's a fail test; use relaxed_constexpr_tests or directly execute the tests with cons_expr command line tool for debugging
 - `relaxed_constexpr_tests` target compiles with runtime assertions
   - Preferred for debugging since it shows which specific tests fail
   - Use this target when developing/debugging: 

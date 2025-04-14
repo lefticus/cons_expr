@@ -111,7 +111,7 @@ TEST_CASE("SmallVector error handling", "[core][smallvector]")
     vec.push_back('c');
     
     // Check that error_state is set
-    return vec.error_state == true && vec.size() == 2;
+    return vec.error_state == true && vec.size() == static_cast<uint16_t>(2);
   };
   
   STATIC_CHECK(test_smallvector_error());
@@ -127,7 +127,7 @@ TEST_CASE("SmallVector const operator[]", "[core][smallvector]")
     
     // Create a const reference and access elements
     const auto& const_vec = vec;
-    return const_vec[0] == 'a' && const_vec[1] == 'b' && const_vec[2] == 'c';
+    return const_vec[static_cast<uint16_t>(0)] == 'a' && const_vec[static_cast<uint16_t>(1)] == 'b' && const_vec[static_cast<uint16_t>(2)] == 'c';
   };
   
   STATIC_CHECK(test_const_access());
