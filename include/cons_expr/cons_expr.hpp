@@ -675,6 +675,40 @@ struct cons_expr
     }
   };
 
+  // Process escape sequences in a string literal
+  [[nodiscard]] constexpr string_type process_string_escapes(string_view_type str) 
+  {
+    // Create a temporary buffer for the processed string
+    // Using 64 as a reasonable initial size for most string literals
+    SmallVector<size_type, CharType, 64, CharType, string_view_type> temp_buffer{};
+    
+    bool in_escape = false;
+    for (const auto& ch : str) {
+      if (in_escape) {
+        // Handle the escape sequence
+        switch (ch) {
+          case '"':  temp_buffer.push_back('"'); break;  // Escaped quote
+          case '\\': temp_buffer.push_back('\\'); break; // Escaped backslash
+          case 'n':  temp_buffer.push_back('\n'); break; // Newline
+          case 't':  temp_buffer.push_back('\t'); break; // Tab
+          case 'r':  temp_buffer.push_back('\r'); break; // Carriage return
+          case 'f':  temp_buffer.push_back('\f'); break; // Form feed
+          case 'b':  temp_buffer.push_back('\b'); break; // Backspace
+          default:   temp_buffer.push_back(ch); break;   // Other characters as-is
+        }
+        in_escape = false;
+      } else if (ch == '\\') {
+        in_escape = true;
+      } else {
+        temp_buffer.push_back(ch);
+      }
+    }
+    
+    // Now use insert_or_find to deduplicate the processed string
+    string_view_type processed_view(temp_buffer.small.data(), temp_buffer.size());
+    return strings.insert_or_find(processed_view);
+  }
+
   [[nodiscard]] constexpr std::pair<SExpr, Token<CharType>> parse(string_view_type input)
   {
     Scratch retval{ object_scratch };
@@ -702,10 +736,13 @@ struct cons_expr
         retval.push_back(SExpr{ Atom{ false } });
       } else {
         if (token.parsed.starts_with('"')) {
-          // note that this doesn't remove escaped characters like it should yet
-          // quoted string
+          // Process quoted string with proper escape character handling
           if (token.parsed.ends_with('"')) {
-            const auto string = strings.insert_or_find(token.parsed.substr(1, token.parsed.size() - 2));
+            // Extract the string content (remove surrounding quotes)
+            string_view_type raw_content = token.parsed.substr(1, token.parsed.size() - 2);
+            
+            // Process escape sequences and get the deduplicated string
+            const auto string = process_string_escapes(raw_content);
             retval.push_back(SExpr{ Atom(string) });
           } else {
             retval.push_back(make_error(str("terminated string"), SExpr{ Atom(strings.insert_or_find(token.parsed)) }));

@@ -82,6 +82,40 @@ TEST_CASE("access as string_view", "[strings]")
   STATIC_CHECK(evaluate_expected<std::string_view>(R"("")", ""));
 }
 
+TEST_CASE("string escape character processing", "[strings][escapes]")
+{
+  // Test escaped double quotes
+  STATIC_CHECK(evaluate_expected<std::string_view>(R"("Quote: \"Hello\"")", "Quote: \"Hello\""));
+  
+  // Test escaped backslash
+  STATIC_CHECK(evaluate_expected<std::string_view>(R"("Backslash: \\")", "Backslash: \\"));
+  
+  // Test newline escape
+  STATIC_CHECK(evaluate_expected<std::string_view>(R"("Line1\nLine2")", "Line1\nLine2"));
+  
+  // Test tab escape
+  STATIC_CHECK(evaluate_expected<std::string_view>(R"("Tabbed\tText")", "Tabbed\tText"));
+  
+  // Test carriage return escape
+  STATIC_CHECK(evaluate_expected<std::string_view>(R"("Return\rText")", "Return\rText"));
+  
+  // Test form feed escape
+  STATIC_CHECK(evaluate_expected<std::string_view>(R"("Form\fFeed")", "Form\fFeed"));
+  
+  // Test backspace escape
+  STATIC_CHECK(evaluate_expected<std::string_view>(R"("Back\bSpace")", "Back\bSpace"));
+  
+  // Test multiple escapes in one string
+  STATIC_CHECK(evaluate_expected<std::string_view>(R"("Multiple\tEscapes:\n\"Quoted\", \\Backslash")", 
+                                                    "Multiple\tEscapes:\n\"Quoted\", \\Backslash"));
+  
+  // Test consecutive escapes
+  STATIC_CHECK(evaluate_expected<std::string_view>(R"("Double\\\\Backslash")", "Double\\\\Backslash"));
+  
+  // Test escape at end of string
+  STATIC_CHECK(evaluate_expected<std::string_view>(R"("EndEscape\\")", "EndEscape\\"));
+}
+
 TEST_CASE("basic integer operators", "[operators]")
 {
   STATIC_CHECK(evaluate_to<IntType>("(+ 1 2)") == 3);

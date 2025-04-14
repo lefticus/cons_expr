@@ -286,6 +286,77 @@ TEST_CASE("String parsing", "[parser][strings]")
   STATIC_CHECK(test_string5());
 }
 
+// String Escape Character Tests
+TEST_CASE("String escape characters", "[parser][strings][escapes]")
+{
+  // Escaped double quote
+  constexpr auto test_escaped_quote = []() {
+    lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
+    auto [parsed, _] = evaluator.parse("\"Quote: \\\"Hello\\\"\"");
+    
+    // Extract the string content
+    const auto *list = std::get_if<lefticus::cons_expr<>::list_type>(&parsed.value);
+    if (list == nullptr || list->size != 1) return false;
+    
+    const auto *atom = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[(*list)[0]].value);
+    if (atom == nullptr) return false;
+    
+    const auto *string_val = std::get_if<lefticus::cons_expr<>::string_type>(atom);
+    if (string_val == nullptr) return false;
+    
+    // Check the raw tokenized string includes the escapes
+    auto token = lefticus::next_token(std::string_view("\"Quote: \\\"Hello\\\"\""));
+    if (token.parsed != std::string_view("\"Quote: \\\"Hello\\\"\"")) return false;
+    
+    return true;
+  };
+  
+  // Escaped backslash
+  constexpr auto test_escaped_backslash = []() {
+    auto token = lefticus::next_token(std::string_view("\"Backslash: \\\\\""));
+    return token.parsed == std::string_view("\"Backslash: \\\\\"");
+  };
+  
+  // Multiple escape sequences
+  constexpr auto test_multiple_escapes = []() {
+    auto token = lefticus::next_token(std::string_view("\"Escapes: \\\\ \\\" \\n \\t \\r\""));
+    return token.parsed == std::string_view("\"Escapes: \\\\ \\\" \\n \\t \\r\"");
+  };
+  
+  // Escape at end of string
+  constexpr auto test_escape_at_end = []() {
+    auto token = lefticus::next_token(std::string_view("\"Escape at end: \\\""));
+    return token.parsed == std::string_view("\"Escape at end: \\\"");
+  };
+
+  // Unterminated string with escape
+  constexpr auto test_unterminated_escape = []() {
+    auto token = lefticus::next_token(std::string_view("\"Unterminated \\"));
+    return token.parsed == std::string_view("\"Unterminated \\");
+  };
+  
+  // Common escape sequences: \n \t \r \f \b
+  constexpr auto test_common_escapes = []() {
+    auto token = lefticus::next_token(std::string_view("\"Special chars: \\n\\t\\r\\f\\b\""));
+    return token.parsed == std::string_view("\"Special chars: \\n\\t\\r\\f\\b\"");
+  };
+  
+  // Test handling of consecutive escapes
+  constexpr auto test_consecutive_escapes = []() {
+    auto token = lefticus::next_token(std::string_view("\"Double escapes: \\\\\\\"\""));
+    return token.parsed == std::string_view("\"Double escapes: \\\\\\\"\"");
+  };
+  
+  // Check all individual assertions
+  STATIC_CHECK(test_escaped_quote());
+  STATIC_CHECK(test_escaped_backslash());
+  STATIC_CHECK(test_multiple_escapes());
+  STATIC_CHECK(test_escape_at_end());
+  STATIC_CHECK(test_unterminated_escape());
+  STATIC_CHECK(test_common_escapes());
+  STATIC_CHECK(test_consecutive_escapes());
+}
+
 // Number Parsing Tests
 TEST_CASE("Number parsing", "[parser][numbers]")
 {
