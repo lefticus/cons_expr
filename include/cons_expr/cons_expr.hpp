@@ -279,17 +279,13 @@ template<typename T, typename CharType>
   T value_sign = 1;
   long long value = 0LL;
   long long frac = 0LL;
-  long long frac_exp = 0LL;
+  long long frac_digits = 0LL;
   long long exp_sign = 1LL;
   long long exp = 0LL;
 
   constexpr auto pow_10 = [](long long power) noexcept {
-    auto result = T{ 1 };
-    if (power > 0) {
-      for (int iteration = 0; iteration < power; ++iteration) { result *= T{ 10 }; }
-    } else if (power < 0) {
-      for (int iteration = 0; iteration > power; --iteration) { result /= T{ 10 }; }
-    }
+    auto result = 1ll;
+    for (int iteration = 0; iteration < power; ++iteration) { result *= 10ll; }
     return result;
   };
 
@@ -305,12 +301,18 @@ template<typename T, typename CharType>
   for (const auto ch : input) {
     switch (state) {
     case State::Start:
+      state = State::IntegerPart;
       if (ch == chars<CharType>::ch('-')) {
-        value_sign = -1;
+        if constexpr (std::is_signed_v<T>) {
+          value_sign = -1;
+        } else {
+          return failure;
+        }
+      } else if (ch == chars<CharType>::ch('.')) {
+        state = State::FractionPart;
       } else if (!parse_digit(value, ch)) {
         return failure;
       }
-      state = State::IntegerPart;
       break;
     case State::IntegerPart:
       if (ch == chars<CharType>::ch('.')) {
@@ -323,7 +325,7 @@ template<typename T, typename CharType>
       break;
     case State::FractionPart:
       if (parse_digit(frac, ch)) {
-        frac_exp--;
+        ++frac_digits;
       } else if (ch == chars<CharType>::ch('e') || ch == chars<CharType>::ch('E')) {
         state = State::ExponentStart;
       } else {
@@ -349,9 +351,9 @@ template<typename T, typename CharType>
   } else {
     if (state == State::Start || state == State::ExponentStart) { return { false, 0 }; }
 
-    return { true,
-      (static_cast<T>(value_sign) * (static_cast<T>(value) + static_cast<T>(frac) * pow_10(frac_exp))
-        * pow_10(exp_sign * exp)) };
+    const auto number = static_cast<long double>(value_sign) * (static_cast<long double>(value) + static_cast<long double>(frac) / static_cast<long double>(pow_10(frac_digits))) * static_cast<long double>(pow_10(exp_sign * exp));
+
+    return { true, static_cast<T>(number) };
   }
 }
 

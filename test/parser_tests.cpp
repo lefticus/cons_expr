@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_template_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <cons_expr/cons_expr.hpp>
@@ -736,35 +737,32 @@ TEST_CASE("Special characters", "[parser][special-chars]")
   STATIC_CHECK(test_special_chars());
 }
 
+using LongDouble = long double;
+
 // Number Parsing Edge Cases
-TEST_CASE("Number parsing edge cases", "[parser][numbers][edge]")
+TEMPLATE_TEST_CASE("integral parsing", "[parser][numbers][edge]", int, long, short, std::uint16_t)
 {
-  // Test exponent parsing in integers (should fail)
-  constexpr auto test_int_with_exponent = []() {
-    auto [success, _] = lefticus::parse_number<int>(std::string_view("123e4"));
-    return !success; // Should fail for integers
+  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123e4")).first == false);
+}
+
+
+// Number Parsing Edge Cases
+TEMPLATE_TEST_CASE("Floating point parsing", "[parser][numbers][edge]", float, double, LongDouble)
+{
+  static constexpr auto eps = std::numeric_limits<TestType>::epsilon() * 1;
+  constexpr auto float_check = [](TestType arg, TestType target) {
+    if (arg > target) {
+      return std::abs(arg - target) <= eps;
+    } else {
+      return std::abs(target - arg) <= eps;
+    }
   };
-  
-  // Test exponent start with no digits
-  constexpr auto test_empty_exponent = []() {
-    auto [success, _] = lefticus::parse_number<double>(std::string_view("123e"));
-    return !success; // Should fail due to missing exponent value
-  };
-  
-  // Test invalid character in exponent
-  constexpr auto test_invalid_exponent = []() {
-    auto [success, _] = lefticus::parse_number<double>(std::string_view("123ex"));
-    return !success; // Should fail due to invalid character
-  };
-  
-  // Test float with exponent but no integer part
-  constexpr auto test_float_no_integer = []() {
-    auto [success, value] = lefticus::parse_number<double>(std::string_view(".123e2"));
-    return !success; // Should fail in current implementation
-  };
-  
-  STATIC_CHECK(test_int_with_exponent());
-  STATIC_CHECK(test_empty_exponent());
-  STATIC_CHECK(test_invalid_exponent());
-  STATIC_CHECK(test_float_no_integer());
+
+
+  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123e")).first == false);
+  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123e4")).second == static_cast<TestType>(123e4));
+  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123ex")).first == false);
+  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view(".123e2")).second == static_cast<TestType>(.123e2));
+  STATIC_CHECK(float_check(lefticus::parse_number<TestType>(std::string_view(".123")).second, static_cast<TestType>(.123)));
+  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("1.")).second == static_cast<TestType>(1.));
 }
