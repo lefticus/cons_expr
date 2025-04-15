@@ -14,9 +14,9 @@ function(cons_expr_enable_coverage project_name)
         # Run the tests
         COMMAND ctest -C Debug
         # Use a separate script to run the coverage commands
-        COMMAND lcov --capture --directory . --output-file coverage.info --exclude \"/home/jason/cons_expr/test/*\" --exclude \"/usr/*\" --exclude \"/home/jason/cons_expr/build-coverage/_deps/*\" --output-file coverage.info
+        COMMAND lcov --capture --directory . --output-file coverage.info --exclude \"${CMAKE_SOURCE_DIR}/test/*\" --exclude \"/usr/*\" --exclude \"${CMAKE_BINARY_DIR}/_deps/*\" --output-file coverage.info
         COMMAND genhtml coverage.info --output-directory coverage_report
-        COMMAND lcov --list coverage.info
+        COMMAND lcov --list coverage.info | tee coverage_summary.txt
         COMMENT "Resetting coverage counters, running tests, and generating coverage report"
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
       )
@@ -25,6 +25,20 @@ function(cons_expr_enable_coverage project_name)
         POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E echo "Coverage report generated in ${CMAKE_BINARY_DIR}/coverage_report/index.html"
       )
+      
+      # Add a test that will fail if cons_expr.hpp doesn't have 100% coverage
+      #      add_test(
+      #  NAME verify_cons_expr_coverage
+      #  COMMAND cat coverage_summary.txt
+      #  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+      #)
+      
+      # Set the test to fail if cons_expr.hpp has less than 100% coverage
+      # The pattern looks for "cons_expr.hpp" followed by any percentage that is not 100.0%
+      #set_tests_properties(verify_cons_expr_coverage PROPERTIES
+      #  DEPENDS coverage_report
+      #  FAIL_REGULAR_EXPRESSION "cons_expr\\.hpp[^|]*[^1]?[^0]?[^0]\\.[^0]%"
+      #)
     endif()
   endif()
 endfunction()

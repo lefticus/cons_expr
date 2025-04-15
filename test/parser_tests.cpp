@@ -7,6 +7,8 @@
 #include <internal_use_only/config.hpp>
 #include <iostream>
 
+#include <cmath>
+
 using IntType = int;
 using FloatType = double;
 
@@ -375,28 +377,7 @@ TEST_CASE("Number parsing", "[parser][numbers]")
     return true;
   };
 
-  constexpr auto test_float_parsing = []() {
-    // Float parsing
-    auto [success1, value1] = lefticus::parse_number<double>(std::string_view("123.456"));
-    if (!success1 || std::abs(value1 - 123.456) > 0.0001) return false;
-
-    auto [success2, value2] = lefticus::parse_number<double>(std::string_view("-789.012"));
-    if (!success2 || std::abs(value2 - (-789.012)) > 0.0001) return false;
-
-    auto [success3, value3] = lefticus::parse_number<double>(std::string_view("1e3"));
-    if (!success3 || std::abs(value3 - 1000.0) > 0.0001) return false;
-
-    auto [success4, value4] = lefticus::parse_number<double>(std::string_view("1.5e-2"));
-    if (!success4 || std::abs(value4 - 0.015) > 0.0001) return false;
-
-    auto [success5, value5] = lefticus::parse_number<double>(std::string_view("not_a_number"));
-    if (success5) return false;// Should fail
-
-    return true;
-  };
-
   STATIC_CHECK(test_int_parsing());
-  STATIC_CHECK(test_float_parsing());
 }
 
 // List Structure Tests
@@ -740,29 +721,55 @@ TEST_CASE("Special characters", "[parser][special-chars]")
 using LongDouble = long double;
 
 // Number Parsing Edge Cases
-TEMPLATE_TEST_CASE("integral parsing", "[parser][numbers][edge]", int, long, short, std::uint16_t)
+TEMPLATE_TEST_CASE("integral parsing", "[parser][numbers][edge]", int, long, short)
 {
+  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123x")).first == false);
   STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123e4")).first == false);
+  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("-123")).second == TestType{-123});
+}
+
+// Number Parsing Edge Cases
+TEMPLATE_TEST_CASE("unsigned integral parsing", "[parser][numbers][edge]", std::uint16_t, std::uint32_t)
+{
+  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("-123")).first == false);
 }
 
 
+// LCOV_EXCL_START
 // Number Parsing Edge Cases
 TEMPLATE_TEST_CASE("Floating point parsing", "[parser][numbers][edge]", float, double, LongDouble)
 {
-  static constexpr auto eps = std::numeric_limits<TestType>::epsilon() * 1;
-  constexpr auto float_check = [](TestType arg, TestType target) {
-    if (arg > target) {
-      return std::abs(arg - target) <= eps;
-    } else {
-      return std::abs(target - arg) <= eps;
+//  static constexpr auto eps = std::numeric_limits<TestType>::epsilon() * sizeof(TestType) * 8;
+  struct Approx {
+    TestType target;
+    constexpr bool operator==(TestType arg) const {
+      if (arg == target) { return true; }
+
+      int steps = 0;
+      while (steps < 100 && arg != target) {
+        arg = std::nexttoward(arg, target);
+        ++steps;
+      }
+  
+      return steps < 30;
     }
   };
 
+  STATIC_CHECK(static_cast<TestType>(123.456l) == lefticus::parse_number<TestType>(std::string_view("123.456")).second);
+  STATIC_CHECK(static_cast<TestType>(-789.012l) == lefticus::parse_number<TestType>(std::string_view("-789.012")).second);
+  STATIC_CHECK(static_cast<TestType>(1000.0l) == lefticus::parse_number<TestType>(std::string_view("1e3")).second);
+  STATIC_CHECK(static_cast<TestType>(0.015l) == lefticus::parse_number<TestType>(std::string_view("1.5e-2")).second);
 
+  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123.1.")).first == false);
+  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123.1e.")).first == false);
+  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123.1e")).first == false);
   STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123e")).first == false);
-  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123e4")).second == static_cast<TestType>(123e4));
+  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123e4")).second == static_cast<TestType>(123e4l));
   STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123ex")).first == false);
-  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view(".123e2")).second == static_cast<TestType>(.123e2));
-  STATIC_CHECK(float_check(lefticus::parse_number<TestType>(std::string_view(".123")).second, static_cast<TestType>(.123)));
-  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("1.")).second == static_cast<TestType>(1.));
+  STATIC_CHECK(static_cast<TestType>(.123e2l) == lefticus::parse_number<TestType>(std::string_view(".123e2")).second);
+  STATIC_CHECK(static_cast<TestType>(12.3l) == lefticus::parse_number<TestType>(std::string_view(".123e2")).second);
+  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123.456e3")).second == static_cast<TestType>(123456l));
+  STATIC_CHECK(static_cast<TestType>(.123l) == lefticus::parse_number<TestType>(std::string_view(".123")).second);
+  STATIC_CHECK(static_cast<TestType>(1.l) == lefticus::parse_number<TestType>(std::string_view("1.")).second);
 }
+// LCOV_EXCL_STOP

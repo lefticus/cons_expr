@@ -351,9 +351,20 @@ template<typename T, typename CharType>
   } else {
     if (state == State::Start || state == State::ExponentStart) { return { false, 0 }; }
 
-    const auto number = static_cast<long double>(value_sign) * (static_cast<long double>(value) + static_cast<long double>(frac) / static_cast<long double>(pow_10(frac_digits))) * static_cast<long double>(pow_10(exp_sign * exp));
+    const auto integral_part = static_cast<T>(value);
+    const auto floating_point_part = static_cast<T>(frac) / static_cast<T>(pow_10(frac_digits));
+    const auto signed_shifted_number = (integral_part + floating_point_part) * value_sign;
+    const auto shift = exp_sign * exp;
 
-    return { true, static_cast<T>(number) };
+    const auto number = [&](){
+      if (shift < 0) {
+        return signed_shifted_number / static_cast<T>(pow_10(-shift));
+      } else {
+        return signed_shifted_number * static_cast<T>(pow_10(shift));
+      }
+    }();
+
+    return { true, number };
   }
 }
 
