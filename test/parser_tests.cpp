@@ -289,6 +289,16 @@ TEST_CASE("String parsing", "[parser][strings]")
   STATIC_CHECK(test_string5());
 }
 
+TEST_CASE("String escape failures", "[parser][strings][escapes]")
+{
+  using evaluator_type = lefticus::cons_expr<std::uint16_t, char, IntType, FloatType>;
+  constexpr auto test_bad_escapes = []() {
+    evaluator_type evaluator;
+    return evaluator.parse("\\q").first;
+  };
+  STATIC_CHECK(std::holds_alternative<evaluator_type::error_type>(test_bad_escapes().value));
+}
+
 // String Escape Character Tests
 TEST_CASE("String escape characters", "[parser][strings][escapes]")
 {
