@@ -29,15 +29,11 @@ template<typename Result> constexpr bool evaluate_expected(std::string_view inpu
 
 template<typename Result> constexpr std::optional<Result> parse_as(auto &evaluator, std::string_view input)
 {
-  using eval_type = std::remove_cvref_t<decltype(evaluator)>;
-  using list_type = eval_type::list_type;
-
   auto [parse_result, parse_remaining] = evaluator.parse(input);
   // properly parsed results are always lists
-  const auto list = std::get_if<list_type>(&parse_result.value);
   // this should be a list of exactly 1 thing (which might be another list)
-  if (list == nullptr || list->size != 1) { return std::optional<Result>{}; }
-  const auto first_elem = evaluator.values[(*list)[0]];
+  if (parse_result.size != 1) { return std::optional<Result>{}; }
+  const auto first_elem = evaluator.values[parse_result[0]];
 
   const auto *result = evaluator.template get_if<Result>(&first_elem);
 

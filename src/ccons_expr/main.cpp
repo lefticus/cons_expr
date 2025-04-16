@@ -69,7 +69,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
       content_2 += to_string(evaluator,
         true,
         evaluator.sequence(
-          evaluator.global_scope, std::get<lefticus::cons_expr<>::list_type>(evaluator.parse(content_1).first.value)));
+          evaluator.global_scope, evaluator.parse(content_1).first));
     } catch (const std::exception &e) {
       content_2 += std::string("Error: ") + e.what();
     }

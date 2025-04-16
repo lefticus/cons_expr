@@ -722,7 +722,7 @@ struct cons_expr
     return SExpr{ Atom ( strings.insert_or_find(processed_view) )};
   }
 
-  [[nodiscard]] constexpr std::pair<SExpr, Token<CharType>> parse(string_view_type input)
+  [[nodiscard]] constexpr std::pair<list_type, Token<CharType>> parse(string_view_type input)
   {
     Scratch retval{ object_scratch };
 
@@ -731,15 +731,11 @@ struct cons_expr
     while (!token.parsed.empty()) {
       if (token.parsed == str("(")) {
         auto [parsed, remaining] = parse(token.remaining);
-        retval.push_back(parsed);
+        retval.push_back(SExpr{parsed}    );
         token = remaining;
       } else if (token.parsed == str("'(")) {
         auto [parsed, remaining] = parse(token.remaining);
-        if (const auto *list = std::get_if<list_type>(&parsed.value); list != nullptr) {
-          retval.push_back(SExpr{ LiteralList{ *list } });
-        } else {
-          retval.push_back(make_error(str("parsed list"), parsed));
-        }
+        retval.push_back(SExpr{ LiteralList{ parsed } });
         token = remaining;
       } else if (token.parsed == str(")")) {
         break;
@@ -769,7 +765,7 @@ struct cons_expr
       }
       token = next_token(token.remaining);
     }
-    return std::pair<SExpr, Token<CharType>>(SExpr{ values.insert_or_find(retval) }, token);
+    return {values.insert_or_find(retval), token};
   }
 
   // Guaranteed to be initialized at compile time
@@ -1457,7 +1453,7 @@ struct cons_expr
     requires std::is_function_v<Signature>
   {
     // this is fragile, we need to check parsing better
-    return make_callable<Signature>(eval(global_scope, values[std::get<list_type>(parse(function).first.value)][0]));
+    return make_callable<Signature>(eval(global_scope, values[parse(function).first][0]));
   }
 
 
@@ -1547,11 +1543,7 @@ struct cons_expr
 
   [[nodiscard]] constexpr SExpr evaluate(string_view_type input)
   {
-    const auto result = parse(input).first;
-    const auto *list = std::get_if<list_type>(&result.value);
-
-    if (list != nullptr) { return sequence(global_scope, *list); }
-    return result;
+  return sequence(global_scope, parse(input).first);
   }
 
   template<typename Result> [[nodiscard]] constexpr std::expected<Result, SExpr> evaluate_to(string_view_type input)

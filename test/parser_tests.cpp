@@ -12,36 +12,7 @@
 using IntType = int;
 using FloatType = double;
 
-// Helper function for getting values from parsing without evaluation
-template<typename Result> constexpr Result parse_result(std::string_view input)
-{
-  lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
-  auto [parsed, _] = evaluator.parse(input);
 
-  const auto *list = std::get_if<lefticus::cons_expr<>::list_type>(&parsed.value);
-  if (list != nullptr && list->size == 1) {
-    // Extract the first element from the parsed list
-    const auto *result = evaluator.template get_if<Result>(&evaluator.values[(*list)[0]]);
-    if (result != nullptr) { return *result; }
-  }
-
-  // This is a fallback that will cause the test to fail if we can't extract the expected type
-  return Result{};
-}
-
-// Helper function for checking if a parsed expression contains a specific type
-template<typename TokenType> constexpr bool is_of_type(std::string_view input)
-{
-  lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
-  auto [parsed, _] = evaluator.parse(input);
-
-  const auto *list = std::get_if<lefticus::cons_expr<>::list_type>(&parsed.value);
-  if (list != nullptr && list->size == 1) {
-    return evaluator.template get_if<TokenType>(&evaluator.values[(*list)[0]]) != nullptr;
-  }
-
-  return false;
-}
 
 // Basic Tokenization Tests
 TEST_CASE("Basic tokenization", "[parser][tokenize]")
@@ -294,7 +265,7 @@ TEST_CASE("String parsing", "[parser][strings]")
 template<typename CharType>
 constexpr auto parse(std::basic_string_view<CharType> str) {
   evaluator_type evaluator;
-  const auto list = std::get<evaluator_type::list_type>(evaluator.parse(str).first.value);
+  const auto list = evaluator.parse(str).first;
 
   if (list.size != 1) throw "expected exactly one thing parsed";
 
@@ -316,10 +287,9 @@ TEST_CASE("String escape characters", "[parser][strings][escapes]")
     auto [parsed, _] = evaluator.parse("\"Quote: \\\"Hello\\\"\"");
     
     // Extract the string content
-    const auto *list = std::get_if<lefticus::cons_expr<>::list_type>(&parsed.value);
-    if (list == nullptr || list->size != 1) return false;
+    if (parsed.size != 1) return false;
     
-    const auto *atom = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[(*list)[0]].value);
+    const auto *atom = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[parsed[0]].value);
     if (atom == nullptr) return false;
     
     const auto *string_val = std::get_if<lefticus::cons_expr<>::string_type>(atom);
@@ -406,15 +376,14 @@ TEST_CASE("List structure", "[parser][lists]")
     lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
 
     // Parse an empty list: ()
-    auto [parsed_result, _] = evaluator.parse(std::string_view("()"));
+    auto [outer_list, _] = evaluator.parse(std::string_view("()"));
 
     // Parse always returns a list containing the parsed expressions
     // For an empty list, we expect a list with one item (which is itself an empty list)
-    const auto *outer_list = std::get_if<lefticus::cons_expr<>::list_type>(&parsed_result.value);
-    if (outer_list == nullptr || outer_list->size != 1) return false;
+    if (outer_list.size != 1) return false;
 
     // Check that the inner element is an empty list
-    const auto &inner_elem = evaluator.values[(*outer_list)[0]];
+    const auto &inner_elem = evaluator.values[outer_list[0]];
     const auto *inner_list = std::get_if<lefticus::cons_expr<>::list_type>(&inner_elem.value);
     return inner_list != nullptr && inner_list->size == 0;
   };
@@ -424,14 +393,13 @@ TEST_CASE("List structure", "[parser][lists]")
     lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
 
     // Parse a simple list with three elements: (a b c)
-    auto [parsed_result, _] = evaluator.parse(std::string_view("(a b c)"));
+    auto [outer_list, _] = evaluator.parse(std::string_view("(a b c)"));
 
     // Outer list should contain one item
-    const auto *outer_list = std::get_if<lefticus::cons_expr<>::list_type>(&parsed_result.value);
-    if (outer_list == nullptr || outer_list->size != 1) return false;
+    if (outer_list.size != 1) return false;
 
     // Inner list should contain three elements (a, b, c)
-    const auto &inner_elem = evaluator.values[(*outer_list)[0]];
+    const auto &inner_elem = evaluator.values[outer_list[0]];
     const auto *inner_list = std::get_if<lefticus::cons_expr<>::list_type>(&inner_elem.value);
     return inner_list != nullptr && inner_list->size == 3;
   };
@@ -441,14 +409,13 @@ TEST_CASE("List structure", "[parser][lists]")
     lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
 
     // Parse a list with a nested list: (a (b c) d)
-    auto [parsed_result, _] = evaluator.parse(std::string_view("(a (b c) d)"));
+    auto [outer_list, _] = evaluator.parse(std::string_view("(a (b c) d)"));
 
     // Outer list should contain one item
-    const auto *outer_list = std::get_if<lefticus::cons_expr<>::list_type>(&parsed_result.value);
-    if (outer_list == nullptr || outer_list->size != 1) return false;
+    if (outer_list.size != 1) return false;
 
     // Inner list should contain three elements: a, (b c), d
-    const auto &inner_elem = evaluator.values[(*outer_list)[0]];
+    const auto &inner_elem = evaluator.values[outer_list[0]];
     const auto *inner_list = std::get_if<lefticus::cons_expr<>::list_type>(&inner_elem.value);
     if (inner_list == nullptr || inner_list->size != 3) return false;
 
@@ -472,21 +439,19 @@ TEST_CASE("Quote syntax", "[parser][quotes]")
 
     // Quoted symbol
     auto [quoted_symbol, _1] = evaluator.parse("'symbol");
-    const auto *list1 = std::get_if<lefticus::cons_expr<>::list_type>(&quoted_symbol.value);
-    if (list1 == nullptr || list1->size != 1) return false;
+    if (quoted_symbol.size != 1) return false;
 
-    auto &first_item = evaluator.values[(*list1)[0]];
+    auto &first_item = evaluator.values[quoted_symbol[0]];
     const auto *atom = std::get_if<lefticus::cons_expr<>::Atom>(&first_item.value);
     if (atom == nullptr) return false;
     if (std::get_if<lefticus::cons_expr<>::symbol_type>(atom) == nullptr) return false;
 
     // Quoted list
     auto [quoted_list, _2] = evaluator.parse("'(a b c)");
-    const auto *list2 = std::get_if<lefticus::cons_expr<>::list_type>(&quoted_list.value);
-    if (list2 == nullptr || list2->size != 1) return false;
+    if (quoted_list.size != 1) return false;
 
     const auto *literal_list =
-      std::get_if<lefticus::cons_expr<>::literal_list_type>(&evaluator.values[(*list2)[0]].value);
+      std::get_if<lefticus::cons_expr<>::literal_list_type>(&evaluator.values[quoted_list[0]].value);
     if (literal_list == nullptr || literal_list->items.size != 3) return false;
 
     return true;
@@ -503,10 +468,9 @@ TEST_CASE("Symbol vs identifier", "[parser][symbols]")
 
     // Symbol (quoted identifier)
     auto [symbol_expr, _1] = evaluator.parse("'symbol");
-    const auto *list1 = std::get_if<lefticus::cons_expr<>::list_type>(&symbol_expr.value);
-    if (list1 == nullptr || list1->size != 1) return false;
+    if (symbol_expr.size != 1) return false;
 
-    const auto *atom1 = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[(*list1)[0]].value);
+    const auto *atom1 = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[symbol_expr[0]].value);
     if (atom1 == nullptr) return false;
 
     const auto *symbol = std::get_if<lefticus::cons_expr<>::symbol_type>(atom1);
@@ -514,10 +478,9 @@ TEST_CASE("Symbol vs identifier", "[parser][symbols]")
 
     // Regular identifier
     auto [id_expr, _2] = evaluator.parse("identifier");
-    const auto *list2 = std::get_if<lefticus::cons_expr<>::list_type>(&id_expr.value);
-    if (list2 == nullptr || list2->size != 1) return false;
+    if (id_expr.size != 1) return false;
 
-    const auto *atom2 = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[(*list2)[0]].value);
+    const auto *atom2 = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[id_expr[0]].value);
     if (atom2 == nullptr) return false;
 
     const auto *identifier = std::get_if<lefticus::cons_expr<>::identifier_type>(atom2);
@@ -537,10 +500,9 @@ TEST_CASE("Boolean literals", "[parser][booleans]")
 
     // Parse true
     auto [true_expr, _1] = evaluator.parse("true");
-    const auto *list1 = std::get_if<lefticus::cons_expr<>::list_type>(&true_expr.value);
-    if (list1 == nullptr || list1->size != 1) return false;
+    if (true_expr.size != 1) return false;
 
-    const auto *atom1 = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[(*list1)[0]].value);
+    const auto *atom1 = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[true_expr[0]].value);
     if (atom1 == nullptr) return false;
 
     const auto *bool_val1 = std::get_if<bool>(atom1);
@@ -548,10 +510,9 @@ TEST_CASE("Boolean literals", "[parser][booleans]")
 
     // Parse false
     auto [false_expr, _2] = evaluator.parse("false");
-    const auto *list2 = std::get_if<lefticus::cons_expr<>::list_type>(&false_expr.value);
-    if (list2 == nullptr || list2->size != 1) return false;
+    if (false_expr.size != 1) return false;
 
-    const auto *atom2 = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[(*list2)[0]].value);
+    const auto *atom2 = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[false_expr[0]].value);
     if (atom2 == nullptr) return false;
 
     const auto *bool_val2 = std::get_if<bool>(atom2);
@@ -573,11 +534,10 @@ TEST_CASE("Multiple expressions", "[parser][multiple]")
     auto [parsed, _] = evaluator.parse(std::string_view("(define x 10)"));
 
     // Outer list should contain one item
-    const auto *outer_list = std::get_if<lefticus::cons_expr<>::list_type>(&parsed.value);
-    if (outer_list == nullptr || outer_list->size != 1) return false;
+    if (parsed.size != 1) return false;
 
     // Inner list should contain three elements: define, x, 10
-    const auto &inner_elem = evaluator.values[(*outer_list)[0]];
+    const auto &inner_elem = evaluator.values[parsed[0]];
     const auto *inner_list = std::get_if<lefticus::cons_expr<>::list_type>(&inner_elem.value);
 
     return inner_list != nullptr && inner_list->size == 3;
@@ -596,11 +556,10 @@ TEST_CASE("Complex expressions", "[parser][complex]")
     auto [parsed, _] = evaluator.parse(std::string_view("(lambda (x) (+ x 1))"));
 
     // Outer list should contain one item
-    const auto *outer_list = std::get_if<lefticus::cons_expr<>::list_type>(&parsed.value);
-    if (outer_list == nullptr || outer_list->size != 1) return false;
+    if (parsed.size != 1) return false;
 
     // Inner list should contain three elements: lambda, (x), (+ x 1)
-    const auto &inner_elem = evaluator.values[(*outer_list)[0]];
+    const auto &inner_elem = evaluator.values[parsed[0]];
     const auto *inner_list = std::get_if<lefticus::cons_expr<>::list_type>(&inner_elem.value);
     if (inner_list == nullptr || inner_list->size != 3) return false;
 
@@ -623,10 +582,9 @@ TEST_CASE("String content", "[parser][string-content]")
 
     // Parse a string and check its content
     auto [string_expr, _] = evaluator.parse("\"hello world\"");
-    const auto *list = std::get_if<lefticus::cons_expr<>::list_type>(&string_expr.value);
-    if (list == nullptr || list->size != 1) return false;
+    if (string_expr.size != 1) return false;
 
-    const auto *atom = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[(*list)[0]].value);
+    const auto *atom = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[string_expr[0]].value);
     if (atom == nullptr) return false;
 
     const auto *string_val = std::get_if<lefticus::cons_expr<>::string_type>(atom);
@@ -651,11 +609,10 @@ TEST_CASE("Mixed content", "[parser][mixed]")
     auto [mixed_expr, _] = evaluator.parse(std::string_view("(list 123 \"hello\" true 'symbol (nested))"));
 
     // Outer list should contain one item
-    const auto *outer_list = std::get_if<lefticus::cons_expr<>::list_type>(&mixed_expr.value);
-    if (outer_list == nullptr || outer_list->size != 1) return false;
+    if (mixed_expr.size != 1) return false;
 
     // Inner list should contain six elements: list, 123, "hello", true, 'symbol, (nested)
-    const auto &inner_elem = evaluator.values[(*outer_list)[0]];
+    const auto &inner_elem = evaluator.values[mixed_expr[0]];
     const auto *inner_list = std::get_if<lefticus::cons_expr<>::list_type>(&inner_elem.value);
     if (inner_list == nullptr || inner_list->size != 6) return false;
 
@@ -679,29 +636,26 @@ TEST_CASE("Quoted lists", "[parser][quoted-lists]")
 
     // Empty quoted list
     auto [empty, _1] = evaluator.parse("'()");
-    const auto *list1 = std::get_if<lefticus::cons_expr<>::list_type>(&empty.value);
-    if (list1 == nullptr || list1->size != 1) return false;
+    if (empty.size != 1) return false;
 
     const auto *literal_list1 =
-      std::get_if<lefticus::cons_expr<>::literal_list_type>(&evaluator.values[(*list1)[0]].value);
+      std::get_if<lefticus::cons_expr<>::literal_list_type>(&evaluator.values[empty[0]].value);
     if (literal_list1 == nullptr || literal_list1->items.size != 0) return false;
 
     // Simple quoted list
     auto [simple, _2] = evaluator.parse("'(1 2 3)");
-    const auto *list2 = std::get_if<lefticus::cons_expr<>::list_type>(&simple.value);
-    if (list2 == nullptr || list2->size != 1) return false;
+    if (simple.size != 1) return false;
 
     const auto *literal_list2 =
-      std::get_if<lefticus::cons_expr<>::literal_list_type>(&evaluator.values[(*list2)[0]].value);
+      std::get_if<lefticus::cons_expr<>::literal_list_type>(&evaluator.values[simple[0]].value);
     if (literal_list2 == nullptr || literal_list2->items.size != 3) return false;
 
     // Nested quoted list
     auto [nested, _3] = evaluator.parse("'(1 (2 3) 4)");
-    const auto *list3 = std::get_if<lefticus::cons_expr<>::list_type>(&nested.value);
-    if (list3 == nullptr || list3->size != 1) return false;
+    if (nested.size != 1) return false;
 
     const auto *literal_list3 =
-      std::get_if<lefticus::cons_expr<>::literal_list_type>(&evaluator.values[(*list3)[0]].value);
+      std::get_if<lefticus::cons_expr<>::literal_list_type>(&evaluator.values[nested[0]].value);
     if (literal_list3 == nullptr || literal_list3->items.size != 3) return false;
 
     return true;

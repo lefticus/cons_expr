@@ -14,8 +14,7 @@ auto evaluate(std::string_view input)
   evaluator.add<&add>("add");
   evaluator.add<&display>("display");
 
-  return evaluator.sequence(
-    evaluator.global_scope, std::get<typename cons_expr_type::list_type>(evaluator.parse(input).first.value));
+  return evaluator.sequence(evaluator.global_scope, evaluator.parse(input).first);
 }
 
 template<typename Result> Result evaluate_to(std::string_view input)

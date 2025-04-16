@@ -24,8 +24,7 @@ consteval auto make_scripted_function()
     )";
 
 
-  [[maybe_unused]] const auto result = evaluator.sequence(
-    evaluator.global_scope, std::get<typename cons_expr_type::list_type>(evaluator.parse(input).first.value));
+  [[maybe_unused]] const auto result = evaluator.sequence(evaluator.global_scope, evaluator.parse(input).first);
 
   return std::bind_front(evaluator.make_callable<long long(long long, long long)>("sum"), evaluator);
 }

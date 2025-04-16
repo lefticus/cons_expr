@@ -14,9 +14,7 @@ auto evaluate(std::basic_string_view<char> input)
   evaluator.template add<display>("display");
 
   auto parse_result = evaluator.parse(input);
-  auto list = std::get<cons_expr_type<char>::list_type>(parse_result.first.value);
-
-  return evaluator.sequence(evaluator.global_scope, list);
+  return evaluator.sequence(evaluator.global_scope, parse_result.first);
 }
 
 template<typename Result, typename char_type = char> Result evaluate_to(std::basic_string_view<char_type> input)
@@ -29,9 +27,7 @@ template<typename char_type = char> auto evaluate_non_char(std::basic_string_vie
   cons_expr_type<char_type> evaluator;
 
   auto parse_result = evaluator.parse(input);
-  auto list = std::get<typename cons_expr_type<char_type>::list_type>(parse_result.first.value);
-
-  return evaluator.sequence(evaluator.global_scope, list);
+  return evaluator.sequence(evaluator.global_scope, parse_result.first);
 }
 
 template<typename Result, typename char_type = char>
@@ -73,8 +69,7 @@ TEST_CASE("member functions", "[function]")
 
 
   auto eval = [&](const std::string_view input) {
-    return evaluator.sequence(
-      evaluator.global_scope, std::get<decltype(evaluator)::list_type>(evaluator.parse(input).first.value));
+    return evaluator.sequence(evaluator.global_scope, evaluator.parse(input).first);
   };
 
   Test myobj;
