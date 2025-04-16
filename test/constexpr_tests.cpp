@@ -50,7 +50,8 @@ TEST_CASE("Literals")
   STATIC_CHECK(evaluate_to<bool>("false") == false);
 
 
-  STATIC_CHECK(!std::holds_alternative<lefticus::cons_expr<>::error_type>(lefticus::cons_expr<>{}.evaluate("42").value));
+  STATIC_CHECK(
+    !std::holds_alternative<lefticus::cons_expr<>::error_type>(lefticus::cons_expr<>{}.evaluate("42").value));
 }
 
 TEST_CASE("Operator identifiers", "[operators]")
@@ -99,32 +100,32 @@ TEST_CASE("string escape character processing", "[strings][escapes]")
 {
   // Test escaped double quotes
   STATIC_CHECK(evaluate_expected<std::string_view>(R"("Quote: \"Hello\"")", "Quote: \"Hello\""));
-  
+
   // Test escaped backslash
   STATIC_CHECK(evaluate_expected<std::string_view>(R"("Backslash: \\")", "Backslash: \\"));
-  
+
   // Test newline escape
   STATIC_CHECK(evaluate_expected<std::string_view>(R"("Line1\nLine2")", "Line1\nLine2"));
-  
+
   // Test tab escape
   STATIC_CHECK(evaluate_expected<std::string_view>(R"("Tabbed\tText")", "Tabbed\tText"));
-  
+
   // Test carriage return escape
   STATIC_CHECK(evaluate_expected<std::string_view>(R"("Return\rText")", "Return\rText"));
-  
+
   // Test form feed escape
   STATIC_CHECK(evaluate_expected<std::string_view>(R"("Form\fFeed")", "Form\fFeed"));
-  
+
   // Test backspace escape
   STATIC_CHECK(evaluate_expected<std::string_view>(R"("Back\bSpace")", "Back\bSpace"));
-  
+
   // Test multiple escapes in one string
-  STATIC_CHECK(evaluate_expected<std::string_view>(R"("Multiple\tEscapes:\n\"Quoted\", \\Backslash")", 
-                                                    "Multiple\tEscapes:\n\"Quoted\", \\Backslash"));
-  
+  STATIC_CHECK(evaluate_expected<std::string_view>(
+    R"("Multiple\tEscapes:\n\"Quoted\", \\Backslash")", "Multiple\tEscapes:\n\"Quoted\", \\Backslash"));
+
   // Test consecutive escapes
   STATIC_CHECK(evaluate_expected<std::string_view>(R"("Double\\\\Backslash")", "Double\\\\Backslash"));
-  
+
   // Test escape at end of string
   STATIC_CHECK(evaluate_expected<std::string_view>(R"("EndEscape\\")", "EndEscape\\"));
 }
@@ -203,7 +204,6 @@ TEST_CASE("basic lambda usage", "[lambdas]")
   // bad lambda parse
   STATIC_CHECK(evaluate_to<bool>("(error? (lambda ()))") == true);
   STATIC_CHECK(evaluate_to<bool>("(error? (lambda 1 2))") == true);
-
 }
 
 TEST_CASE("nested lambda usage", "[lambdas]")
@@ -1001,11 +1001,11 @@ TEST_CASE("Type mismatch error handling", "[errors][types]")
   STATIC_CHECK(evaluate_to<bool>("(error? (> 1.0 '(1 2 3)))") == true);
   STATIC_CHECK(evaluate_to<bool>("(error? (== \"hello\" 123))") == true);
   STATIC_CHECK(evaluate_to<bool>("(error? (!= true 42))") == true);
-  
+
   // Test arithmetic with mismatched types
   STATIC_CHECK(evaluate_to<bool>("(error? (+ 1 \"2\"))") == true);
   STATIC_CHECK(evaluate_to<bool>("(error? (* 3.14 \"pi\"))") == true);
-  
+
   // Test errors from applying functions to wrong types
   STATIC_CHECK(evaluate_to<bool>("(error? (car 42))") == true);
   STATIC_CHECK(evaluate_to<bool>("(error? (cdr \"not a list\"))") == true);
@@ -1015,19 +1015,19 @@ TEST_CASE("Error handling in diverse contexts", "[errors][edge]")
 {
   // Test error from get_list with wrong size
   STATIC_CHECK(evaluate_to<bool>("(error? (let ((x 1)) (apply + (x))))") == true);
-  
+
   // Test divide by zero error
-//  STATIC_CHECK(evaluate_to<bool>("(error? (/ 1 0))") == true);
-  
+  //  STATIC_CHECK(evaluate_to<bool>("(error? (/ 1 0))") == true);
+
   // Test undefined variable access
   STATIC_CHECK(evaluate_to<bool>("(error? undefined-var)") == true);
-  
+
   // Test invalid function call
   STATIC_CHECK(evaluate_to<bool>("(error? (1 2 3))") == true);
-  
+
   // Test error in cond expression
   STATIC_CHECK(evaluate_to<bool>("(error? (cond ((+ 1 \"x\") 10) (else 20)))") == true);
-  
+
   // Test error in if condition
   STATIC_CHECK(evaluate_to<bool>("(error? (if (< \"a\" 1) 10 20))") == true);
 }
@@ -1036,21 +1036,21 @@ TEST_CASE("Edge case behavior", "[edge][misc]")
 {
   // Test nested expression evaluation with type errors
   STATIC_CHECK(evaluate_to<bool>("(error? (+ 1 (+ 2 \"3\")))") == true);
-  
+
   // Test lambda with mismatched argument counts
   STATIC_CHECK(evaluate_to<bool>("(error? ((lambda (x y) (+ x y)) 1))") == true);
-  
+
   // Test let with malformed bindings
   STATIC_CHECK(evaluate_to<bool>("(error? (let (x 1) x))") == true);
   STATIC_CHECK(evaluate_to<bool>("(error? (let ((x)) x))") == true);
-  
+
   // Test define with non-identifier as first param
   STATIC_CHECK(evaluate_to<bool>("(error? (define 123 456))") == true);
-  
+
   // Test cons with too many arguments
   STATIC_CHECK(evaluate_to<bool>("(error? (cons 1 2 3))") == true);
-  
-    // Test cond with non-boolean condition, this is an error, 123 does not evaluate to a bool
+
+  // Test cond with non-boolean condition, this is an error, 123 does not evaluate to a bool
   STATIC_CHECK(evaluate_to<bool>("(error? (cond (123 456) (else 789)))") == true);
 }
 
@@ -1063,12 +1063,12 @@ TEST_CASE("for-each function without side effects", "[builtins][for-each]")
       (let ((result (for-each (counter 0) '(1 2 3 4 5))))
         5))
   )") == 5);
-  
+
   // Test for-each with empty list
   STATIC_CHECK(evaluate_to<std::monostate>(R"(
     (for-each (lambda (x) x) '())
   )") == std::monostate{});
-  
+
   // Test for-each with non-list argument (should error)
   STATIC_CHECK(evaluate_to<bool>("(error? (for-each (lambda (x) x) 42))") == true);
 }

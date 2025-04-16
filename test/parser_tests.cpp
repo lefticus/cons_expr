@@ -1,5 +1,5 @@
-#include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_template_test_macros.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <cons_expr/cons_expr.hpp>
@@ -11,7 +11,6 @@
 
 using IntType = int;
 using FloatType = double;
-
 
 
 // Basic Tokenization Tests
@@ -260,10 +259,10 @@ TEST_CASE("String parsing", "[parser][strings]")
   STATIC_CHECK(test_string5());
 }
 
-  using evaluator_type = lefticus::cons_expr<std::uint16_t, char, IntType, FloatType>;
+using evaluator_type = lefticus::cons_expr<std::uint16_t, char, IntType, FloatType>;
 
-template<typename CharType>
-constexpr auto parse(std::basic_string_view<CharType> str) {
+template<typename CharType> constexpr auto parse(std::basic_string_view<CharType> str)
+{
   evaluator_type evaluator;
   const auto list = evaluator.parse(str).first;
 
@@ -285,35 +284,35 @@ TEST_CASE("String escape characters", "[parser][strings][escapes]")
   constexpr auto test_escaped_quote = []() {
     lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
     auto [parsed, _] = evaluator.parse("\"Quote: \\\"Hello\\\"\"");
-    
+
     // Extract the string content
     if (parsed.size != 1) return false;
-    
+
     const auto *atom = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[parsed[0]].value);
     if (atom == nullptr) return false;
-    
+
     const auto *string_val = std::get_if<lefticus::cons_expr<>::string_type>(atom);
     if (string_val == nullptr) return false;
-    
+
     // Check the raw tokenized string includes the escapes
     auto token = lefticus::next_token(std::string_view("\"Quote: \\\"Hello\\\"\""));
     if (token.parsed != std::string_view("\"Quote: \\\"Hello\\\"\"")) return false;
-    
+
     return true;
   };
-  
+
   // Escaped backslash
   constexpr auto test_escaped_backslash = []() {
     auto token = lefticus::next_token(std::string_view("\"Backslash: \\\\\""));
     return token.parsed == std::string_view("\"Backslash: \\\\\"");
   };
-  
+
   // Multiple escape sequences
   constexpr auto test_multiple_escapes = []() {
     auto token = lefticus::next_token(std::string_view("\"Escapes: \\\\ \\\" \\n \\t \\r\""));
     return token.parsed == std::string_view("\"Escapes: \\\\ \\\" \\n \\t \\r\"");
   };
-  
+
   // Escape at end of string
   constexpr auto test_escape_at_end = []() {
     auto token = lefticus::next_token(std::string_view("\"Escape at end: \\\""));
@@ -325,19 +324,19 @@ TEST_CASE("String escape characters", "[parser][strings][escapes]")
     auto token = lefticus::next_token(std::string_view("\"Unterminated \\"));
     return token.parsed == std::string_view("\"Unterminated \\");
   };
-  
+
   // Common escape sequences: \n \t \r \f \b
   constexpr auto test_common_escapes = []() {
     auto token = lefticus::next_token(std::string_view("\"Special chars: \\n\\t\\r\\f\\b\""));
     return token.parsed == std::string_view("\"Special chars: \\n\\t\\r\\f\\b\"");
   };
-  
+
   // Test handling of consecutive escapes
   constexpr auto test_consecutive_escapes = []() {
     auto token = lefticus::next_token(std::string_view("\"Double escapes: \\\\\\\"\""));
     return token.parsed == std::string_view("\"Double escapes: \\\\\\\"\"");
   };
-  
+
   // Check all individual assertions
   STATIC_CHECK(test_escaped_quote());
   STATIC_CHECK(test_escaped_backslash());
@@ -697,7 +696,7 @@ TEMPLATE_TEST_CASE("integral parsing", "[parser][numbers][edge]", int, long, sho
 {
   STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123x")).first == false);
   STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123e4")).first == false);
-  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("-123")).second == TestType{-123});
+  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("-123")).second == TestType{ -123 });
 }
 
 // Number Parsing Edge Cases
@@ -711,10 +710,12 @@ TEMPLATE_TEST_CASE("unsigned integral parsing", "[parser][numbers][edge]", std::
 // Number Parsing Edge Cases
 TEMPLATE_TEST_CASE("Floating point parsing", "[parser][numbers][edge]", float, double, LongDouble)
 {
-//  static constexpr auto eps = std::numeric_limits<TestType>::epsilon() * sizeof(TestType) * 8;
-  struct Approx {
+  //  static constexpr auto eps = std::numeric_limits<TestType>::epsilon() * sizeof(TestType) * 8;
+  struct Approx
+  {
     TestType target;
-    constexpr bool operator==(TestType arg) const {
+    constexpr bool operator==(TestType arg) const
+    {
       if (arg == target) { return true; }
 
       int steps = 0;
@@ -722,13 +723,14 @@ TEMPLATE_TEST_CASE("Floating point parsing", "[parser][numbers][edge]", float, d
         arg = std::nexttoward(arg, target);
         ++steps;
       }
-  
+
       return steps < 30;
     }
   };
 
   STATIC_CHECK(static_cast<TestType>(123.456l) == lefticus::parse_number<TestType>(std::string_view("123.456")).second);
-  STATIC_CHECK(static_cast<TestType>(-789.012l) == lefticus::parse_number<TestType>(std::string_view("-789.012")).second);
+  STATIC_CHECK(
+    static_cast<TestType>(-789.012l) == lefticus::parse_number<TestType>(std::string_view("-789.012")).second);
   STATIC_CHECK(static_cast<TestType>(1000.0l) == lefticus::parse_number<TestType>(std::string_view("1e3")).second);
   STATIC_CHECK(static_cast<TestType>(0.015l) == lefticus::parse_number<TestType>(std::string_view("1.5e-2")).second);
 
@@ -740,7 +742,8 @@ TEMPLATE_TEST_CASE("Floating point parsing", "[parser][numbers][edge]", float, d
   STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123ex")).first == false);
   STATIC_CHECK(static_cast<TestType>(.123e2l) == lefticus::parse_number<TestType>(std::string_view(".123e2")).second);
   STATIC_CHECK(static_cast<TestType>(12.3l) == lefticus::parse_number<TestType>(std::string_view(".123e2")).second);
-  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123.456e3")).second == static_cast<TestType>(123456l));
+  STATIC_CHECK(
+    lefticus::parse_number<TestType>(std::string_view("123.456e3")).second == static_cast<TestType>(123456l));
   STATIC_CHECK(static_cast<TestType>(.123l) == lefticus::parse_number<TestType>(std::string_view(".123")).second);
   STATIC_CHECK(static_cast<TestType>(1.l) == lefticus::parse_number<TestType>(std::string_view("1.")).second);
 }

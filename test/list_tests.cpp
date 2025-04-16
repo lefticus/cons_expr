@@ -225,5 +225,4 @@ TEST_CASE("List manipulation algorithms", "[lists][algorithms]")
     
     (simple-fn '())
   )") == true);
-
 }

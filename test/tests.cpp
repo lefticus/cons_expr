@@ -51,7 +51,6 @@ TEST_CASE("basic callable usage", "[c++ api]")
 }
 
 
-
 TEST_CASE("member functions", "[function]")
 {
   struct Test
@@ -97,18 +96,18 @@ TEST_CASE("SmallVector error handling", "[core][smallvector]")
   constexpr auto test_smallvector_error = []() {
     // Create a SmallVector with small capacity
     lefticus::SmallVector<uint16_t, char, 2, char, std::string_view> vec{};
-    
+
     // Add elements until we reach capacity
     vec.push_back('a');
     vec.push_back('b');
-    
+
     // This should set error_state to true
     vec.push_back('c');
-    
+
     // Check that error_state is set
     return vec.error_state == true && vec.size() == static_cast<uint16_t>(2);
   };
-  
+
   STATIC_CHECK(test_smallvector_error());
 }
 
@@ -119,12 +118,13 @@ TEST_CASE("SmallVector const operator[]", "[core][smallvector]")
     vec.push_back('a');
     vec.push_back('b');
     vec.push_back('c');
-    
+
     // Create a const reference and access elements
-    const auto& const_vec = vec;
-    return const_vec[static_cast<uint16_t>(0)] == 'a' && const_vec[static_cast<uint16_t>(1)] == 'b' && const_vec[static_cast<uint16_t>(2)] == 'c';
+    const auto &const_vec = vec;
+    return const_vec[static_cast<uint16_t>(0)] == 'a' && const_vec[static_cast<uint16_t>(1)] == 'b'
+           && const_vec[static_cast<uint16_t>(2)] == 'c';
   };
-  
+
   STATIC_CHECK(test_const_access());
 }
 

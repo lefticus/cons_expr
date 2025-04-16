@@ -356,7 +356,7 @@ template<typename T, typename CharType>
     const auto signed_shifted_number = (integral_part + floating_point_part) * value_sign;
     const auto shift = exp_sign * exp;
 
-    const auto number = [&](){
+    const auto number = [&]() {
       if (shift < 0) {
         return signed_shifted_number / static_cast<T>(pow_10(-shift));
       } else {
@@ -689,25 +689,40 @@ struct cons_expr
   };
 
   // Process escape sequences in a string literal
-  [[nodiscard]] constexpr SExpr process_string_escapes(string_view_type input) 
+  [[nodiscard]] constexpr SExpr process_string_escapes(string_view_type input)
   {
     // Create a temporary buffer for the processed string
     // Using 64 as a reasonable initial size for most string literals
     SmallVector<size_type, CharType, 64, CharType, string_view_type> temp_buffer{};
-    
+
     bool in_escape = false;
-    for (const auto& ch : input) {
+    for (const auto &ch : input) {
       if (in_escape) {
         // Handle the escape sequence
         switch (ch) {
-          case '"':  temp_buffer.push_back('"'); break;  // Escaped quote
-          case '\\': temp_buffer.push_back('\\'); break; // Escaped backslash
-          case 'n':  temp_buffer.push_back('\n'); break; // Newline
-          case 't':  temp_buffer.push_back('\t'); break; // Tab
-          case 'r':  temp_buffer.push_back('\r'); break; // Carriage return
-          case 'f':  temp_buffer.push_back('\f'); break; // Form feed
-          case 'b':  temp_buffer.push_back('\b'); break; // Backspace
-          default:   return make_error(str("unexpected escape character"), strings.insert_or_find(input) );   // Other characters as-is
+        case '"':
+          temp_buffer.push_back('"');
+          break;// Escaped quote
+        case '\\':
+          temp_buffer.push_back('\\');
+          break;// Escaped backslash
+        case 'n':
+          temp_buffer.push_back('\n');
+          break;// Newline
+        case 't':
+          temp_buffer.push_back('\t');
+          break;// Tab
+        case 'r':
+          temp_buffer.push_back('\r');
+          break;// Carriage return
+        case 'f':
+          temp_buffer.push_back('\f');
+          break;// Form feed
+        case 'b':
+          temp_buffer.push_back('\b');
+          break;// Backspace
+        default:
+          return make_error(str("unexpected escape character"), strings.insert_or_find(input));// Other characters as-is
         }
         in_escape = false;
       } else if (ch == '\\') {
@@ -716,10 +731,10 @@ struct cons_expr
         temp_buffer.push_back(ch);
       }
     }
-    
+
     // Now use insert_or_find to deduplicate the processed string
     const string_view_type processed_view(temp_buffer.small.data(), temp_buffer.size());
-    return SExpr{ Atom ( strings.insert_or_find(processed_view) )};
+    return SExpr{ Atom(strings.insert_or_find(processed_view)) };
   }
 
   [[nodiscard]] constexpr std::pair<list_type, Token<CharType>> parse(string_view_type input)
@@ -731,7 +746,7 @@ struct cons_expr
     while (!token.parsed.empty()) {
       if (token.parsed == str("(")) {
         auto [parsed, remaining] = parse(token.remaining);
-        retval.push_back(SExpr{parsed}    );
+        retval.push_back(SExpr{ parsed });
         token = remaining;
       } else if (token.parsed == str("'(")) {
         auto [parsed, remaining] = parse(token.remaining);
@@ -765,7 +780,7 @@ struct cons_expr
       }
       token = next_token(token.remaining);
     }
-    return {values.insert_or_find(retval), token};
+    return { values.insert_or_find(retval), token };
   }
 
   // Guaranteed to be initialized at compile time
@@ -1260,7 +1275,7 @@ struct cons_expr
 
   // Empty indexed list for reuse
   static constexpr IndexedList<size_type> empty_indexed_list{ 0, 0 };
-  
+
   // (cdr '(1 2 3)) -> '(2 3)
   // (cdr '(1)) -> '()
   [[nodiscard]] static constexpr SExpr cdr(cons_expr &engine, LexicalScope &scope, list_type params)
@@ -1268,9 +1283,7 @@ struct cons_expr
     return error_or_else(
       engine.eval_to<literal_list_type>(scope, params, str("(cdr LiteralList)")), [&](const auto &list) {
         // If the list has one or zero elements, return empty list
-        if (list.items.size <= 1) {
-          return SExpr{ literal_list_type{ empty_indexed_list } };
-        }
+        if (list.items.size <= 1) { return SExpr{ literal_list_type{ empty_indexed_list } }; }
         return SExpr{ list.sublist(1) };
       });
   }
@@ -1327,7 +1340,7 @@ struct cons_expr
 
       // Check for the special 'else' case - always matches and returns its expression
       if (const auto *cond_str = get_if<identifier_type>(&engine.values[(*cond)[0]]);
-        cond_str != nullptr && engine.strings.view(to_string(*cond_str)) == str("else")) {
+          cond_str != nullptr && engine.strings.view(to_string(*cond_str)) == str("else")) {
         // we've reached the "else" condition
         return engine.eval(scope, engine.values[(*cond)[1]]);
       } else {
@@ -1359,9 +1372,9 @@ struct cons_expr
 
     // Only evaluate the branch that needs to be taken
     if (*condition) {
-      return engine.eval(scope, engine.values[params[1]]);  // true branch
+      return engine.eval(scope, engine.values[params[1]]);// true branch
     } else {
-      return engine.eval(scope, engine.values[params[2]]);  // false branch
+      return engine.eval(scope, engine.values[params[2]]);// false branch
     }
   }
 
@@ -1377,18 +1390,18 @@ struct cons_expr
 
     return SExpr{ Atom{ std::monostate{} } };
   }
-  
+
   // error?: Check if the expression is an error
   [[nodiscard]] static constexpr SExpr error_p(cons_expr &engine, LexicalScope &scope, list_type params)
   {
     if (params.size != 1) { return engine.make_error(str("(error? expr)"), params); }
-    
+
     // Evaluate the expression
     auto expr = engine.eval(scope, engine.values[params[0]]);
-    
+
     // Check if it's an error type
     const bool is_error = std::holds_alternative<error_type>(expr.value);
-    
+
     return SExpr{ Atom(is_error) };
   }
 
@@ -1401,9 +1414,7 @@ struct cons_expr
     // If it's a list, convert it to a literal list
     if (const auto *list = std::get_if<list_type>(&expr.value); list != nullptr) {
       // Special case for empty lists - use a canonical empty list with start index 0
-      if (list->size == 0) {
-        return SExpr{ literal_list_type{ empty_indexed_list } };
-      }
+      if (list->size == 0) { return SExpr{ literal_list_type{ empty_indexed_list } }; }
       return SExpr{ literal_list_type{ *list } };
     }
     // If it's an identifier, convert it to a symbol
@@ -1541,10 +1552,7 @@ struct cons_expr
     return engine.make_error(str("supported types"), params);
   }
 
-  [[nodiscard]] constexpr SExpr evaluate(string_view_type input)
-  {
-  return sequence(global_scope, parse(input).first);
-  }
+  [[nodiscard]] constexpr SExpr evaluate(string_view_type input) { return sequence(global_scope, parse(input).first); }
 
   template<typename Result> [[nodiscard]] constexpr std::expected<Result, SExpr> evaluate_to(string_view_type input)
   {
