@@ -144,7 +144,7 @@ template<ConsExpr Eval>
 std::string to_string(const Eval &engine, bool annotate, const typename Eval::string_type &string)
 {
   if (annotate) {
-    return std::format("[identifier] {{{}, {}}} \"{}\"", string.start, string.size, engine.strings.view(string));
+    return std::format("[string] {{{}, {}}} \"{}\"", string.start, string.size, engine.strings.view(string));
   } else {
     return std::format("\"{}\"", engine.strings.view(string));
   }

@@ -289,14 +289,22 @@ TEST_CASE("String parsing", "[parser][strings]")
   STATIC_CHECK(test_string5());
 }
 
-TEST_CASE("String escape failures", "[parser][strings][escapes]")
-{
   using evaluator_type = lefticus::cons_expr<std::uint16_t, char, IntType, FloatType>;
-  constexpr auto test_bad_escapes = []() {
-    evaluator_type evaluator;
-    return evaluator.parse("\\q").first;
-  };
-  STATIC_CHECK(std::holds_alternative<evaluator_type::error_type>(test_bad_escapes().value));
+
+template<typename CharType>
+constexpr auto parse(std::basic_string_view<CharType> str) {
+  evaluator_type evaluator;
+  const auto list = std::get<evaluator_type::list_type>(evaluator.parse(str).first.value);
+
+  if (list.size != 1) throw "expected exactly one thing parsed";
+
+  return evaluator.values[list[0]];
+}
+
+TEST_CASE("String parse failures", "[parser][strings][escapes]")
+{
+  STATIC_CHECK(std::holds_alternative<evaluator_type::error_type>(parse(std::string_view(R"("\q")")).value));
+  STATIC_CHECK(std::holds_alternative<evaluator_type::error_type>(parse(std::string_view(R"("\q)")).value));
 }
 
 // String Escape Character Tests

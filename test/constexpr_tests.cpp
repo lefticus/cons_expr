@@ -46,6 +46,17 @@ template<typename Result> constexpr std::optional<Result> parse_as(auto &evaluat
   return *result;
 }
 
+TEST_CASE("Literals")
+{
+  STATIC_CHECK(evaluate_to<IntType>("1") == 1);
+  STATIC_CHECK(evaluate_to<FloatType>("1.1") == 1.1);
+  STATIC_CHECK(evaluate_to<bool>("true") == true);
+  STATIC_CHECK(evaluate_to<bool>("false") == false);
+
+
+  STATIC_CHECK(!std::holds_alternative<lefticus::cons_expr<>::error_type>(lefticus::cons_expr<>{}.evaluate("42").value));
+}
+
 TEST_CASE("Operator identifiers", "[operators]")
 {
   STATIC_CHECK(evaluate_to<IntType>("((if false + *) 3 4)") == 12);
@@ -65,6 +76,12 @@ TEST_CASE("basic float operators", "[operators]")
   STATIC_CHECK(evaluate_to<FloatType>("(/ 10.0 4.0)") == FloatType{ 2.5 });
 }
 
+TEST_CASE("mismatched operators", "[operators]")
+{
+  // validate that we cannot fold over mismatched types
+  STATIC_CHECK(evaluate_to<bool>("(error? (+ 1.0 1))") == true);
+  STATIC_CHECK(evaluate_to<bool>("(error? (+ 1.0))") == true);
+}
 
 TEST_CASE("basic string_view operators", "[operators]")
 {
@@ -186,6 +203,11 @@ TEST_CASE("basic lambda usage", "[lambdas]")
   STATIC_CHECK(evaluate_to<IntType>("((lambda (x) (* x x)) 11)") == 121);
   STATIC_CHECK(evaluate_to<IntType>("((lambda (x y) (+ x y)) 5 7)") == 12);
   STATIC_CHECK(evaluate_to<IntType>("((lambda (x y z) (+ x (* y z))) 5 7 2)") == 19);
+
+  // bad lambda parse
+  STATIC_CHECK(evaluate_to<bool>("(error? (lambda ()))") == true);
+  STATIC_CHECK(evaluate_to<bool>("(error? (lambda 1 2))") == true);
+
 }
 
 TEST_CASE("nested lambda usage", "[lambdas]")
@@ -499,6 +521,13 @@ TEST_CASE("simple append expression", "[builtins]")
 
   // Append with evaluated expressions
   STATIC_CHECK(evaluate_to<bool>("(== (append (list (+ 1 2)) (list (* 2 2))) '(3 4))") == true);
+
+  // bad append
+  STATIC_CHECK(evaluate_to<bool>("(error? (append '() '()))") == false);
+  STATIC_CHECK(evaluate_to<bool>("(error? (append 1 '()))") == true);
+  STATIC_CHECK(evaluate_to<bool>("(error? (append 1 1))") == true);
+  STATIC_CHECK(evaluate_to<bool>("(error? (append 1))") == true);
+  STATIC_CHECK(evaluate_to<bool>("(error? (append))") == true);
 }
 
 TEST_CASE("if expressions", "[builtins]")
