@@ -699,12 +699,6 @@ TEMPLATE_TEST_CASE("integral parsing", "[parser][numbers][edge]", int, long, sho
   STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("-123")).second == TestType{ -123 });
 }
 
-// Number Parsing Edge Cases
-TEMPLATE_TEST_CASE("unsigned integral parsing", "[parser][numbers][edge]", std::uint16_t, std::uint32_t)
-{
-  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("-123")).first == false);
-}
-
 
 // LCOV_EXCL_START
 // Number Parsing Edge Cases

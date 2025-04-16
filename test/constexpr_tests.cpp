@@ -157,6 +157,24 @@ TEST_CASE("list comparisons", "[operators]")
   STATIC_CHECK(evaluate_to<bool>("(!= '(1 2) '(1 2 3))") == true);
 }
 
+TEST_CASE("unsupported operators", "[operators]")
+{
+  // sanity check
+  STATIC_CHECK(evaluate_to<bool>("(error? (== 1 1))") == false);
+
+  // functions are not currently comparable
+  STATIC_CHECK(evaluate_to<bool>("(error? (== + +))") == true);
+
+  // functions are not addable
+  STATIC_CHECK(evaluate_to<bool>("(error? (+ + +))") == true);
+
+  // cannot add string to int
+  STATIC_CHECK(evaluate_to<bool>(R"((error? (+ 1 "Hello")))") == true);
+
+  STATIC_CHECK(evaluate_to<bool>(R"((error? (+ 1 +)))") == true);
+}
+
+
 TEST_CASE("basic integer comparisons", "[operators]")
 {
   STATIC_CHECK(evaluate_to<bool>("(== 12 12)") == true);

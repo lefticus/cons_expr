@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2023-2024 Jason Turner
+Copyright (c) 2023-2025 Jason Turner
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -165,17 +165,11 @@ struct SmallVector
   [[nodiscard]] constexpr Contained &operator[](size_type index) noexcept { return small[index]; }
   [[nodiscard]] constexpr const Contained &operator[](size_type index) const noexcept { return small[index]; }
   [[nodiscard]] constexpr auto size() const noexcept { return small_size_used; }
-  [[nodiscard]] constexpr auto begin() const noexcept { return small.begin(); }
-  [[nodiscard]] constexpr auto begin() noexcept { return small.begin(); }
+  [[nodiscard]] constexpr auto begin(this auto &Self) noexcept { return Self.small.begin(); }
 
-  [[nodiscard]] constexpr auto end() const noexcept
+  [[nodiscard]] constexpr auto end(this auto &Self) noexcept
   {
-    return std::next(small.begin(), static_cast<std::ptrdiff_t>(small_size_used));
-  }
-
-  [[nodiscard]] constexpr auto end() noexcept
-  {
-    return std::next(small.begin(), static_cast<std::ptrdiff_t>(small_size_used));
+    return std::next(Self.small.begin(), static_cast<std::ptrdiff_t>(Self.small_size_used));
   }
 
   [[nodiscard]] constexpr SpanType view(KeyType range) const noexcept
@@ -261,7 +255,7 @@ template<typename CharType> struct Token
 template<typename CharType>
 Token(std::basic_string_view<CharType>, std::basic_string_view<CharType>) -> Token<CharType>;
 
-template<typename T, typename CharType>
+template<typename T, typename CharType> requires std::is_signed_v<T>
 [[nodiscard]] constexpr std::pair<bool, T> parse_number(std::basic_string_view<CharType> input) noexcept
 {
   static constexpr std::pair<bool, T> failure{ false, 0 };
@@ -283,7 +277,7 @@ template<typename T, typename CharType>
   long long exp_sign = 1LL;
   long long exp = 0LL;
 
-  constexpr auto pow_10 = [](long long power) noexcept {
+  constexpr auto pow_10 = [](std::integral auto power) noexcept {
     auto result = 1ll;
     for (int iteration = 0; iteration < power; ++iteration) { result *= 10ll; }
     return result;
@@ -291,11 +285,10 @@ template<typename T, typename CharType>
 
   const auto parse_digit = [](auto &cur_value, auto ch) {
     if (ch >= chars<CharType>::ch('0') && ch <= chars<CharType>::ch('9')) {
-      cur_value = cur_value * 10 + ch - chars<CharType>::ch('0');
+      cur_value = (cur_value * 10) + ch - chars<CharType>::ch('0');
       return true;
-    } else {
-      return false;
     }
+    return false;
   };
 
   for (const auto ch : input) {
@@ -303,11 +296,7 @@ template<typename T, typename CharType>
     case State::Start:
       state = State::IntegerPart;
       if (ch == chars<CharType>::ch('-')) {
-        if constexpr (std::is_signed_v<T>) {
-          value_sign = -1;
-        } else {
-          return failure;
-        }
+        value_sign = -1;
       } else if (ch == chars<CharType>::ch('.')) {
         state = State::FractionPart;
       } else if (!parse_digit(value, ch)) {
@@ -347,9 +336,10 @@ template<typename T, typename CharType>
 
   if constexpr (std::is_integral_v<T>) {
     if (state != State::IntegerPart) { return failure; }
+
     return { true, value_sign * static_cast<T>(value) };
   } else {
-    if (state == State::Start || state == State::ExponentStart) { return { false, 0 }; }
+    if (state == State::Start || state == State::ExponentStart) { return failure; }
 
     const auto integral_part = static_cast<T>(value);
     const auto floating_point_part = static_cast<T>(frac) / static_cast<T>(pow_10(frac_digits));
@@ -528,6 +518,9 @@ struct cons_expr
   using literal_list_type = LiteralList<size_type>;
   using error_type = Error<size_type>;
 
+
+
+
   template<typename Contained> using stack_vector = SmallVector<size_type, Contained, 32, IndexedList<size_type>>;
 
   struct SExpr;
@@ -592,6 +585,12 @@ struct cons_expr
 
     [[nodiscard]] constexpr bool operator==(const SExpr &) const noexcept = default;
   };
+
+
+  static constexpr IndexedList<size_type> empty_indexed_list{ 0, 0 };
+  static constexpr SExpr True { Atom { true } };
+  static constexpr SExpr False { Atom { false } };
+
 
   static_assert(std::is_trivially_copyable_v<SExpr> && std::is_trivially_destructible_v<SExpr>,
     "cons_expr does not work with non-trivial types");
@@ -698,32 +697,19 @@ struct cons_expr
     bool in_escape = false;
     for (const auto &ch : input) {
       if (in_escape) {
-        // Handle the escape sequence
+        // clang-format off
         switch (ch) {
-        case '"':
-          temp_buffer.push_back('"');
-          break;// Escaped quote
-        case '\\':
-          temp_buffer.push_back('\\');
-          break;// Escaped backslash
-        case 'n':
-          temp_buffer.push_back('\n');
-          break;// Newline
-        case 't':
-          temp_buffer.push_back('\t');
-          break;// Tab
-        case 'r':
-          temp_buffer.push_back('\r');
-          break;// Carriage return
-        case 'f':
-          temp_buffer.push_back('\f');
-          break;// Form feed
-        case 'b':
-          temp_buffer.push_back('\b');
-          break;// Backspace
+        case '"':  temp_buffer.push_back('"');  break;// Escaped quote
+        case '\\': temp_buffer.push_back('\\'); break;// Escaped backslash
+        case 'n':  temp_buffer.push_back('\n'); break;// Newline
+        case 't':  temp_buffer.push_back('\t'); break;// Tab
+        case 'r':  temp_buffer.push_back('\r'); break;// Carriage return
+        case 'f':  temp_buffer.push_back('\f'); break;// Form feed
+        case 'b':  temp_buffer.push_back('\b'); break;// Backspace
         default:
-          return make_error(str("unexpected escape character"), strings.insert_or_find(input));// Other characters as-is
+          return make_error(str("unexpected escape character"), strings.insert_or_find(input));
         }
+        // clang-format on
         in_escape = false;
       } else if (ch == '\\') {
         in_escape = true;
@@ -744,6 +730,7 @@ struct cons_expr
     auto token = next_token(input);
 
     while (!token.parsed.empty()) {
+
       if (token.parsed == str("(")) {
         auto [parsed, remaining] = parse(token.remaining);
         retval.push_back(SExpr{ parsed });
@@ -755,9 +742,9 @@ struct cons_expr
       } else if (token.parsed == str(")")) {
         break;
       } else if (token.parsed == str("true")) {
-        retval.push_back(SExpr{ Atom{ true } });
+        retval.push_back(True);
       } else if (token.parsed == str("false")) {
-        retval.push_back(SExpr{ Atom{ false } });
+        retval.push_back(False);
       } else {
         if (token.parsed.starts_with('"')) {
           // Process quoted string with proper escape character handling
@@ -1266,15 +1253,9 @@ struct cons_expr
   template<typename ValueType>
   [[nodiscard]] static constexpr SExpr error_or_else(const std::expected<ValueType, SExpr> &obj, auto callable)
   {
-    if (obj) {
-      return callable(*obj);
-    } else {
-      return obj.error();
-    }
+    if (obj) { return callable(*obj); }
+    return obj.error();
   }
-
-  // Empty indexed list for reuse
-  static constexpr IndexedList<size_type> empty_indexed_list{ 0, 0 };
 
   // (cdr '(1 2 3)) -> '(2 3)
   // (cdr '(1)) -> '()
@@ -1506,20 +1487,20 @@ struct cons_expr
   {
     for (const auto &next : engine.values[params] | engine.eval_transform<bool>(scope)) {
       if (!next) { return engine.make_error(str("parameter not boolean"), next.error()); }
-      if (!(*next)) { return SExpr{ Atom{ false } }; }
+      if (!(*next)) { return False; }
     }
 
-    return SExpr{ Atom{ true } };
+    return True;
   }
 
   [[nodiscard]] static constexpr SExpr logical_or(cons_expr &engine, LexicalScope &scope, list_type params)
   {
     for (const auto &next : engine.values[params] | engine.eval_transform<bool>(scope)) {
       if (!next) { return engine.make_error(str("parameter not boolean"), next.error()); }
-      if (*next) { return SExpr{ Atom{ true } }; }
+      if (*next) { return True; }
     }
 
-    return SExpr{ Atom{ false } };
+    return False;
   }
 
   template<auto Op>
@@ -1532,10 +1513,10 @@ struct cons_expr
           const auto &result = engine.eval_to<Param>(scope, elem);
           if (!result) { return engine.make_error(str("same types for operator"), SExpr{ next }, result.error()); }
           const auto prev = std::exchange(next, *result);
-          if (!Op(prev, next)) { return SExpr{ Atom{ false } }; }
+          if (!Op(prev, next)) { return False; }
         }
 
-        return SExpr{ Atom{ true } };
+        return True;
       } else {
         return engine.make_error(str("supported types"), params);
       }
