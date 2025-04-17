@@ -936,6 +936,11 @@ struct cons_expr
       }
     }
 
+    if (std::holds_alternative<FunctionPtr>(expr.value) || std::holds_alternative<literal_list_type>(expr.value)) {
+      // no where to go from here
+      return std::unexpected(expr);
+    }
+
     // if things aren't changing, then we abort, because it's not going to happen
     // this should be cleaned up somehow to avoid move
     if (auto next = eval(scope, expr); next == expr) {

@@ -172,6 +172,8 @@ TEST_CASE("unsupported operators", "[operators]")
   STATIC_CHECK(evaluate_to<bool>(R"((error? (+ 1 "Hello")))") == true);
 
   STATIC_CHECK(evaluate_to<bool>(R"((error? (+ 1 +)))") == true);
+  STATIC_CHECK(evaluate_to<bool>(R"((error? (+ 1 +)))") == true);
+  STATIC_CHECK(evaluate_to<bool>(R"((error? (+ 'a 'b)))") == true);
 }
 
 
@@ -664,13 +666,6 @@ TEST_CASE("token parsing edge cases", "[parsing]")
 
 TEST_CASE("Quoted symbol equality issues", "[symbols]")
 {
-  // These tests currently fail but should work based on the expected behavior of symbols
-  // They are included to document expected behavior and prevent regression
-
-  // ----------------------------------------
-  // FAILING CASES - Should all return true
-  // ----------------------------------------
-
   // 1. Direct quoted symbol equality fails
   STATIC_CHECK(evaluate_to<bool>("(== 'hello 'hello)") == true);
 
@@ -982,6 +977,8 @@ TEST_CASE("deeply nested expressions", "[nesting]")
     (== (cons 1 (cons 2 (cons 3 (cons 4 (cons 5 '()))))) '(1 2 3 4 5))
   )") == true);
 }
+
+//TEST_CASE("single tick quote", "[
 
 TEST_CASE("quote function", "[builtins][quote]")
 {
