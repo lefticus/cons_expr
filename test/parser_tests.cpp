@@ -44,7 +44,7 @@ TEST_CASE("Basic tokenization", "[parser][tokenize]")
 
     // Quote syntax
     Token token7 = lefticus::next_token(std::string_view("'(hello)"));
-    if (token7.parsed != std::string_view("'(") || token7.remaining != std::string_view("hello)")) return false;
+    if (token7.parsed != std::string_view("'") || token7.remaining != std::string_view("(hello)")) return false;
 
     // Strings
     Token token8 = lefticus::next_token(std::string_view("\"hello\""));
@@ -430,66 +430,6 @@ TEST_CASE("List structure", "[parser][lists]")
   STATIC_CHECK(test_nested_list());
 }
 
-// Quote Syntax Tests
-TEST_CASE("Quote syntax", "[parser][quotes]")
-{
-  constexpr auto test_quotes = []() {
-    lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
-
-    // Quoted symbol
-    auto [quoted_symbol, _1] = evaluator.parse("'symbol");
-    if (quoted_symbol.size != 1) return false;
-
-    auto &first_item = evaluator.values[quoted_symbol[0]];
-    const auto *atom = std::get_if<lefticus::cons_expr<>::Atom>(&first_item.value);
-    if (atom == nullptr) return false;
-    if (std::get_if<lefticus::cons_expr<>::symbol_type>(atom) == nullptr) return false;
-
-    // Quoted list
-    auto [quoted_list, _2] = evaluator.parse("'(a b c)");
-    if (quoted_list.size != 1) return false;
-
-    const auto *literal_list =
-      std::get_if<lefticus::cons_expr<>::literal_list_type>(&evaluator.values[quoted_list[0]].value);
-    if (literal_list == nullptr || literal_list->items.size != 3) return false;
-
-    return true;
-  };
-
-  STATIC_CHECK(test_quotes());
-}
-
-// Symbol vs Identifier Tests
-TEST_CASE("Symbol vs identifier", "[parser][symbols]")
-{
-  constexpr auto test_symbol_vs_identifier = []() {
-    lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
-
-    // Symbol (quoted identifier)
-    auto [symbol_expr, _1] = evaluator.parse("'symbol");
-    if (symbol_expr.size != 1) return false;
-
-    const auto *atom1 = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[symbol_expr[0]].value);
-    if (atom1 == nullptr) return false;
-
-    const auto *symbol = std::get_if<lefticus::cons_expr<>::symbol_type>(atom1);
-    if (symbol == nullptr) return false;
-
-    // Regular identifier
-    auto [id_expr, _2] = evaluator.parse("identifier");
-    if (id_expr.size != 1) return false;
-
-    const auto *atom2 = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[id_expr[0]].value);
-    if (atom2 == nullptr) return false;
-
-    const auto *identifier = std::get_if<lefticus::cons_expr<>::identifier_type>(atom2);
-    if (identifier == nullptr) return false;
-
-    return true;
-  };
-
-  STATIC_CHECK(test_symbol_vs_identifier());
-}
 
 // Boolean Literal Tests
 TEST_CASE("Boolean literals", "[parser][booleans]")
@@ -625,42 +565,6 @@ TEST_CASE("Mixed content", "[parser][mixed]")
   };
 
   STATIC_CHECK(test_mixed_content());
-}
-
-// Quoted List Tests
-TEST_CASE("Quoted lists", "[parser][quoted-lists]")
-{
-  constexpr auto test_quoted_lists = []() {
-    lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
-
-    // Empty quoted list
-    auto [empty, _1] = evaluator.parse("'()");
-    if (empty.size != 1) return false;
-
-    const auto *literal_list1 =
-      std::get_if<lefticus::cons_expr<>::literal_list_type>(&evaluator.values[empty[0]].value);
-    if (literal_list1 == nullptr || literal_list1->items.size != 0) return false;
-
-    // Simple quoted list
-    auto [simple, _2] = evaluator.parse("'(1 2 3)");
-    if (simple.size != 1) return false;
-
-    const auto *literal_list2 =
-      std::get_if<lefticus::cons_expr<>::literal_list_type>(&evaluator.values[simple[0]].value);
-    if (literal_list2 == nullptr || literal_list2->items.size != 3) return false;
-
-    // Nested quoted list
-    auto [nested, _3] = evaluator.parse("'(1 (2 3) 4)");
-    if (nested.size != 1) return false;
-
-    const auto *literal_list3 =
-      std::get_if<lefticus::cons_expr<>::literal_list_type>(&evaluator.values[nested[0]].value);
-    if (literal_list3 == nullptr || literal_list3->items.size != 3) return false;
-
-    return true;
-  };
-
-  STATIC_CHECK(test_quoted_lists());
 }
 
 // Special Character Tests

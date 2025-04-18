@@ -978,10 +978,24 @@ TEST_CASE("deeply nested expressions", "[nesting]")
   )") == true);
 }
 
-//TEST_CASE("single tick quote", "[
+
 
 TEST_CASE("quote function", "[builtins][quote]")
 {
+  STATIC_CHECK(evaluate_to<int>("(+ (quote 1) (quote 2))") == 3);
+  STATIC_CHECK(evaluate_to<int>("(+ (quote 1) '2)") == 3);
+  STATIC_CHECK(evaluate_to<int>("(+ '1 '2)") == 3);
+
+  STATIC_CHECK(evaluate_to<bool>("(== '1 '1)") == true);
+  STATIC_CHECK(evaluate_to<bool>("(== (quote 1) '1)") == true);
+  STATIC_CHECK(evaluate_to<bool>("(== (quote 1) (quote 1))") == true);
+  STATIC_CHECK(evaluate_to<bool>("(== '1 (quote 1))") == true);
+
+  STATIC_CHECK(evaluate_to<bool>("(== ''1 (quote (quote 1)))") == true);
+  STATIC_CHECK(evaluate_to<bool>("(== ''a (quote (quote a)))") == true);
+  STATIC_CHECK(evaluate_to<bool>("(== ''ab (quote (quote ab)))") == true);
+
+
   // Basic quote tests with lists
   STATIC_CHECK(evaluate_to<bool>("(== (quote (1 2 3)) '(1 2 3))") == true);
   STATIC_CHECK(evaluate_to<bool>("(== (quote ()) '())") == true);

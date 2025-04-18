@@ -383,12 +383,12 @@ template<typename CharType> [[nodiscard]] constexpr Token<CharType> next_token(s
     input = consume(input, [=](auto ch) { return not is_eol(ch); });
     input = consume(input, is_whitespace);
   }
+  
+  // quote
+  if (input.starts_with(chars::ch('\''))) { return make_token(input, 1); }
 
   // list
   if (input.starts_with(chars::ch('(')) || input.starts_with(chars::ch(')'))) { return make_token(input, 1); }
-
-  // literal list
-  if (input.starts_with(chars::str("'("))) { return make_token(input, 2); }
 
   // quoted string
   if (input.starts_with(chars::ch('"'))) {
@@ -723,48 +723,67 @@ struct cons_expr
     return SExpr{ Atom(strings.insert_or_find(processed_view)) };
   }
 
+  [[nodiscard]] constexpr SExpr make_quote(int quote_depth, SExpr input) {
+    if (quote_depth == 0) {
+      return input;
+    }
+
+    std::array<SExpr, 2> new_quote{
+      to_identifier(strings.insert_or_find(str("quote"))),
+      make_quote(quote_depth - 1, input)
+    };
+    return SExpr{ values.insert_or_find(new_quote) };
+ 
+  }
+
   [[nodiscard]] constexpr std::pair<list_type, Token<CharType>> parse(string_view_type input)
   {
     Scratch retval{ object_scratch };
 
     auto token = next_token(input);
 
+    int quote_depth = 0;
+
     while (!token.parsed.empty()) {
+      bool entered_quote = false;
 
       if (token.parsed == str("(")) {
         auto [parsed, remaining] = parse(token.remaining);
-        retval.push_back(SExpr{ parsed });
+        retval.push_back(make_quote(quote_depth, SExpr{ parsed }));
         token = remaining;
-      } else if (token.parsed == str("'(")) {
-        auto [parsed, remaining] = parse(token.remaining);
-        retval.push_back(SExpr{ LiteralList{ parsed } });
-        token = remaining;
+      } else if (token.parsed == str("'")) {
+        ++quote_depth;
+        entered_quote = true;
       } else if (token.parsed == str(")")) {
         break;
       } else if (token.parsed == str("true")) {
-        retval.push_back(True);
+        retval.push_back(make_quote(quote_depth, True));
       } else if (token.parsed == str("false")) {
-        retval.push_back(False);
+        retval.push_back(make_quote(quote_depth, False));
       } else {
         if (token.parsed.starts_with('"')) {
           // Process quoted string with proper escape character handling
           if (token.parsed.ends_with('"')) {
             // Extract the string content (remove surrounding quotes)
             const string_view_type raw_content = token.parsed.substr(1, token.parsed.size() - 2);
-            retval.push_back(process_string_escapes(raw_content));
+            retval.push_back(make_quote(quote_depth, process_string_escapes(raw_content)));
           } else {
             retval.push_back(make_error(str("terminated string"), SExpr{ Atom(strings.insert_or_find(token.parsed)) }));
           }
         } else if (auto [int_did_parse, int_value] = parse_number<int_type>(token.parsed); int_did_parse) {
-          retval.push_back(SExpr{ Atom(int_value) });
+          retval.push_back(make_quote(quote_depth, SExpr{ Atom(int_value) }));
         } else if (auto [float_did_parse, float_value] = parse_number<float_type>(token.parsed); float_did_parse) {
-          retval.push_back(SExpr{ Atom(float_value) });
-        } else if (token.parsed.starts_with('\'')) {
-          retval.push_back(SExpr{ Atom(to_symbol(strings.insert_or_find(token.parsed.substr(1)))) });
+          retval.push_back(make_quote(quote_depth, SExpr{ Atom(float_value) }));
         } else {
-          retval.push_back(SExpr{ Atom(to_identifier(strings.insert_or_find(token.parsed))) });
+          const auto identifier = SExpr{ Atom(to_identifier(strings.insert_or_find(token.parsed)))};
+          retval.push_back(make_quote(quote_depth, identifier));
         }
       }
+
+      if (!entered_quote) {
+        quote_depth = 0;
+      }
+
       token = next_token(token.remaining);
     }
     return { values.insert_or_find(retval), token };
@@ -1391,7 +1410,7 @@ struct cons_expr
     return SExpr{ Atom(is_error) };
   }
 
-  [[nodiscard]] static constexpr SExpr quoter(cons_expr &engine, LexicalScope &, list_type params)
+  [[nodiscard]] static constexpr SExpr quote(cons_expr &engine, list_type params)
   {
     if (params.size != 1) { return engine.make_error(str("(quote expr)"), params); }
 
@@ -1412,6 +1431,11 @@ struct cons_expr
 
     // Otherwise return as is
     return expr;
+  }
+
+  [[nodiscard]] static constexpr SExpr quoter(cons_expr &engine, LexicalScope &, list_type params)
+  {
+    return quote(engine, params);
   }
 
   [[nodiscard]] static constexpr SExpr definer(cons_expr &engine, LexicalScope &scope, list_type params)

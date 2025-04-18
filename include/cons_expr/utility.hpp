@@ -78,6 +78,17 @@ std::string to_string(const Eval &engine, bool annotate, const typename Eval::id
 }
 
 
+template<ConsExpr Eval>
+std::string to_string(const Eval &engine, bool annotate, const typename Eval::symbol_type &id)
+{
+  if (annotate) {
+    return std::format("[symbol] {{{}, {}}} '{}", id.start, id.size, engine.strings.view(to_string(id)));
+  } else {
+    return std::format("'{}", engine.strings.view(to_string(id)));
+  }
+}
+
+
 template<ConsExpr Eval> std::string to_string(const Eval &, bool annotate, const bool input)
 {
   std::string result;
