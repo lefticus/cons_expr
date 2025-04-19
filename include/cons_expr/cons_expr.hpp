@@ -255,7 +255,8 @@ template<typename CharType> struct Token
 template<typename CharType>
 Token(std::basic_string_view<CharType>, std::basic_string_view<CharType>) -> Token<CharType>;
 
-template<typename T, typename CharType> requires std::is_signed_v<T>
+template<typename T, typename CharType>
+  requires std::is_signed_v<T>
 [[nodiscard]] constexpr std::pair<bool, T> parse_number(std::basic_string_view<CharType> input) noexcept
 {
   static constexpr std::pair<bool, T> failure{ false, 0 };
@@ -383,7 +384,7 @@ template<typename CharType> [[nodiscard]] constexpr Token<CharType> next_token(s
     input = consume(input, [=](auto ch) { return not is_eol(ch); });
     input = consume(input, is_whitespace);
   }
-  
+
   // quote
   if (input.starts_with(chars::ch('\''))) { return make_token(input, 1); }
 
@@ -519,8 +520,6 @@ struct cons_expr
   using error_type = Error<size_type>;
 
 
-
-
   template<typename Contained> using stack_vector = SmallVector<size_type, Contained, 32, IndexedList<size_type>>;
 
   struct SExpr;
@@ -588,8 +587,8 @@ struct cons_expr
 
 
   static constexpr IndexedList<size_type> empty_indexed_list{ 0, 0 };
-  static constexpr SExpr True { Atom { true } };
-  static constexpr SExpr False { Atom { false } };
+  static constexpr SExpr True{ Atom{ true } };
+  static constexpr SExpr False{ Atom{ false } };
 
 
   static_assert(std::is_trivially_copyable_v<SExpr> && std::is_trivially_destructible_v<SExpr>,
@@ -662,8 +661,12 @@ struct cons_expr
   {
     list_type parameter_names;
     list_type statements;
+    identifier_type self_identifier{ 0, 0 };// Optional identifier for recursion, default to empty
 
     [[nodiscard]] constexpr bool operator==(const Closure &) const = default;
+
+    // Check if this closure has a valid self-reference
+    [[nodiscard]] constexpr bool has_self_reference() const { return self_identifier.size > 0; }
 
     [[nodiscard]] constexpr SExpr invoke(cons_expr &engine, LexicalScope &scope, list_type params) const
     {
@@ -671,13 +674,16 @@ struct cons_expr
         return engine.make_error(str("Incorrect number of params for lambda"), params);
       }
 
-      // Closures contain all of their own scope
-      LexicalScope param_scope = scope;
+      // Create a clean scope that only contains what's needed
+      LexicalScope param_scope{};
 
-      // overwrite scope with the things we know we need params to be named
+      // Add the self-reference first if needed (for recursion)
+      if (has_self_reference()) {
+        // Create a temporary SExpr with this closure to enable recursion
+        param_scope.emplace_back(to_string(self_identifier), SExpr{ *this });
+      }
 
-      // set up params
-      // technically I'm evaluating the params lazily while invoking the lambda, not before. Does it matter?
+      // Set up params
       for (const auto [name, parameter] : std::views::zip(engine.values[parameter_names], engine.values[params])) {
         param_scope.emplace_back(to_string(*engine.get_if<identifier_type>(&name)), engine.eval(scope, parameter));
       }
@@ -723,17 +729,13 @@ struct cons_expr
     return SExpr{ Atom(strings.insert_or_find(processed_view)) };
   }
 
-  [[nodiscard]] constexpr SExpr make_quote(int quote_depth, SExpr input) {
-    if (quote_depth == 0) {
-      return input;
-    }
+  [[nodiscard]] constexpr SExpr make_quote(int quote_depth, SExpr input)
+  {
+    if (quote_depth == 0) { return input; }
 
-    std::array<SExpr, 2> new_quote{
-      to_identifier(strings.insert_or_find(str("quote"))),
-      make_quote(quote_depth - 1, input)
-    };
+    std::array<SExpr, 2> new_quote{ to_identifier(strings.insert_or_find(str("quote"))),
+      make_quote(quote_depth - 1, input) };
     return SExpr{ values.insert_or_find(new_quote) };
- 
   }
 
   [[nodiscard]] constexpr std::pair<list_type, Token<CharType>> parse(string_view_type input)
@@ -775,14 +777,12 @@ struct cons_expr
         } else if (auto [float_did_parse, float_value] = parse_number<float_type>(token.parsed); float_did_parse) {
           retval.push_back(make_quote(quote_depth, SExpr{ Atom(float_value) }));
         } else {
-          const auto identifier = SExpr{ Atom(to_identifier(strings.insert_or_find(token.parsed)))};
+          const auto identifier = SExpr{ Atom(to_identifier(strings.insert_or_find(token.parsed))) };
           retval.push_back(make_quote(quote_depth, identifier));
         }
       }
 
-      if (!entered_quote) {
-        quote_depth = 0;
-      }
+      if (!entered_quote) { quote_depth = 0; }
 
       token = next_token(token.remaining);
     }
@@ -1012,7 +1012,10 @@ struct cons_expr
 
     // Create the closure with parameter list and fixed statements
     const auto list = engine.get_if<list_type>(&engine.values[params[0]]);
-    if (list) { return SExpr{ Closure{ *list, { engine.values.insert_or_find(fixed_statements) } } }; }
+    if (list) {
+      // Create a basic closure without self-reference initially
+      return SExpr{ Closure{ *list, { engine.values.insert_or_find(fixed_statements) } } };
+    }
 
     return engine.make_error(str("(lambda ([params...]) [statement...])"), params);
   }
@@ -1114,7 +1117,20 @@ struct cons_expr
       new_lambda.push_back(fix_identifiers(values[index], new_locals, local_constants));
     }
 
-    return SExpr{ values.insert_or_find(new_lambda) };
+    // Create a basic lambda without self-reference
+    auto result = SExpr{ values.insert_or_find(new_lambda) };
+
+    // If this is part of a closure with self-reference, preserve that property
+    if (auto *closure = get_if<Closure>(&values[list.start]); closure != nullptr && closure->has_self_reference()) {
+      auto new_closure = Closure{
+        closure->parameter_names,
+        values.insert_or_find(new_lambda),
+        closure->self_identifier// maintain self-reference identifier
+      };
+      return SExpr{ new_closure };
+    }
+
+    return result;
   }
 
   [[nodiscard]] constexpr SExpr
@@ -1442,7 +1458,23 @@ struct cons_expr
   {
     return error_or_else(engine.eval_to<identifier_type, SExpr>(scope, params, str("(define Identifier Expression)")),
       [&](const auto &evaled) {
-        scope.emplace_back(to_string(std::get<0>(evaled)), engine.fix_identifiers(std::get<1>(evaled), {}, scope));
+        const auto &identifier = std::get<0>(evaled);
+        auto expr = std::get<1>(evaled);
+
+        // Check if the expression is a lambda (closure)
+        if (auto *closure_ptr = std::get_if<Closure>(&expr.value); closure_ptr != nullptr) {
+          // Create a mutable copy of the closure
+          Closure closure = *closure_ptr;
+
+          // Set up self-reference for recursion
+          closure.self_identifier = identifier;
+
+          // Update the expression with the modified closure
+          expr = SExpr{ closure };
+        }
+
+        // Fix identifiers and add to scope
+        scope.emplace_back(to_string(identifier), engine.fix_identifiers(expr, {}, scope));
         return SExpr{ Atom{ std::monostate{} } };
       });
   }

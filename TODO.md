@@ -8,10 +8,15 @@ A prioritized list of features for making cons_expr a practical embedded Scheme-
   - Uncomment and implement error handling for division by zero (line 1049)
   - Prevent crashes in embedded contexts
 
-- [ ] **Improved Lexical Scoping**
+- [X] **Improved Lexical Scoping**
   - Fix variable capture in closures
   - Fix scoping issues in lambdas
   - Essential for predictable behavior
+
+- [ ] **Add `letrec` Support**
+  - Support recursive bindings in `let` expressions
+  - Support mutual recursion without forward declarations
+  - Follow standard Scheme semantics for `letrec`
 
 - [ ] **Memory Usage Optimizer**
   - Implement "defragment" function mentioned in TODOs

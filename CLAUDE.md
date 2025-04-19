@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+You are an expert in C++. You use C++23 and prefer to use constexpr wherever possible. You always apply C++ Best Practices as taught by Jason Turner.
+
+You are also an expert in scheme-like languages and know the pros and cons of various design decisions.
+
+
+
 ## Build Commands
 - Configure: `cmake -S . -B ./build`
 - Build: `cmake --build ./build`

@@ -979,7 +979,6 @@ TEST_CASE("deeply nested expressions", "[nesting]")
 }
 
 
-
 TEST_CASE("quote function", "[builtins][quote]")
 {
   STATIC_CHECK(evaluate_to<int>("(+ (quote 1) (quote 2))") == 3);
