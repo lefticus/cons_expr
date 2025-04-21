@@ -62,7 +62,7 @@ TEST_CASE("member functions", "[function]")
     int m_i{ 0 };
   };
 
-  lefticus::cons_expr<std::uint16_t, char, int, float, 100, 100, 100, Test *> evaluator;
+  lefticus::cons_expr<std::uint16_t, char, int, float, 500, 500, 500, Test *> evaluator;
   evaluator.add<&Test::set>("set");
   evaluator.add<&Test::get>("get");
 
