@@ -510,7 +510,7 @@ struct cons_expr
   using char_type = CharType;
   using size_type = SizeType;
   using int_type = IntegralType;
-  using float_type = FloatType;
+  using real_type = FloatType; // Using 'real' as per mathematical/Scheme convention for floating-point
   using string_type = IndexedString<size_type>;
   using string_view_type = std::basic_string_view<char_type>;
   using identifier_type = Identifier<size_type>;
@@ -552,7 +552,7 @@ struct cons_expr
   using LexicalScope = SmallVector<size_type, std::pair<string_type, SExpr>, BuiltInSymbolsSize, list_type>;
   using function_ptr = SExpr (*)(cons_expr &, LexicalScope &, list_type);
   using Atom =
-    std::variant<std::monostate, bool, int_type, float_type, string_type, identifier_type, symbol_type, UserTypes...>;
+    std::variant<std::monostate, bool, int_type, real_type, string_type, identifier_type, symbol_type, UserTypes...>;
 
   struct FunctionPtr
   {
@@ -774,7 +774,7 @@ struct cons_expr
           }
         } else if (auto [int_did_parse, int_value] = parse_number<int_type>(token.parsed); int_did_parse) {
           retval.push_back(make_quote(quote_depth, SExpr{ Atom(int_value) }));
-        } else if (auto [float_did_parse, float_value] = parse_number<float_type>(token.parsed); float_did_parse) {
+        } else if (auto [float_did_parse, float_value] = parse_number<real_type>(token.parsed); float_did_parse) {
           retval.push_back(make_quote(quote_depth, SExpr{ Atom(float_value) }));
         } else {
           const auto identifier = SExpr{ Atom(to_identifier(strings.insert_or_find(token.parsed))) };
@@ -821,6 +821,22 @@ struct cons_expr
     add(str("begin"), SExpr{ FunctionPtr{ begin, FunctionPtr::Type::other } });
     add(str("cond"), SExpr{ FunctionPtr{ cond, FunctionPtr::Type::other } });
     add(str("error?"), SExpr{ FunctionPtr{ error_p, FunctionPtr::Type::other } });
+    
+    // Type predicates using the generic make_type_predicate function
+    // Simple atomic types
+    add(str("integer?"), SExpr{ FunctionPtr{ make_type_predicate<int_type>(), FunctionPtr::Type::other } });
+    add(str("real?"), SExpr{ FunctionPtr{ make_type_predicate<real_type>(), FunctionPtr::Type::other } });
+    add(str("string?"), SExpr{ FunctionPtr{ make_type_predicate<string_type>(), FunctionPtr::Type::other } });
+    add(str("symbol?"), SExpr{ FunctionPtr{ make_type_predicate<symbol_type>(), FunctionPtr::Type::other } });
+    add(str("boolean?"), SExpr{ FunctionPtr{ make_type_predicate<bool>(), FunctionPtr::Type::other } });
+    
+    // Composite type predicates
+    add(str("number?"), SExpr{ FunctionPtr{ make_type_predicate<int_type, real_type>(), FunctionPtr::Type::other } });
+    add(str("list?"), SExpr{ FunctionPtr{ make_type_predicate<list_type, literal_list_type>(), FunctionPtr::Type::other } });
+    add(str("procedure?"), SExpr{ FunctionPtr{ make_type_predicate<FunctionPtr, Closure>(), FunctionPtr::Type::other } });
+    
+    // Even atom? can use the generic predicate with Atom
+    add(str("atom?"), SExpr{ FunctionPtr{ make_type_predicate<Atom>(), FunctionPtr::Type::other } });
   }
 
   [[nodiscard]] constexpr SExpr sequence(LexicalScope &scope, list_type expressions)
@@ -1424,6 +1440,23 @@ struct cons_expr
     const bool is_error = std::holds_alternative<error_type>(expr.value);
 
     return SExpr{ Atom(is_error) };
+  }
+  
+  // Generic type predicate template for any type(s)
+  template<typename... Types>
+  [[nodiscard]] static constexpr function_ptr make_type_predicate()
+  {
+    return [](cons_expr &engine, LexicalScope &scope, list_type params) -> SExpr {
+      if (params.size != 1) { return engine.make_error(str("(type? expr)"), params); }
+      
+      // Evaluate the expression
+      auto expr = engine.eval(scope, engine.values[params[0]]);
+      
+      // Use fold expression with get_if to check if any of the specified types match
+      bool is_type = ((get_if<Types>(&expr) != nullptr) || ...);
+      
+      return SExpr{ Atom(is_type) };
+    };
   }
 
   [[nodiscard]] static constexpr SExpr quote(cons_expr &engine, list_type params)

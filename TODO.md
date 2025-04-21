@@ -13,11 +13,6 @@ A prioritized list of features for making cons_expr a practical embedded Scheme-
   - Fix scoping issues in lambdas
   - Essential for predictable behavior
 
-- [ ] **Add `letrec` Support**
-  - Support recursive bindings in `let` expressions
-  - Support mutual recursion without forward declarations
-  - Follow standard Scheme semantics for `letrec`
-
 - [ ] **Memory Usage Optimizer**
   - Implement "defragment" function mentioned in TODOs
   - Critical for long-running embedded scripts with memory constraints
@@ -35,8 +30,9 @@ A prioritized list of features for making cons_expr a practical embedded Scheme-
   - Simple conversion between C++ types and Scheme types
   - Example: `auto result = evaluator.call<int>("my-function", 10, "string", std::vector{1,2,3})`
 
-- [ ] **Basic Type Predicates**
-  - Core set: `number?`, `string?`, `list?`, `procedure?`
+- [X] **Basic Type Predicates**
+  - Core set: `number?`, `string?`, `list?`, `procedure?`, etc.
+  - Implemented with a flexible variadic template approach 
   - Essential for type checking within scripts
   - Allows scripts to handle mixed-type data from C++
 
@@ -52,6 +48,11 @@ A prioritized list of features for making cons_expr a practical embedded Scheme-
   - Simpler than current approach while maintaining type safety
 
 ## Medium Priority (Usability & Performance)
+
+- [ ] **Add `letrec` Support**
+  - Support recursive bindings in `let` expressions
+  - Support mutual recursion without forward declarations
+  - Follow standard Scheme semantics for `letrec`
 
 - [ ] **Constant Folding**
   - Optimize expressions that can be evaluated at compile time
