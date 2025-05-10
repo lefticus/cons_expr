@@ -18,11 +18,19 @@ WarningsAsErrors: ''
 HeaderFilterRegex: ''
 FormatStyle:     none
 
+# Command line options
+ExtraArgs: [
+  '-Wno-unknown-warning-option',
+  '-Wno-ignored-optimization-argument',
+  '-Wno-unused-command-line-argument',
+  '-Wno-unknown-argument',
+  '-Wno-gcc-compat'
+]
+
+# Quiet mode is set via command line with --quiet
+# It doesn't have a YAML equivalent
+
 CheckOptions:
   readability-identifier-length.IgnoredVariableNames: 'x|y|z|id|ch'
   readability-identifier-length.IgnoredParameterNames: 'x|y|z|id|ch'
-
-
-
-
 

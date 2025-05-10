@@ -608,24 +608,6 @@ TEMPLATE_TEST_CASE("integral parsing", "[parser][numbers][edge]", int, long, sho
 // Number Parsing Edge Cases
 TEMPLATE_TEST_CASE("Floating point parsing", "[parser][numbers][edge]", float, double, LongDouble)
 {
-  //  static constexpr auto eps = std::numeric_limits<TestType>::epsilon() * sizeof(TestType) * 8;
-  struct Approx
-  {
-    TestType target;
-    constexpr bool operator==(TestType arg) const
-    {
-      if (arg == target) { return true; }
-
-      int steps = 0;
-      while (steps < 100 && arg != target) {
-        arg = std::nexttoward(arg, target);
-        ++steps;
-      }
-
-      return steps < 30;
-    }
-  };
-
   STATIC_CHECK(static_cast<TestType>(123.456l) == lefticus::parse_number<TestType>(std::string_view("123.456")).second);
   STATIC_CHECK(
     static_cast<TestType>(-789.012l) == lefticus::parse_number<TestType>(std::string_view("-789.012")).second);

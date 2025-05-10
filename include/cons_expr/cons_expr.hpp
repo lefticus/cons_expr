@@ -545,7 +545,7 @@ struct cons_expr
   {
     SExpr result{};
     // || will make this short circuit and stop on first matching function
-    ((visit_helper<Type>(result, visitor, value) || ...));
+    [[maybe_unused]] const auto matched = ((visit_helper<Type>(result, visitor, value) || ...));
     return result;
   }
 
