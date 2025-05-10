@@ -596,7 +596,10 @@ struct cons_expr
 
   template<typename Result> [[nodiscard]] static constexpr const Result *get_if(const SExpr *sexpr) noexcept
   {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnull-dereference"
     if (sexpr == nullptr) { return nullptr; }
+#pragma GCC diagnostic pop
 
     if constexpr (is_sexpr_type_v<Result>) {
       return std::get_if<Result>(&sexpr->value);
