@@ -29,6 +29,20 @@ add_test(NAME cli.has_help COMMAND cons_expr_cli --help)
 add_test(NAME cli.version_matches COMMAND cons_expr_cli --version)
 set_tests_properties(cli.version_matches PROPERTIES PASS_REGULAR_EXPRESSION "${PROJECT_VERSION}")
 
+# Test direct script execution
+add_test(NAME cli.direct_script COMMAND cons_expr_cli --exec "(+ 1 2)")
+set_tests_properties(cli.direct_script PROPERTIES PASS_REGULAR_EXPRESSION "3")
+
+# Test file input handling with a simple script
+add_test(NAME cli.file_input COMMAND cons_expr_cli --file "${CMAKE_CURRENT_SOURCE_DIR}/test_script.scm")
+set_tests_properties(cli.file_input PROPERTIES PASS_REGULAR_EXPRESSION "30")
+
+# Test file input with a non-existent file
+add_test(NAME cli.missing_file COMMAND cons_expr_cli --file "non_existent_file.scm")
+set_tests_properties(cli.missing_file PROPERTIES 
+                     WILL_FAIL TRUE
+                     FAIL_REGULAR_EXPRESSION "File not found")
+
 add_executable(tests tests.cpp)
 target_link_libraries(
   tests
