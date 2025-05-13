@@ -736,8 +736,9 @@ struct cons_expr
   {
     if (quote_depth == 0) { return input; }
 
-    std::array<SExpr, 2> new_quote{ to_identifier(strings.insert_or_find(str("quote"))),
-      make_quote(quote_depth - 1, input) };
+    SExpr first = SExpr{Atom{to_identifier(strings.insert_or_find(str("quote")))}};
+    SExpr second = make_quote(quote_depth - 1, input);
+    std::array<SExpr, 2> new_quote = {first, second};
     return SExpr{ values.insert_or_find(new_quote) };
   }
 

@@ -8,6 +8,7 @@ target_link_libraries(
   fuzz_tester
   PRIVATE cons_expr_options
           cons_expr_warnings
+          cons_expr
           fmt::fmt
           -coverage
           -fsanitize=fuzzer)
