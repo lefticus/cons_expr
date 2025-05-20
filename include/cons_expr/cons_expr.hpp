@@ -727,6 +727,11 @@ struct cons_expr
       }
     }
 
+    // Check if we ended in an escape state (string ends with a backslash)
+    if (in_escape) {
+      return make_error(str("unterminated escape sequence"), strings.insert_or_find(input));
+    }
+
     // Now use insert_or_find to deduplicate the processed string
     const string_view_type processed_view(temp_buffer.small.data(), temp_buffer.size());
     return SExpr{ Atom(strings.insert_or_find(processed_view)) };
@@ -1346,6 +1351,12 @@ struct cons_expr
           return SExpr{ literal_list_type{ *nested_list } };
         }
 
+        if (const auto *atom = std::get_if<Atom>(&elem.value); atom != nullptr) {
+          if (const auto *identifier = std::get_if<identifier_type>(atom); identifier != nullptr) {
+            return SExpr{ Atom{ symbol_type{ to_symbol(*identifier) } } };
+          }
+        }
+
         return elem;
       });
   }
@@ -1377,7 +1388,8 @@ struct cons_expr
     // Evaluate each condition pair in sequence
     for (const auto &entry : engine.values[params]) {
       const auto cond = engine.eval_to<list_type>(scope, entry);
-      if (!cond || cond->size != 2) { return engine.make_error(str("(condition statement)"), cond.error()); }
+      if (!cond) { return engine.make_error(str("(condition statement)"), cond.error()); }
+      if (cond->size != 2) { return engine.make_error(str("(condition statement) requires both condition and result"), entry); }
 
       // Check for the special 'else' case - always matches and returns its expression
       if (const auto *cond_str = get_if<identifier_type>(&engine.values[(*cond)[0]]);
