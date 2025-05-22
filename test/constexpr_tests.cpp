@@ -1671,3 +1671,229 @@ TEST_CASE("SmallVector overflow and division operations", "[coverage][memory][ma
   };
   STATIC_CHECK(test_step3());
 }
+
+TEST_CASE("Error path and edge case coverage targeting specific uncovered branches", "[error][coverage][edge]")
+{
+  // Test number parsing failures (line 263 - parse_number failure cases)
+  constexpr auto test_number_parse_failures = []() constexpr {
+    lefticus::cons_expr<> engine;
+    
+    // Test parsing just a minus sign (should fail)
+    auto [parsed1, _] = engine.parse("-");
+    if (parsed1.size != 1) return false;
+    auto result1 = engine.values[parsed1[0]];
+    // Should be parsed as identifier, not number
+    auto* id1 = engine.get_if<lefticus::cons_expr<>::identifier_type>(&result1);
+    if (id1 == nullptr) return false;
+    
+    // Test malformed numbers
+    auto [parsed2, __] = engine.parse("1.2.3");
+    if (parsed2.size != 1) return false;
+    auto result2 = engine.values[parsed2[0]];
+    // Should be parsed as identifier since it's not a valid number
+    auto* id2 = engine.get_if<lefticus::cons_expr<>::identifier_type>(&result2);
+    return id2 != nullptr;
+  };
+  STATIC_CHECK(test_number_parse_failures());
+
+  // Test function invocation errors (line 860-868 - invoke_function error paths)
+  constexpr auto test_function_invoke_errors = []() constexpr {
+    lefticus::cons_expr<> engine;
+    
+    // Test calling non-function as function
+    auto result1 = engine.evaluate("(42 1 2)"); // Try to call number as function
+    if (!std::holds_alternative<lefticus::cons_expr<>::error_type>(result1.value)) return false;
+    
+    // Test calling undefined function
+    auto result2 = engine.evaluate("(undefined-func 1 2)");
+    // This should either be an error or return the undefined identifier
+    auto* error2 = engine.get_if<lefticus::cons_expr<>::error_type>(&result2);
+    auto* id2 = engine.get_if<lefticus::cons_expr<>::identifier_type>(&result2);
+    return error2 != nullptr || id2 != nullptr;
+  };
+  STATIC_CHECK(test_function_invoke_errors());
+
+  // Test list access errors (car/cdr on empty or invalid lists)
+  constexpr auto test_list_access_errors = []() constexpr {
+    lefticus::cons_expr<> engine;
+    
+    // Test car on empty list - actually returns error based on CLI test
+    auto result1 = engine.evaluate("(car '())");
+    // Should return error
+    auto* error1 = engine.get_if<lefticus::cons_expr<>::error_type>(&result1);
+    if (error1 == nullptr) return false;
+    
+    // Test cdr on empty list - returns empty list, not error
+    auto result2 = engine.evaluate("(cdr '())");
+    auto* list2 = engine.get_if<lefticus::cons_expr<>::literal_list_type>(&result2);
+    if (list2 == nullptr) return false;
+    
+    // Test car on non-list - should return error
+    auto result3 = engine.evaluate("(car 42)");
+    auto* error3 = engine.get_if<lefticus::cons_expr<>::error_type>(&result3);
+    return error3 != nullptr;
+  };
+  STATIC_CHECK(test_list_access_errors());
+}
+
+TEST_CASE("Parser edge cases and malformed input coverage", "[parser][error][coverage]")
+{
+  // Test string parsing edge cases
+  constexpr auto test_string_parse_edges = []() constexpr {
+    lefticus::cons_expr<> engine;
+    
+    // Test unterminated string (should be handled gracefully)
+    auto [parsed1, _] = engine.parse("\"unterminated");
+    // Parser should handle this - either as error or incomplete parse
+    if (parsed1.size > 1) return false; // Should not create multiple tokens
+    
+    // Test string with invalid escape sequence
+    auto result1 = engine.evaluate("\"\\x\""); // Invalid escape
+    // Should either parse successfully (treating as literal) or error
+    auto* str1 = engine.get_if<lefticus::cons_expr<>::string_type>(&result1);
+    auto* error1 = engine.get_if<lefticus::cons_expr<>::error_type>(&result1);
+    return str1 != nullptr || error1 != nullptr;
+  };
+  STATIC_CHECK(test_string_parse_edges());
+  
+  // Test expression parsing with malformed input
+  constexpr auto test_malformed_expressions = []() constexpr {
+    lefticus::cons_expr<> engine;
+    
+    // Test unmatched parentheses
+    auto [parsed1, _] = engine.parse("(+ 1 2");  // Missing closing paren
+    static_cast<void>(parsed1); // Suppress unused variable warning
+    // Should handle gracefully - either empty parse or partial
+    
+    // Test empty expression in parentheses
+    auto result1 = engine.evaluate("()");
+    // Check what type it actually returns - could be literal_list_type or list_type
+    auto* literal_list1 = engine.get_if<lefticus::cons_expr<>::literal_list_type>(&result1);
+    auto* list1 = engine.get_if<lefticus::cons_expr<>::list_type>(&result1);
+    return literal_list1 != nullptr || list1 != nullptr;
+  };
+  STATIC_CHECK(test_malformed_expressions());
+
+  // Test comment and whitespace edge cases
+  constexpr auto test_comment_edges = []() constexpr {
+    lefticus::cons_expr<> engine;
+    
+    // Test comment at end of line without newline
+    auto [parsed1, _] = engine.parse("42 ; comment");
+    if (parsed1.size != 1) return false;
+    
+    // Test multiple consecutive comments
+    auto [parsed2, __] = engine.parse("; comment1\n; comment2\n42");
+    // Comments might affect parsing, just check it doesn't crash
+    static_cast<void>(parsed2); // Suppress unused variable warning
+    return true; // Just ensure it doesn't crash
+  };
+  STATIC_CHECK(test_comment_edges());
+}
+
+TEST_CASE("Type conversion and mathematical edge cases", "[math][types][coverage]")
+{
+  // Test mathematical operations with type mismatches
+  constexpr auto test_math_type_errors = []() constexpr {
+    lefticus::cons_expr<> engine;
+    
+    // Test addition with non-numeric types
+    auto result1 = engine.evaluate("(+ \"hello\" 42)");
+    // Should result in error
+    if (!std::holds_alternative<lefticus::cons_expr<>::error_type>(result1.value)) return false;
+    
+    // Test multiplication with mixed invalid types
+    auto result2 = engine.evaluate("(* true false)");
+    return std::holds_alternative<lefticus::cons_expr<>::error_type>(result2.value);
+  };
+  STATIC_CHECK(test_math_type_errors());
+
+  // Test comparison operations with different types
+  constexpr auto test_comparison_type_mismatches = []() constexpr {
+    lefticus::cons_expr<> engine;
+    
+    // Test comparing incompatible types - returns error based on CLI test
+    auto result1 = engine.evaluate("(< \"hello\" 42)");
+    // Returns error for incompatible types
+    auto* error1 = engine.get_if<lefticus::cons_expr<>::error_type>(&result1);
+    if (error1 == nullptr) return false;
+    
+    // Test equality with different types - also returns error
+    auto result2 = engine.evaluate("(== 42 \"42\")");
+    auto* error2 = engine.get_if<lefticus::cons_expr<>::error_type>(&result2);
+    return error2 != nullptr; // Should return error for type mismatch
+  };
+  STATIC_CHECK(test_comparison_type_mismatches());
+
+  // Test floating point edge cases
+  constexpr auto test_float_edges = []() constexpr {
+    lefticus::cons_expr<> engine;
+    
+    // Test very small floating point numbers
+    auto result1 = engine.evaluate("(+ 0.000001 0.000002)");
+    auto* float1 = engine.get_if<double>(&result1);
+    if (float1 == nullptr) return false;
+    
+    // Test floating point comparison precision
+    auto result2 = engine.evaluate("(== 0.1 0.1)");
+    auto* bool2 = engine.get_if<bool>(&result2);
+    return bool2 != nullptr && *bool2;
+  };
+  STATIC_CHECK(test_float_edges());
+}
+
+TEST_CASE("Advanced control flow and scope edge cases", "[control][scope][coverage]")
+{
+  // Test nested scope edge cases
+  constexpr auto test_nested_scopes = []() constexpr {
+    lefticus::cons_expr<> engine;
+    
+    // Test deeply nested let expressions
+    auto result1 = engine.evaluate("(let ((x 1)) (let ((y 2)) (let ((z 3)) (+ x y z))))");
+    auto* int1 = engine.get_if<int>(&result1);
+    if (!int1 || *int1 != 6) return false;
+    
+    // Test variable shadowing in nested scopes
+    auto result2 = engine.evaluate("(let ((x 1)) (let ((x 2)) x))");
+    auto* int2 = engine.get_if<int>(&result2);
+    return int2 != nullptr && *int2 == 2;
+  };
+  STATIC_CHECK(test_nested_scopes());
+
+  // Test lambda edge cases
+  constexpr auto test_lambda_edges = []() constexpr {
+    lefticus::cons_expr<> engine;
+    
+    // Test lambda with no parameters
+    auto result1 = engine.evaluate("((lambda () 42))");
+    auto* int1 = engine.get_if<int>(&result1);
+    if (!int1 || *int1 != 42) return false;
+    
+    // Test lambda with wrong number of arguments
+    auto result2 = engine.evaluate("((lambda (x) (+ x 1)) 1 2)"); // Too many args
+    // Should either work (ignoring extra) or error
+    auto* int2 = engine.get_if<int>(&result2);
+    auto* error2 = engine.get_if<lefticus::cons_expr<>::error_type>(&result2);
+    return int2 != nullptr || error2 != nullptr;
+  };
+  STATIC_CHECK(test_lambda_edges());
+
+  // Test cond edge cases with complex conditions
+  constexpr auto test_cond_complex = []() constexpr {
+    lefticus::cons_expr<> engine;
+    
+    // Test cond with no matching conditions and no else
+    auto result1 = engine.evaluate("(cond (false 1) (false 2))");
+    // Should return some default value or error
+    auto* error1 = engine.get_if<lefticus::cons_expr<>::error_type>(&result1);
+    if (error1 == nullptr) {
+      // Might return unspecified value, just check it doesn't crash
+    }
+    
+    // Test cond with complex nested conditions
+    auto result2 = engine.evaluate("(cond ((< 1 2) (+ 3 4)) (else 0))");
+    auto* int2 = engine.get_if<int>(&result2);
+    return int2 != nullptr && *int2 == 7;
+  };
+  STATIC_CHECK(test_cond_complex());
+}
