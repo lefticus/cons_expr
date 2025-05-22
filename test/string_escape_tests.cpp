@@ -89,3 +89,26 @@ TEST_CASE("String escape edge cases", "[string][escape][edge]")
   // Test string with just an escaped character
   STATIC_CHECK(evaluate_expected<std::string_view>("\"\\n\"", "\n"));
 }
+
+// Branch Coverage Enhancement Tests - Missing String Cases
+
+TEST_CASE("String escape error conditions for coverage", "[string][escape][coverage]")
+{
+  constexpr auto test_unknown_escape = []() constexpr {
+    lefticus::cons_expr<> engine;
+    
+    // Test unknown escape character
+    auto bad_escape = engine.process_string_escapes("test\\q");
+    return std::holds_alternative<decltype(engine)::error_type>(bad_escape.value);
+  };
+  STATIC_CHECK(test_unknown_escape());
+  
+  constexpr auto test_unterminated_escape = []() constexpr {
+    lefticus::cons_expr<> engine;
+    
+    // Test unterminated escape (string ends with backslash)
+    auto unterminated = engine.process_string_escapes("test\\");
+    return std::holds_alternative<decltype(engine)::error_type>(unterminated.value);
+  };
+  STATIC_CHECK(test_unterminated_escape());
+}

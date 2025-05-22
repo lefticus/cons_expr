@@ -628,3 +628,44 @@ TEMPLATE_TEST_CASE("Floating point parsing", "[parser][numbers][edge]", float, d
   STATIC_CHECK(static_cast<TestType>(1.l) == lefticus::parse_number<TestType>(std::string_view("1.")).second);
 }
 // LCOV_EXCL_STOP
+
+// Branch Coverage Enhancement Tests - Only Missing Cases
+
+TEST_CASE("Missing number parsing edge cases", "[parser][coverage]")
+{
+  // Test lone minus sign - this specific case may not be covered
+  STATIC_CHECK(lefticus::parse_number<IntType>(std::string_view("-")).first == false);
+  
+  // Test lone plus sign 
+  STATIC_CHECK(lefticus::parse_number<IntType>(std::string_view("+")).first == false);
+}
+
+TEST_CASE("Missing token parsing edge cases", "[parser][coverage]")
+{
+  // Test carriage return + newline specifically
+  constexpr auto test_crlf = []() constexpr {
+    auto token = lefticus::next_token(std::string_view("\r\n   token"));
+    return token.parsed == "token";
+  };
+  STATIC_CHECK(test_crlf());
+  
+  // Test empty string input
+  constexpr auto test_empty = []() constexpr {
+    auto token = lefticus::next_token(std::string_view(""));
+    return token.parsed.empty();
+  };
+  STATIC_CHECK(test_empty());
+}
+
+TEST_CASE("Parser null pointer safety", "[parser][coverage]")
+{
+  constexpr auto test_null_safety = []() constexpr {
+    lefticus::cons_expr<> engine;
+    
+    // Test null pointer in get_if
+    const decltype(engine)::SExpr* null_ptr = nullptr;
+    auto result = engine.get_if<IntType>(null_ptr);
+    return result == nullptr;
+  };
+  STATIC_CHECK(test_null_safety());
+}

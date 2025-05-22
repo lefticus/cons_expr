@@ -1100,3 +1100,42 @@ TEST_CASE("for-each function without side effects", "[builtins][for-each]")
   // Test for-each with non-list argument (should error)
   STATIC_CHECK(evaluate_to<bool>("(error? (for-each (lambda (x) x) 42))") == true);
 }
+
+// Branch Coverage Enhancement Tests - SmallVector Overflow
+
+TEST_CASE("SmallVector overflow scenarios for coverage", "[utility][coverage]")
+{
+  constexpr auto test_values_overflow = []() constexpr {
+    // Create engine with smaller capacity for testing
+    lefticus::cons_expr<std::uint16_t, char, IntType, FloatType, 32, 32, 32> engine;
+    
+    // Test error state after exceeding capacity
+    for (int i = 0; i < 35; ++i) {  // Exceed capacity
+      engine.values.insert(engine.True);
+    }
+    return engine.values.error_state;
+  };
+  
+  STATIC_CHECK(test_values_overflow());
+  
+  constexpr auto test_strings_overflow = []() constexpr {
+    lefticus::cons_expr<std::uint16_t, char, IntType, FloatType, 32, 32, 32> engine;
+    
+    // Test string capacity overflow by adding many unique strings
+    for (int i = 0; i < 20; ++i) {
+      // Create unique strings to avoid deduplication
+      std::array<char, 30> buffer{};
+      for (std::size_t j = 0; j < 25; ++j) {
+        buffer[j] = static_cast<char>('a' + (static_cast<std::size_t>(i) + j) % 26);
+      }
+      std::string_view test_str{buffer.data(), 25};
+      engine.strings.insert(test_str);
+      if (engine.strings.error_state) {
+        return true;  // Successfully detected overflow
+      }
+    }
+    return false;  // Should have overflowed by now
+  };
+  
+  STATIC_CHECK(test_strings_overflow());
+}
