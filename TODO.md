@@ -873,3 +873,291 @@ A prioritized list of features for making cons_expr a practical embedded Scheme-
        return SExpr{Error{ContainerErrorCode::STRINGS_FULL}};
      }
      ```
+
+## Coverage Analysis
+
+### How to Run Branch Coverage Report
+
+The project has a pre-configured `build-coverage` directory for generating coverage reports. To run a branch coverage analysis:
+
+```bash
+# 1. Build the coverage-configured project (don't reconfigure!)
+cmake --build ./build-coverage
+
+# 2. Run all tests to generate coverage data
+cd ./build-coverage && ctest
+
+# 3. Generate branch coverage report for cons_expr.hpp
+cd /home/jason/cons_expr/build-coverage
+gcovr --txt-metric branch --filter ../include/cons_expr/cons_expr.hpp --gcov-ignore-errors=no_working_dir_found .
+```
+
+**Note**: The `--gcov-ignore-errors=no_working_dir_found` flag is needed to ignore errors from dependency coverage data (Catch2, etc.) that we don't need for our analysis.
+
+## Branch Coverage Tests to Add
+
+Based on coverage analysis showing 36% branch coverage for `include/cons_expr/cons_expr.hpp`, these specific test cases should be added to improve coverage to ~55-65%.
+
+**IMPORTANT**: All tests must use `STATIC_CHECK` and be constexpr-capable for compatibility with the `constexpr_tests` target. Follow existing test patterns in `constexpr_tests.cpp`.
+
+### 1. **SmallVector Overflow Tests** (Lines 187, 192) - **HIGH PRIORITY**
+**File**: `constexpr_tests.cpp`
+```cpp
+TEST_CASE("SmallVector overflow scenarios", "[utility]") {
+    constexpr auto test = []() constexpr {
+        // Create engine with smaller capacity for testing
+        cons_expr<32, char, int, double> engine;  // Reduced capacity
+        
+        // Test error state after exceeding capacity
+        for (int i = 0; i < 35; ++i) {  // Exceed capacity
+            engine.values.insert(engine.True);
+        }
+        return engine.values.error_state;
+    };
+    
+    STATIC_CHECK(test());
+    
+    constexpr auto test2 = []() constexpr {
+        cons_expr<32, char, int, double> engine;
+        
+        // Test string capacity overflow
+        for (int i = 0; i < 100; ++i) {
+            std::string_view test_str = "test_string_content";
+            engine.strings.insert(std::span{test_str.data(), test_str.size()});
+        }
+        return engine.strings.error_state;
+    };
+    
+    STATIC_CHECK(test2());
+}
+```
+
+### 2. **Number Parsing Edge Cases** (Lines 263, 283, 288, 296, 310, 319, 334, 343, 351) - **HIGH PRIORITY**
+**File**: `constexpr_tests.cpp`
+```cpp
+TEST_CASE("Number parsing edge cases", "[parser]") {
+    constexpr auto test_lone_minus = []() constexpr {
+        // Test lone minus sign
+        auto result = parse_number<int>("-");
+        return !result.first;  // Should fail parsing
+    };
+    STATIC_CHECK(test_lone_minus());
+    
+    constexpr auto test_scientific_notation = []() constexpr {
+        // Test 'e'/'E' notation variations
+        auto float_result = parse_number<double>("123e5");
+        return float_result.first && (float_result.second == 12300000.0);
+    };
+    STATIC_CHECK(test_scientific_notation());
+    
+    constexpr auto test_invalid_exponent = []() constexpr {
+        // Test invalid exponent characters
+        auto bad_exp = parse_number<double>("1.5eZ");
+        return !bad_exp.first;  // Should fail
+    };
+    STATIC_CHECK(test_invalid_exponent());
+    
+    constexpr auto test_incomplete_exponent = []() constexpr {
+        // Test incomplete exponent (starts but no digits)
+        auto incomplete_exp = parse_number<double>("1.5e");
+        return !incomplete_exp.first;  // Should fail
+    };
+    STATIC_CHECK(test_incomplete_exponent());
+    
+    constexpr auto test_negative_exponent = []() constexpr {
+        // Test negative exponent
+        auto neg_exp = parse_number<double>("1.5e-2");
+        return neg_exp.first && (neg_exp.second == 0.015);
+    };
+    STATIC_CHECK(test_negative_exponent());
+}
+```
+
+### 3. **Parser Null Pointer Handling** (Lines 601, 639, 651) - **HIGH PRIORITY**
+**File**: `constexpr_tests.cpp`
+```cpp
+TEST_CASE("Parser safety edge cases", "[parser]") {
+    constexpr auto test_null_pointer = []() constexpr {
+        cons_expr<> engine;
+        
+        // Test null sexpr in get_if
+        const decltype(engine)::SExpr* null_ptr = nullptr;
+        auto result = engine.get_if<int>(null_ptr);
+        return result == nullptr;
+    };
+    STATIC_CHECK(test_null_pointer());
+    
+    constexpr auto test_unterminated_string = []() constexpr {
+        cons_expr<> engine;
+        
+        // Test unterminated string in parser
+        auto [parsed, remaining] = engine.parse("\"unterminated");
+        if (parsed.size == 0) return false;
+        
+        auto& first_expr = engine.values[parsed[0]];
+        return std::holds_alternative<decltype(engine)::error_type>(first_expr.value);
+    };
+    STATIC_CHECK(test_unterminated_string());
+}
+```
+
+### 4. **Token Parsing Edge Cases** (Lines 367, 372, 389, 392, 410, 415, 417) - **MEDIUM PRIORITY**
+**File**: `constexpr_tests.cpp`
+```cpp
+TEST_CASE("Token parsing edge cases", "[parser]") {
+    constexpr auto test_line_endings = []() constexpr {
+        // Test end-of-line characters
+        auto token1 = next_token("\r\n   token");
+        return token1.parsed == "token";
+    };
+    STATIC_CHECK(test_line_endings());
+    
+    constexpr auto test_quote_character = []() constexpr {
+        // Test quote character
+        auto token2 = next_token("'symbol");
+        return token2.parsed == "'";
+    };
+    STATIC_CHECK(test_quote_character());
+    
+    constexpr auto test_parentheses = []() constexpr {
+        // Test parentheses
+        auto token3 = next_token(")rest");
+        return token3.parsed == ")";
+    };
+    STATIC_CHECK(test_parentheses());
+    
+    constexpr auto test_unterminated_string_token = []() constexpr {
+        // Test unterminated string
+        auto token4 = next_token("\"unterminated string");
+        return token4.parsed == "\"unterminated string";
+    };
+    STATIC_CHECK(test_unterminated_string_token());
+    
+    constexpr auto test_empty_token = []() constexpr {
+        // Test empty token at end
+        auto token5 = next_token("");
+        return token5.parsed.empty();
+    };
+    STATIC_CHECK(test_empty_token());
+}
+```
+
+### 5. **String Escape Processing** (Lines 494, 538, 548) - **MEDIUM PRIORITY**
+**File**: `constexpr_tests.cpp`
+```cpp
+TEST_CASE("String escape edge cases", "[strings]") {
+    constexpr auto test_error_equality = []() constexpr {
+        cons_expr<> engine;
+        
+        // Test error type equality comparison
+        auto error1 = engine.make_error("test error", engine.empty_indexed_list);
+        auto error2 = engine.make_error("test error", engine.empty_indexed_list);
+        auto err1 = std::get<decltype(engine)::error_type>(error1.value);
+        auto err2 = std::get<decltype(engine)::error_type>(error2.value);
+        return err1 == err2;
+    };
+    STATIC_CHECK(test_error_equality());
+    
+    constexpr auto test_unknown_escape = []() constexpr {
+        cons_expr<> engine;
+        
+        // Test unknown escape character
+        auto bad_escape = engine.process_string_escapes("test\\q");
+        return std::holds_alternative<decltype(engine)::error_type>(bad_escape.value);
+    };
+    STATIC_CHECK(test_unknown_escape());
+    
+    constexpr auto test_unterminated_escape = []() constexpr {
+        cons_expr<> engine;
+        
+        // Test unterminated escape (string ends with backslash)
+        auto unterminated = engine.process_string_escapes("test\\");
+        return std::holds_alternative<decltype(engine)::error_type>(unterminated.value);
+    };
+    STATIC_CHECK(test_unterminated_escape());
+}
+```
+
+### 6. **Quote Depth Handling** (Lines 745, 754, 762-773) - **MEDIUM PRIORITY**
+**File**: `constexpr_tests.cpp`
+```cpp
+TEST_CASE("Quote depth handling", "[parser]") {
+    constexpr auto test_multiple_quotes = []() constexpr {
+        cons_expr<> engine;
+        
+        // Test multiple quote levels
+        auto [parsed, _] = engine.parse("'''symbol");
+        return parsed.size == 1;
+    };
+    STATIC_CHECK(test_multiple_quotes());
+    
+    constexpr auto test_quote_booleans = []() constexpr {
+        cons_expr<> engine;
+        
+        // Test quote with different token types
+        auto [parsed2, _2] = engine.parse("'true");
+        auto [parsed3, _3] = engine.parse("'false");
+        return parsed2.size == 1 && parsed3.size == 1;
+    };
+    STATIC_CHECK(test_quote_booleans());
+    
+    constexpr auto test_quote_literals = []() constexpr {
+        cons_expr<> engine;
+        
+        // Test quote with strings, numbers
+        auto [parsed4, _4] = engine.parse("'\"hello\"");
+        auto [parsed5, _5] = engine.parse("'123");
+        auto [parsed6, _6] = engine.parse("'123.45");
+        return parsed4.size == 1 && parsed5.size == 1 && parsed6.size == 1;
+    };
+    STATIC_CHECK(test_quote_literals());
+}
+```
+
+### 7. **Error Propagation** (Lines 779, 780, 784-796) - **LOWER PRIORITY**
+**File**: `constexpr_tests.cpp`
+```cpp
+TEST_CASE("Float vs int parsing priority", "[parser]") {
+    constexpr auto test_float_parsing = []() constexpr {
+        cons_expr<> engine;
+        
+        // Test case where int parsing fails but float parsing succeeds
+        auto [parsed, _] = engine.parse("123.456");
+        if (parsed.size == 0) return false;
+        
+        auto& expr = engine.values[parsed[0]];
+        auto* atom = std::get_if<decltype(engine)::Atom>(&expr.value);
+        if (atom == nullptr) return false;
+        
+        return std::holds_alternative<double>(*atom);
+    };
+    STATIC_CHECK(test_float_parsing());
+    
+    constexpr auto test_identifier_fallback = []() constexpr {
+        cons_expr<> engine;
+        
+        // Test case where both int and float parsing fail
+        auto [parsed2, _2] = engine.parse("not_a_number");
+        if (parsed2.size == 0) return false;
+        
+        auto& expr2 = engine.values[parsed2[0]];
+        auto* atom2 = std::get_if<decltype(engine)::Atom>(&expr2.value);
+        if (atom2 == nullptr) return false;
+        
+        return std::holds_alternative<decltype(engine)::identifier_type>(*atom2);
+    };
+    STATIC_CHECK(test_identifier_fallback());
+}
+```
+
+### **Implementation Priority & Expected Impact**:
+1. **Phase 1**: SmallVector overflow + Number parsing + Null pointer handling (should get coverage to ~48-52%)
+2. **Phase 2**: Token parsing + String escape processing (should get coverage to ~52-58%)  
+3. **Phase 3**: Quote depth + Error propagation (should get coverage to ~55-65%)
+
+### **Test Organization**:
+- **ALL tests must be added to the `constexpr_tests` target** and use `STATIC_CHECK` patterns
+- Tests can be added to existing test files or new test files as appropriate
+- Tests must be evaluable at compile-time to work with the `constexpr_tests` target
+- Follow the existing patterns in the constexpr test files for consistency
+- Use reduced template parameters (e.g., `cons_expr<32, char, int, double>`) for overflow testing
