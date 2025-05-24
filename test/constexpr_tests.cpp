@@ -1723,10 +1723,10 @@ TEST_CASE("Error path and edge case coverage targeting specific uncovered branch
     auto* error1 = engine.get_if<lefticus::cons_expr<>::error_type>(&result1);
     if (error1 == nullptr) return false;
     
-    // Test cdr on empty list - returns empty list, not error
+    // Test cdr on empty list - now returns error (consistent with car)
     auto result2 = engine.evaluate("(cdr '())");
-    auto* list2 = engine.get_if<lefticus::cons_expr<>::literal_list_type>(&result2);
-    if (list2 == nullptr) return false;
+    auto* error2 = engine.get_if<lefticus::cons_expr<>::error_type>(&result2);
+    if (error2 == nullptr) return false;
     
     // Test car on non-list - should return error
     auto result3 = engine.evaluate("(car 42)");

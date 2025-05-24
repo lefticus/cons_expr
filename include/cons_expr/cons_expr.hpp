@@ -1324,18 +1324,24 @@ struct cons_expr
 
   // (cdr '(1 2 3)) -> '(2 3)
   // (cdr '(1)) -> '()
+  // (cdr '()) -> ERROR
   [[nodiscard]] static constexpr SExpr cdr(cons_expr &engine, LexicalScope &scope, list_type params)
   {
     return error_or_else(
       engine.eval_to<literal_list_type>(scope, params, str("(cdr LiteralList)")), [&](const auto &list) {
-        // If the list has one or zero elements, return empty list
-        if (list.items.size <= 1) { return SExpr{ literal_list_type{ empty_indexed_list } }; }
+        // Check if the list is empty
+        if (list.items.size == 0) {
+          return engine.make_error(str("cdr: cannot take cdr of empty list"), params);
+        }
+        // If the list has one element, return empty list
+        if (list.items.size == 1) { return SExpr{ literal_list_type{ empty_indexed_list } }; }
         return SExpr{ list.sublist(1) };
       });
   }
 
   // (car '(1 2 3)) -> 1
   // (car '((a b) c)) -> '(a b)
+  // (car '()) -> ERROR
   [[nodiscard]] static constexpr SExpr car(cons_expr &engine, LexicalScope &scope, list_type params)
   {
     return error_or_else(

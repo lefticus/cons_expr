@@ -43,6 +43,29 @@ TEST_CASE("Error handling in diverse contexts", "[error]")
   STATIC_CHECK(is_error("(42 1 2 3)")); // Invalid function call
 }
 
+TEST_CASE("List bounds checking and error conditions", "[error][list]")
+{
+  // Test car on empty list
+  STATIC_CHECK(is_error("(car '())"));
+  STATIC_CHECK(evaluate_to<bool>("(error? (car '()))") == true);
+  
+  // Test cdr on empty list (now also returns error)
+  STATIC_CHECK(is_error("(cdr '())"));
+  STATIC_CHECK(evaluate_to<bool>("(error? (cdr '()))") == true);
+  
+  // Test car on non-list types
+  STATIC_CHECK(is_error("(car 42)"));
+  STATIC_CHECK(is_error("(car \"string\")"));
+  STATIC_CHECK(is_error("(car true)"));
+  STATIC_CHECK(is_error("(car 'symbol)")); // symbols are not lists
+  
+  // Test cdr on non-list types
+  STATIC_CHECK(is_error("(cdr 42)"));
+  STATIC_CHECK(is_error("(cdr \"string\")"));
+  STATIC_CHECK(is_error("(cdr true)"));
+  STATIC_CHECK(is_error("(cdr 'symbol)")); // symbols are not lists
+}
+
 TEST_CASE("Type mismatch error handling", "[error][type]")
 {
   // Test different type mismatches
