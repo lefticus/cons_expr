@@ -1897,3 +1897,269 @@ TEST_CASE("Advanced control flow and scope edge cases", "[control][scope][covera
   };
   STATIC_CHECK(test_cond_complex());
 }
+
+TEST_CASE("Branch coverage improvement - SmallVector and error paths", "[coverage][utility]")
+{
+  // Test SmallVector error state when exceeding capacity (lines 187, 192, 196)
+  constexpr auto test_smallvector_overflow = []() constexpr {
+    lefticus::SmallVector<std::uint8_t, int, 3, int> vec; // Small capacity
+    vec.insert(1);
+    vec.insert(2);
+    vec.insert(3);
+    auto idx = vec.insert(4); // This should set error_state
+    return vec.error_state && idx == 3; // Should return last valid index
+  };
+  STATIC_CHECK(test_smallvector_overflow());
+  
+  // Test resize with size > capacity (line 187)
+  constexpr auto test_resize_overflow = []() constexpr {
+    lefticus::SmallVector<std::uint8_t, int, 5, int> vec;
+    vec.resize(10); // Exceeds capacity
+    return vec.error_state && vec.size() == 5; // Size capped at capacity
+  };
+  STATIC_CHECK(test_resize_overflow());
+}
+
+TEST_CASE("Branch coverage - Number parsing edge cases", "[coverage][parser]")
+{
+  // Test parse_number edge cases for lines 263, 283, 288, 296, 310, 319, 334, 343, 351
+  constexpr auto test_number_parsing = []() constexpr {
+    // Test lone minus (line 263)
+    auto r1 = lefticus::parse_number<int, char>("-");
+    if (r1.first) return false;
+    
+    // Test scientific notation with 'e' and 'E' (lines 310, 319)
+    auto r2 = lefticus::parse_number<double, char>("1.5e10");
+    if (!r2.first) return false;
+    
+    auto r3 = lefticus::parse_number<double, char>("1.5E10");
+    if (!r3.first) return false;
+    
+    // Test negative exponent (line 343)
+    auto r4 = lefticus::parse_number<double, char>("1.5e-2");
+    if (!r4.first || r4.second != 0.015) return false;
+    
+    // Test invalid exponent character (line 334)
+    auto r5 = lefticus::parse_number<double, char>("1.5ex");
+    if (r5.first) return false;
+    
+    // Test incomplete exponent (line 351)
+    auto r6 = lefticus::parse_number<double, char>("1.5e");
+    if (r6.first) return false;
+    
+    // Test decimal starting with dot (line 301 in original)
+    auto r7 = lefticus::parse_number<double, char>(".5");
+    if (!r7.first || r7.second != 0.5) return false;
+    
+    return true;
+  };
+  STATIC_CHECK(test_number_parsing());
+}
+
+TEST_CASE("Branch coverage - Token parsing edge cases", "[coverage][parser]")
+{
+  // Test next_token edge cases (lines 372, 389, 392, 410, 415, 417)
+  constexpr auto test_token_parsing = []() constexpr {
+    // Test CR/LF handling (line 372)
+    auto t1 = lefticus::next_token<char>("\r\ntest");
+    if (t1.parsed != "test") return false;
+    
+    auto t2 = lefticus::next_token<char>("\r test");
+    if (t2.parsed != "test") return false;
+    
+    // Test quote character (line 392)
+    auto t3 = lefticus::next_token<char>("'symbol");
+    if (t3.parsed != "'" || t3.remaining != "symbol") return false;
+    
+    // Test parentheses (lines 389, 410)
+    auto t4 = lefticus::next_token<char>("(test)");
+    if (t4.parsed != "(" || t4.remaining != "test)") return false;
+    
+    auto t5 = lefticus::next_token<char>(")rest");
+    if (t5.parsed != ")" || t5.remaining != "rest") return false;
+    
+    // Test unterminated string (line 415)
+    auto t6 = lefticus::next_token<char>("\"unterminated");
+    if (t6.parsed != "\"unterminated" || !t6.remaining.empty()) return false;
+    
+    // Test empty input (line 417)
+    auto t7 = lefticus::next_token<char>("");
+    return t7.parsed.empty() && t7.remaining.empty();
+  };
+  STATIC_CHECK(test_token_parsing());
+}
+
+TEST_CASE("Branch coverage - String escape sequences", "[coverage][strings]")
+{
+  // Test process_string_escapes edge cases (lines 538, 548)
+  constexpr auto test_escapes = []() constexpr {
+    lefticus::cons_expr<> engine;
+    
+    // Test unterminated escape (line 548)
+    auto r1 = engine.process_string_escapes("test\\");
+    auto* e1 = engine.get_if<lefticus::cons_expr<>::error_type>(&r1);
+    if (e1 == nullptr) return false;
+    
+    // Test unknown escape char (line 538)
+    auto r2 = engine.process_string_escapes("test\\q");
+    auto* e2 = engine.get_if<lefticus::cons_expr<>::error_type>(&r2);
+    if (e2 == nullptr) return false;
+    
+    // Test valid escapes
+    auto r3 = engine.process_string_escapes("\\n\\t\\r\\\"\\\\");
+    auto* s3 = engine.get_if<lefticus::cons_expr<>::string_type>(&r3);
+    return s3 != nullptr;
+  };
+  STATIC_CHECK(test_escapes());
+}
+
+TEST_CASE("Branch coverage - Error type operations", "[coverage][error]")
+{
+  // Test Error equality operator (line 494)
+  constexpr auto test_error_ops = []() constexpr {
+    using Error = lefticus::Error<std::uint16_t>;
+    lefticus::IndexedString<std::uint16_t> msg1{0, 10};
+    lefticus::IndexedString<std::uint16_t> msg2{0, 10};
+    lefticus::IndexedList<std::uint16_t> list1{0, 5};
+    lefticus::IndexedList<std::uint16_t> list2{0, 5};
+    
+    Error e1{msg1, list1};
+    Error e2{msg2, list2};
+    Error e3{msg1, lefticus::IndexedList<std::uint16_t>{1, 5}};
+    
+    return e1 == e2 && !(e1 == e3);
+  };
+  STATIC_CHECK(test_error_ops());
+}
+
+TEST_CASE("Branch coverage - Fix identifiers edge cases", "[coverage][parser]")
+{
+  // Test fix_identifiers branches (lines 1175-1180, 1191, 1196)
+  constexpr auto test_fix_identifiers = []() constexpr {
+    lefticus::cons_expr<> engine;
+    
+    // Test lambda identifier fixing
+    auto r1 = engine.evaluate("(lambda (x) (+ x 1))");
+    auto* closure1 = engine.get_if<lefticus::cons_expr<>::Closure>(&r1);
+    if (closure1 == nullptr) return false;
+    
+    // Test let identifier fixing  
+    auto r2 = engine.evaluate("(let ((x 5)) x)");
+    auto* int2 = engine.get_if<int>(&r2);
+    if (int2 == nullptr || *int2 != 5) return false;
+    
+    // Test define identifier fixing
+    auto r3 = engine.evaluate("(define foo 42) foo");
+    auto* int3 = engine.get_if<int>(&r3);
+    return int3 != nullptr && *int3 == 42;
+  };
+  STATIC_CHECK(test_fix_identifiers());
+}
+
+TEST_CASE("Division operator and edge cases", "[division]") {
+  SECTION("Basic division") {
+    STATIC_CHECK(evaluate_to<IntType>("(/ 10 2)") == 5);
+    STATIC_CHECK(evaluate_to<IntType>("(/ 100 5)") == 20);
+    STATIC_CHECK(evaluate_to<IntType>("(/ -10 2)") == -5);
+  }
+  
+  SECTION("Floating point division") {
+    STATIC_CHECK(evaluate_to<FloatType>("(/ 10.0 2.0)") == 5.0);
+    STATIC_CHECK(evaluate_to<FloatType>("(/ 1.0 3.0)") == 1.0/3.0);
+  }
+  
+}
+
+TEST_CASE("Advanced number parsing edge cases", "[parsing]") {
+  SECTION("Lone minus sign") {
+    STATIC_CHECK(evaluate_to<bool>("(error? (-))") == true);
+  }
+  
+  SECTION("Scientific notation with negative exponent") {
+    STATIC_CHECK(evaluate_to<FloatType>("1e-3") == 0.001);
+    STATIC_CHECK(evaluate_to<FloatType>("2.5e-2") == 0.025);
+  }
+  
+  SECTION("Invalid number formats") {
+    STATIC_CHECK(evaluate_to<bool>("(error? 1e)") == true);
+    STATIC_CHECK(evaluate_to<bool>("(error? 1.2.3)") == true);
+  }
+}
+
+TEST_CASE("Quote handling in various contexts", "[quotes]") {
+  SECTION("Nested quotes") {
+    constexpr auto test_nested_quotes = []() {
+      // ''x evaluates to '(quote x) which is (quote (quote x))
+      return evaluate_to<bool>("(list? ''x)") == true;
+    };
+    STATIC_CHECK(test_nested_quotes());
+  }
+  
+  SECTION("Quote with boolean literals") {
+    constexpr auto test_quote_booleans = []() {
+      return evaluate_to<bool>("(list? 'true)") == false && 
+             evaluate_to<bool>("(list? 'false)") == false ;
+    };
+    STATIC_CHECK(test_quote_booleans());
+  }
+  
+  SECTION("Quote with strings") {
+    constexpr auto test_quote_strings = []() {
+      return evaluate_to<bool>("(list? '\"hello\")") == false;
+    };
+    STATIC_CHECK(test_quote_strings());
+  }
+}
+
+TEST_CASE("String escape sequence comprehensive tests", "[strings]") {
+  SECTION("All escape sequences") {
+    STATIC_CHECK(evaluate_expected<std::string_view>(R"("\"")", "\""));
+    STATIC_CHECK(evaluate_expected<std::string_view>(R"("\\")", "\\"));
+    STATIC_CHECK(evaluate_expected<std::string_view>(R"("\n")", "\n"));
+    STATIC_CHECK(evaluate_expected<std::string_view>(R"("\t")", "\t"));
+    STATIC_CHECK(evaluate_expected<std::string_view>(R"("\r")", "\r"));
+    STATIC_CHECK(evaluate_expected<std::string_view>(R"("\f")", "\f"));
+    STATIC_CHECK(evaluate_expected<std::string_view>(R"("\b")", "\b"));
+  }
+  
+  SECTION("Invalid escape sequences") {
+    STATIC_CHECK(evaluate_to<bool>(R"((error? "\x"))") == true);
+    STATIC_CHECK(evaluate_to<bool>(R"((error? "\"))") == true);
+  }
+}
+
+TEST_CASE("Closure operations and edge cases", "[closures]") {
+  SECTION("Closure equality") {
+    constexpr auto test_closure_equality = []() {
+      lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> engine;
+      [[maybe_unused]] auto r1 = engine.evaluate("(define f (lambda (x) x))");
+      [[maybe_unused]] auto r2 = engine.evaluate("(define g (lambda (x) x))");
+      auto result = engine.evaluate("(== f g)");
+      auto* bool_ptr = engine.get_if<bool>(&result);
+      return bool_ptr != nullptr && *bool_ptr == false;
+    };
+    STATIC_CHECK(test_closure_equality());
+
+    constexpr auto test_closure_equality_2 = []() {
+      lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> engine;
+      [[maybe_unused]] auto r1 = engine.evaluate("(define f (lambda (x) x))");
+      auto result = engine.evaluate("(== f f)");
+      auto* bool_ptr = engine.get_if<bool>(&result);
+      return bool_ptr != nullptr && *bool_ptr == true;
+    };
+    STATIC_CHECK(test_closure_equality_2());
+   }
+}
+
+TEST_CASE("Whitespace and token parsing edge cases", "[tokenization]") {
+  SECTION("CR/LF combinations") {
+    STATIC_CHECK(evaluate_to<IntType>("(+\r\n1\r\n2)") == 3);
+  }
+  
+  SECTION("Mixed parentheses and quotes") {
+    constexpr auto test_quote_parens = []() {
+      return evaluate_to<bool>("(list? '())") == true;
+    };
+    STATIC_CHECK(test_quote_parens());
+  }
+}

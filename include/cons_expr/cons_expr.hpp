@@ -694,6 +694,7 @@ struct cons_expr
       // TODO set up tail call elimination for last element of the sequence being evaluated?
       return engine.sequence(param_scope, statements);
     }
+
   };
 
   // Process escape sequences in a string literal
@@ -1641,10 +1642,11 @@ struct cons_expr
     if (params.size < 2) { return engine.make_error(str("at least 2 parameters"), params); }
     auto first_param = engine.eval(scope, engine.values[params[0]]).value;
 
-    // For working directly on "LiteralList" objects
     if (const auto *list = std::get_if<literal_list_type>(&first_param); list != nullptr) { return sum(*list); }
+    if (const auto *closure = std::get_if<Closure>(&first_param); closure != nullptr) { return sum(*closure); }
 
     if (const auto *atom = std::get_if<Atom>(&first_param); atom != nullptr) { return visit(sum, *atom); }
+
 
     return engine.make_error(str("supported types"), params);
   }
