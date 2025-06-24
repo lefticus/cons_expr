@@ -50,9 +50,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
     }
 
     globals.clear();
-    for (std::size_t index = 0; auto [key, value] : evaluator.global_scope[{ 0, evaluator.global_scope.size() }]) {
+    for (auto [key, value] : evaluator.global_scope[{ 0, evaluator.global_scope.size() }]) {
       globals.push_back(std::format("{}: '{}'", to_string(evaluator, false, key), to_string(evaluator, true, value)));
-      ++index;
     }
   };
 

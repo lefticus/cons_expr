@@ -1539,7 +1539,7 @@ struct cons_expr
   [[nodiscard]] constexpr auto make_callable(SExpr callable) noexcept
     requires std::is_function_v<Signature>
   {
-    auto impl = [this, callable]<typename Ret, typename... Params>(Ret (*)(Params...)) {
+    auto impl = [callable]<typename Ret, typename... Params>(Ret (*)(Params...)) {
       return [callable](cons_expr &engine, Params... params) {
         std::array<SExpr, sizeof...(Params)> args{ SExpr{ Atom{ params } }... };
         if constexpr (std::is_same_v<void, Ret>) {

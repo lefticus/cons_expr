@@ -19,7 +19,7 @@ auto evaluate(std::string_view input)
 
 template<typename Result> Result evaluate_to(std::string_view input)
 {
-  return std::get<Result>(std::get<lefticus::cons_expr<>::Atom>(evaluate(input).value));
+  return std::get<Result>(std::get<cons_expr_type::Atom>(evaluate(input).value));
 }
 
 int main()
