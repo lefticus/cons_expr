@@ -37,7 +37,6 @@ TEST_CASE("Recursive lambda passed to another lambda", "[recursion][closure]")
 }
 
 
-
 TEST_CASE("Deep recursive function with closure", "[recursion][closure]")
 {
   STATIC_CHECK(evaluate_to<int>(R"(
@@ -69,7 +68,7 @@ TEST_CASE("Closure with self-reference error handling", "[recursion][closure][er
     
     (factorial 5 10) ; Too many arguments
   )");
-  
+
   REQUIRE(std::holds_alternative<lefticus::Error<std::uint16_t>>(result.value));
 }
 
@@ -85,13 +84,13 @@ TEST_CASE("Complex nested scoping scenarios", "[recursion][closure][scoping]")
     (define add10 (make-adder 10))
     
     (+ (add5 3) (add10 7))
-  )") == 25); // (5+3) + (10+7)
-  
+  )") == 25);// (5+3) + (10+7)
+
   // More complex nesting with let and lambda
   STATIC_CHECK(evaluate_to<int>(R"(
     (let ((x 10))
       (let ((f (lambda (y) (+ x y))))
         (let ((x 20)) ; This x should not affect the closure
           (f 5))))
-  )") == 15); // 10 + 5, not 20 + 5
+  )") == 15);// 10 + 5, not 20 + 5
 }

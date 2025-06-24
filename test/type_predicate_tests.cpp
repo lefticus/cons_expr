@@ -27,23 +27,23 @@ TEST_CASE("Basic type predicates", "[types][predicates]")
   STATIC_CHECK(evaluate_to<bool>("(integer? 3.14)") == false);
   STATIC_CHECK(evaluate_to<bool>("(integer? \"hello\")") == false);
   STATIC_CHECK(evaluate_to<bool>("(integer? '(1 2 3))") == false);
-  
+
   // real?
   STATIC_CHECK(evaluate_to<bool>("(real? 3.14)") == true);
   STATIC_CHECK(evaluate_to<bool>("(real? 42)") == false);
   STATIC_CHECK(evaluate_to<bool>("(real? \"hello\")") == false);
-  
+
   // string?
   STATIC_CHECK(evaluate_to<bool>("(string? \"hello\")") == true);
   STATIC_CHECK(evaluate_to<bool>("(string? 42)") == false);
   STATIC_CHECK(evaluate_to<bool>("(string? 3.14)") == false);
-  
+
   // boolean?
   STATIC_CHECK(evaluate_to<bool>("(boolean? true)") == true);
   STATIC_CHECK(evaluate_to<bool>("(boolean? false)") == true);
   STATIC_CHECK(evaluate_to<bool>("(boolean? 42)") == false);
   STATIC_CHECK(evaluate_to<bool>("(boolean? \"true\")") == false);
-  
+
   // symbol?
   STATIC_CHECK(evaluate_to<bool>("(symbol? 'abc)") == true);
   STATIC_CHECK(evaluate_to<bool>("(symbol? \"abc\")") == false);
@@ -57,20 +57,20 @@ TEST_CASE("Composite type predicates", "[types][predicates]")
   STATIC_CHECK(evaluate_to<bool>("(number? 3.14)") == true);
   STATIC_CHECK(evaluate_to<bool>("(number? \"42\")") == false);
   STATIC_CHECK(evaluate_to<bool>("(number? '(1 2 3))") == false);
-  
+
   // list?
   STATIC_CHECK(evaluate_to<bool>("(list? '())") == true);
   STATIC_CHECK(evaluate_to<bool>("(list? '(1 2 3))") == true);
   STATIC_CHECK(evaluate_to<bool>("(list? (list 1 2 3))") == true);
   STATIC_CHECK(evaluate_to<bool>("(list? 42)") == false);
   STATIC_CHECK(evaluate_to<bool>("(list? \"hello\")") == false);
-  
+
   // procedure?
   STATIC_CHECK(evaluate_to<bool>("(procedure? (lambda (x) x))") == true);
   STATIC_CHECK(evaluate_to<bool>("(procedure? +)") == true);
   STATIC_CHECK(evaluate_to<bool>("(procedure? 42)") == false);
   STATIC_CHECK(evaluate_to<bool>("(procedure? '(1 2 3))") == false);
-  
+
   // atom?
   STATIC_CHECK(evaluate_to<bool>("(atom? 42)") == true);
   STATIC_CHECK(evaluate_to<bool>("(atom? \"hello\")") == true);
@@ -88,13 +88,13 @@ TEST_CASE("Type predicates in expressions", "[types][predicates]")
         1 
         0)
   )") == 1);
-  
+
   STATIC_CHECK(evaluate_to<int>(R"(
     (if (string? 42) 
         1 
         0)
   )") == 0);
-  
+
   // Using predicates in lambda functions
   STATIC_CHECK(evaluate_to<bool>(R"(
     (define type-checker
@@ -106,7 +106,7 @@ TEST_CASE("Type predicates in expressions", "[types][predicates]")
     
     (type-checker 42)
   )") == true);
-  
+
   STATIC_CHECK(evaluate_to<bool>(R"(
     (define type-checker
       (lambda (x)

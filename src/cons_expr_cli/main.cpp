@@ -1,9 +1,9 @@
 
 #include <CLI/CLI.hpp>
-#include <format>
-#include <spdlog/spdlog.h>
-#include <fstream>
 #include <filesystem>
+#include <format>
+#include <fstream>
+#include <spdlog/spdlog.h>
 #include <sstream>
 
 #include <cons_expr/cons_expr.hpp>
@@ -17,16 +17,13 @@ namespace fs = std::filesystem;
 void display(cons_expr_type::int_type i) { std::cout << i << '\n'; }
 
 // Read a file into a string
-std::string read_file(const fs::path& path) {
-  if (!fs::exists(path)) {
-    throw std::runtime_error(std::format("File not found: {}", path.string()));
-  }
-  
+std::string read_file(const fs::path &path)
+{
+  if (!fs::exists(path)) { throw std::runtime_error(std::format("File not found: {}", path.string())); }
+
   std::ifstream file(path, std::ios::in | std::ios::binary);
-  if (!file) {
-    throw std::runtime_error(std::format("Failed to open file: {}", path.string()));
-  }
-  
+  if (!file) { throw std::runtime_error(std::format("Failed to open file: {}", path.string())); }
+
   std::stringstream buffer;
   buffer << file.rdbuf();
   return buffer.str();
@@ -58,38 +55,34 @@ int main(int argc, const char **argv)
     // Process script from command line
     if (script) {
       std::cout << "Executing script from command line...\n";
-      std::cout << lefticus::to_string(evaluator,
-        false,
-        evaluator.sequence(
-          evaluator.global_scope, evaluator.parse(*script).first));
+      std::cout << lefticus::to_string(
+        evaluator, false, evaluator.sequence(evaluator.global_scope, evaluator.parse(*script).first));
       std::cout << '\n';
     }
-    
+
     // Process script from file
     if (file_path) {
       try {
         std::cout << "Executing script from file: " << *file_path << '\n';
         std::string file_content = read_file(fs::path(*file_path));
-        
+
         auto [parse_result, remaining] = evaluator.parse(file_content);
         auto result = evaluator.sequence(evaluator.global_scope, parse_result);
-        
+
         std::cout << "Result: " << lefticus::to_string(evaluator, false, result) << '\n';
-      } catch (const std::exception& e) {
+      } catch (const std::exception &e) {
         spdlog::error("Error processing file '{}': {}", *file_path, e.what());
         return EXIT_FAILURE;
       }
     }
-    
+
     // If no script or file provided, display usage
-    if (!script && !file_path) {
-      std::cout << app.help() << '\n';
-    }
-    
+    if (!script && !file_path) { std::cout << app.help() << '\n'; }
+
   } catch (const std::exception &e) {
     spdlog::error("Unhandled exception in main: {}", e.what());
     return EXIT_FAILURE;
   }
-  
+
   return EXIT_SUCCESS;
 }

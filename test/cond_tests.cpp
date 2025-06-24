@@ -36,14 +36,14 @@ TEST_CASE("Cond expression basic usage", "[cond]")
       ((< 5 10) 1)
       (else 2))
   )") == 1);
-  
+
   // Basic cond with else clause
   STATIC_CHECK(evaluate_to<int>(R"(
     (cond 
       ((> 5 10) 1)
       (else 2))
   )") == 2);
-  
+
   // Cond with multiple conditions
   STATIC_CHECK(evaluate_to<int>(R"(
     (cond 
@@ -51,7 +51,7 @@ TEST_CASE("Cond expression basic usage", "[cond]")
       ((< 5 10) 2)
       (else 3))
   )") == 2);
-  
+
   // Cond with multiple conditions, evaluating last one
   STATIC_CHECK(evaluate_to<int>(R"(
     (cond 
@@ -70,14 +70,14 @@ TEST_CASE("Cond with complex expressions", "[cond]")
       ((> (+ 2 3) (* 2 3)) 2)
       (else 3))
   )") == 1);
-  
+
   // Cond with expressions in results
   STATIC_CHECK(evaluate_to<int>(R"(
     (cond 
       ((< 5 10) (+ 1 2))
       (else (- 10 5)))
   )") == 3);
-  
+
   // Nested cond expressions
   STATIC_CHECK(evaluate_to<int>(R"(
     (cond 
@@ -96,7 +96,7 @@ TEST_CASE("Cond without else clause", "[cond]")
       ((> 5 10) 1)
       ((< 5 10) 2))
   )") == 2);
-  
+
   // Cond with no else and no matching condition should error
   STATIC_CHECK(is_error(R"(
     (cond 
@@ -115,7 +115,7 @@ TEST_CASE("Cond with side effects", "[cond]")
       ((< x y) x)
       (else (/ x 0))) ; This would error if evaluated
   )") == 5);
-  
+
   // Similarly, condition expressions should be evaluated in sequence
   STATIC_CHECK(evaluate_to<int>(R"(
     (cond 
@@ -132,13 +132,13 @@ TEST_CASE("Cond with boolean conditions", "[cond]")
       (true 1)
       (else 2))
   )") == 1);
-  
+
   STATIC_CHECK(evaluate_to<int>(R"(
     (cond 
       (false 1)
       (else 2))
   )") == 2);
-  
+
   // Using boolean expressions
   STATIC_CHECK(evaluate_to<int>(R"(
     (cond 
@@ -152,13 +152,13 @@ TEST_CASE("Cond error handling", "[cond][error]")
   // Malformed cond syntax
   STATIC_CHECK(is_error("(cond)"));
   STATIC_CHECK(is_error("(cond 1 2 3)"));
-  
+
   // Condition clause not a list
   STATIC_CHECK(is_error("(cond 42 else)"));
-  
+
   // Condition clause without result
   STATIC_CHECK(is_error("(cond ((< 5 10)))"));
-  
+
   // Non-boolean condition (should be okay actually)
-  //STATIC_CHECK(evaluate_to<int>("(cond (1 42) (else 0))") == 42);
+  // STATIC_CHECK(evaluate_to<int>("(cond (1 42) (else 0))") == 42);
 }

@@ -510,7 +510,7 @@ struct cons_expr
   using char_type = CharType;
   using size_type = SizeType;
   using int_type = IntegralType;
-  using real_type = FloatType; // Using 'real' as per mathematical/Scheme convention for floating-point
+  using real_type = FloatType;// Using 'real' as per mathematical/Scheme convention for floating-point
   using string_type = IndexedString<size_type>;
   using string_view_type = std::basic_string_view<char_type>;
   using identifier_type = Identifier<size_type>;
@@ -694,7 +694,6 @@ struct cons_expr
       // TODO set up tail call elimination for last element of the sequence being evaluated?
       return engine.sequence(param_scope, statements);
     }
-
   };
 
   // Process escape sequences in a string literal
@@ -729,9 +728,7 @@ struct cons_expr
     }
 
     // Check if we ended in an escape state (string ends with a backslash)
-    if (in_escape) {
-      return make_error(str("unterminated escape sequence"), strings.insert_or_find(input));
-    }
+    if (in_escape) { return make_error(str("unterminated escape sequence"), strings.insert_or_find(input)); }
 
     // Now use insert_or_find to deduplicate the processed string
     const string_view_type processed_view(temp_buffer.small.data(), temp_buffer.size());
@@ -742,9 +739,9 @@ struct cons_expr
   {
     if (quote_depth == 0) { return input; }
 
-    SExpr first = SExpr{Atom{to_identifier(strings.insert_or_find(str("quote")))}};
+    SExpr first = SExpr{ Atom{ to_identifier(strings.insert_or_find(str("quote"))) } };
     SExpr second = make_quote(quote_depth - 1, input);
-    std::array<SExpr, 2> new_quote = {first, second};
+    std::array<SExpr, 2> new_quote = { first, second };
     return SExpr{ values.insert_or_find(new_quote) };
   }
 
@@ -831,7 +828,7 @@ struct cons_expr
     add(str("begin"), SExpr{ FunctionPtr{ begin, FunctionPtr::Type::other } });
     add(str("cond"), SExpr{ FunctionPtr{ cond, FunctionPtr::Type::other } });
     add(str("error?"), SExpr{ FunctionPtr{ error_p, FunctionPtr::Type::other } });
-    
+
     // Type predicates using the generic make_type_predicate function
     // Simple atomic types
     add(str("integer?"), SExpr{ FunctionPtr{ make_type_predicate<int_type>(), FunctionPtr::Type::other } });
@@ -839,12 +836,14 @@ struct cons_expr
     add(str("string?"), SExpr{ FunctionPtr{ make_type_predicate<string_type>(), FunctionPtr::Type::other } });
     add(str("symbol?"), SExpr{ FunctionPtr{ make_type_predicate<symbol_type>(), FunctionPtr::Type::other } });
     add(str("boolean?"), SExpr{ FunctionPtr{ make_type_predicate<bool>(), FunctionPtr::Type::other } });
-    
+
     // Composite type predicates
     add(str("number?"), SExpr{ FunctionPtr{ make_type_predicate<int_type, real_type>(), FunctionPtr::Type::other } });
-    add(str("list?"), SExpr{ FunctionPtr{ make_type_predicate<list_type, literal_list_type>(), FunctionPtr::Type::other } });
-    add(str("procedure?"), SExpr{ FunctionPtr{ make_type_predicate<FunctionPtr, Closure>(), FunctionPtr::Type::other } });
-    
+    add(str("list?"),
+      SExpr{ FunctionPtr{ make_type_predicate<list_type, literal_list_type>(), FunctionPtr::Type::other } });
+    add(
+      str("procedure?"), SExpr{ FunctionPtr{ make_type_predicate<FunctionPtr, Closure>(), FunctionPtr::Type::other } });
+
     // Even atom? can use the generic predicate with Atom
     add(str("atom?"), SExpr{ FunctionPtr{ make_type_predicate<Atom>(), FunctionPtr::Type::other } });
   }
@@ -1331,9 +1330,7 @@ struct cons_expr
     return error_or_else(
       engine.eval_to<literal_list_type>(scope, params, str("(cdr LiteralList)")), [&](const auto &list) {
         // Check if the list is empty
-        if (list.items.size == 0) {
-          return engine.make_error(str("cdr: cannot take cdr of empty list"), params);
-        }
+        if (list.items.size == 0) { return engine.make_error(str("cdr: cannot take cdr of empty list"), params); }
         // If the list has one element, return empty list
         if (list.items.size == 1) { return SExpr{ literal_list_type{ empty_indexed_list } }; }
         return SExpr{ list.sublist(1) };
@@ -1396,7 +1393,9 @@ struct cons_expr
     for (const auto &entry : engine.values[params]) {
       const auto cond = engine.eval_to<list_type>(scope, entry);
       if (!cond) { return engine.make_error(str("(condition statement)"), cond.error()); }
-      if (cond->size != 2) { return engine.make_error(str("(condition statement) requires both condition and result"), entry); }
+      if (cond->size != 2) {
+        return engine.make_error(str("(condition statement) requires both condition and result"), entry);
+      }
 
       // Check for the special 'else' case - always matches and returns its expression
       if (const auto *cond_str = get_if<identifier_type>(&engine.values[(*cond)[0]]);
@@ -1464,20 +1463,19 @@ struct cons_expr
 
     return SExpr{ Atom(is_error) };
   }
-  
+
   // Generic type predicate template for any type(s)
-  template<typename... Types>
-  [[nodiscard]] static constexpr function_ptr make_type_predicate()
+  template<typename... Types> [[nodiscard]] static constexpr function_ptr make_type_predicate()
   {
     return [](cons_expr &engine, LexicalScope &scope, list_type params) -> SExpr {
       if (params.size != 1) { return engine.make_error(str("(type? expr)"), params); }
-      
+
       // Evaluate the expression
       auto expr = engine.eval(scope, engine.values[params[0]]);
-      
+
       // Use fold expression with get_if to check if any of the specified types match
       bool is_type = ((get_if<Types>(&expr) != nullptr) || ...);
-      
+
       return SExpr{ Atom(is_type) };
     };
   }
