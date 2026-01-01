@@ -100,7 +100,7 @@ echo
 # Step 11: Generate comprehensive coverage report with decision/call coverage and multiple output formats
 echo "Step 11: Generating comprehensive coverage information..."
 cd $BUILD_DIR
-gcovr --filter ../include/cons_expr/cons_expr.hpp --exclude-directories _deps --gcov-ignore-errors=no_working_dir_found . --html --html-details --html-title "cons_expr Coverage Report" -o coverage_report.html -j 4 --decisions --calls --json=coverage_report.json --txt-summary
+gcovr -k --filter ../include/cons_expr/cons_expr.hpp --exclude-directories _deps --gcov-ignore-errors=no_working_dir_found . --html --html-details --html-title "cons_expr Coverage Report" -o coverage_report.html -j 4 --decisions --calls --json=coverage_report.json --txt-summary
 # Note: gcovr automatically handles .gcov file cleanup and generates multiple output formats simultaneously
 cd -
 echo "✓ Comprehensive coverage reports generated in build directory:"
