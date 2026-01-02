@@ -76,7 +76,7 @@ int main(int argc, const char **argv)
     }
 
     // If no script or file provided, display usage
-    if (!script && !file_path) { 
+    if (!script && !file_path) {
 
       while (true) {
         std::cout << "cons_expr> " << std::flush;
@@ -84,16 +84,13 @@ int main(int argc, const char **argv)
         std::string line;
         std::getline(std::cin, line);
 
-        if (!std::cin.good()) {
-          break;
-        }
+        if (!std::cin.good()) { break; }
 
 
         auto [parse_result, remaining] = evaluator.parse(line);
         auto result = evaluator.sequence(evaluator.global_scope, parse_result);
 
         std::cout << lefticus::to_string(evaluator, false, result) << '\n';
-
       }
     }
 
