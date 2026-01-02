@@ -10,7 +10,7 @@ on:
       - develop
 
 env:
-  CLANG_TIDY_VERSION: "16.0.0"
+  CLANG_TIDY_VERSION: "19.1.1"
   VERBOSE: 1
 
 
@@ -33,6 +33,7 @@ jobs:
         compiler:
           # you can specify the version after `-` like "llvm-16.0.0".
           - gcc-14
+          - llvm-19.1.1
         generator:
           - "Ninja Multi-Config"
         build_type:
