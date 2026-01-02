@@ -16,3 +16,11 @@ target_link_system_libraries(
           ftxui::component)
 
 target_include_directories(ccons_expr PRIVATE "${CMAKE_BINARY_DIR}/configured_files/include")
+
+
+if(EMSCRIPTEN)
+  cons_expr_configure_wasm_target(ccons_expr
+    TITLE "ccons_expr"
+    DESCRIPTION "FTXUI Front-End to cons_expr"
+  )
+endif()

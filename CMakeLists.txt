@@ -23,6 +23,7 @@ project(
   LANGUAGES CXX C)
 
 include(cmake/PreventInSourceBuilds.cmake)
+include(cmake/Emscripten.cmake)
 include(ProjectOptions.cmake)
 
 
@@ -66,6 +67,11 @@ add_subdirectory(configured_files)
 add_subdirectory(src)
 
 add_subdirectory(examples)
+
+# Create unified web deployment directory (for WASM builds)
+if(EMSCRIPTEN)
+  cons_expr_create_web_dist()
+endif()
 
 # Don't even look at tests if we're not top level
 if(NOT PROJECT_IS_TOP_LEVEL)
