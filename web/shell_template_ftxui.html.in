@@ -94,6 +94,19 @@
         </section>
     </main>
 
+    <!--
+        FTXUI Template - Character-at-a-Time I/O
+
+        This template is designed for FTXUI applications that use raw terminal I/O
+        via read() syscalls. It provides simple character-at-a-time buffering without
+        PTY emulation, which is perfect for FTXUI's direct terminal control.
+
+        I/O Model: Character-at-a-time (not line-buffered)
+        - stdin: Returns individual characters from keyboard
+        - stdout/stderr: Buffers bytes and flushes on \0 or \n
+        - FTXUI resize callback: Module._ftxui_on_resize(cols, rows)
+    -->
+
     <script>
         // Define Module configuration FIRST (synchronously, before Emscripten loads)
         // This must be in a regular script tag, not an ES module, because ES modules
@@ -188,7 +201,7 @@
             console.log('WebGL addon not available, using canvas renderer');
         }
 
-        // Buffers for stdin/stdout/stderr
+        // Buffers for stdin/stdout/stderr - Character-at-a-time I/O
         var stdin_buffer = [];
         var stdout_buffer = [];
         var stderr_buffer = [];
@@ -256,6 +269,7 @@
             document.getElementById('loading').classList.add('hidden');
 
             // Set up resize observer for FTXUI's resize callback
+            // FTXUI exports ftxui_on_resize() which needs to be called when terminal size changes
             if (Module._ftxui_on_resize) {
                 var resizeObserver = new ResizeObserver(function() {
                     fitAddon.fit();
@@ -265,7 +279,7 @@
             }
         });
 
-        // Consolidated error display helper
+        // Error handling
         function showError(message, details) {
             var errorDiv = document.getElementById('error');
             errorDiv.textContent = 'Error: ' + message;

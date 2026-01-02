@@ -22,5 +22,6 @@ if(EMSCRIPTEN)
   cons_expr_configure_wasm_target(ccons_expr
     TITLE "ccons_expr"
     DESCRIPTION "FTXUI Front-End to cons_expr"
+    IO_MODE "FTXUI"
   )
 endif()

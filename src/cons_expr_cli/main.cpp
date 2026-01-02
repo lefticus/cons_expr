@@ -1,4 +1,3 @@
-
 #include <CLI/CLI.hpp>
 #include <filesystem>
 #include <format>
@@ -77,7 +76,26 @@ int main(int argc, const char **argv)
     }
 
     // If no script or file provided, display usage
-    if (!script && !file_path) { std::cout << app.help() << '\n'; }
+    if (!script && !file_path) { 
+
+      while (true) {
+        std::cout << "cons_expr> " << std::flush;
+
+        std::string line;
+        std::getline(std::cin, line);
+
+        if (!std::cin.good()) {
+          break;
+        }
+
+
+        auto [parse_result, remaining] = evaluator.parse(line);
+        auto result = evaluator.sequence(evaluator.global_scope, parse_result);
+
+        std::cout << lefticus::to_string(evaluator, false, result) << '\n';
+
+      }
+    }
 
   } catch (const std::exception &e) {
     spdlog::error("Unhandled exception in main: {}", e.what());

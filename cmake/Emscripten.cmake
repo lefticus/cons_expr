@@ -56,7 +56,7 @@ function(cons_expr_configure_wasm_target target)
   if(EMSCRIPTEN)
     # Parse optional named arguments
     set(options "")
-    set(oneValueArgs TITLE DESCRIPTION RESOURCES_DIR)
+    set(oneValueArgs TITLE DESCRIPTION RESOURCES_DIR IO_MODE)
     set(multiValueArgs "")
     cmake_parse_arguments(WASM "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
@@ -67,6 +67,10 @@ function(cons_expr_configure_wasm_target target)
 
     if(NOT WASM_DESCRIPTION)
       set(WASM_DESCRIPTION "WebAssembly application")
+    endif()
+
+    if(NOT WASM_IO_MODE)
+      set(WASM_IO_MODE "FTXUI")
     endif()
 
     # Get the actual output name (may differ from target name)
@@ -116,6 +120,15 @@ function(cons_expr_configure_wasm_target target)
       message(STATUS "Embedding resources for ${target} from ${ABS_RESOURCES_DIR}")
     endif()
 
+    # Select appropriate shell template based on IO mode
+    if(WASM_IO_MODE STREQUAL "CONSOLE")
+      set(SHELL_TEMPLATE "${cons_expr_WEB_DIR}/shell_template_console.html.in")
+      message(STATUS "Using CONSOLE I/O mode for ${target} (PTY via xterm-pty)")
+    else()
+      set(SHELL_TEMPLATE "${cons_expr_WEB_DIR}/shell_template_ftxui.html.in")
+      message(STATUS "Using FTXUI I/O mode for ${target} (character-at-a-time)")
+    endif()
+
     # Configure the shell HTML template for this target
     set(TARGET_NAME "${OUTPUT_NAME}")
     set(TARGET_TITLE "${WASM_TITLE}")
@@ -124,9 +137,9 @@ function(cons_expr_configure_wasm_target target)
     set(CONFIGURED_SHELL "${CMAKE_BINARY_DIR}/web/${target}_shell.html")
 
     # Generate target-specific shell file (configure_file creates parent directories automatically)
-    if(EXISTS "${cons_expr_SHELL_TEMPLATE}")
+    if(EXISTS "${SHELL_TEMPLATE}")
       configure_file(
-        "${cons_expr_SHELL_TEMPLATE}"
+        "${SHELL_TEMPLATE}"
         "${CONFIGURED_SHELL}"
         @ONLY
       )
@@ -138,13 +151,13 @@ function(cons_expr_configure_wasm_target target)
 
       # Add both template and configured file as link dependencies
       set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS
-        "${cons_expr_SHELL_TEMPLATE}"
+        "${SHELL_TEMPLATE}"
         "${CONFIGURED_SHELL}"
       )
 
       message(STATUS "Configured WASM shell for ${target}: ${CONFIGURED_SHELL}")
     else()
-      message(FATAL_ERROR "Shell template not found: ${cons_expr_SHELL_TEMPLATE}")
+      message(FATAL_ERROR "Shell template not found: ${SHELL_TEMPLATE}")
     endif()
 
     # Copy service worker to target build directory for standalone target builds

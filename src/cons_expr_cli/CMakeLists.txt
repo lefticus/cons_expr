@@ -18,5 +18,6 @@ if(EMSCRIPTEN)
   cons_expr_configure_wasm_target(cons_expr_cli
     TITLE "cons_expr_cli"
     DESCRIPTION "regular command-line front end to cons_expr"
+    IO_MODE "CONSOLE"
   )
 endif()
