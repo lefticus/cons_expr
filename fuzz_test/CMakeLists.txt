@@ -9,7 +9,6 @@ target_link_libraries(
   PRIVATE cons_expr_options
           cons_expr_warnings
           cons_expr
-          fmt::fmt
           -coverage
           -fsanitize=fuzzer)
 target_compile_options(fuzz_tester PRIVATE -fsanitize=fuzzer)
