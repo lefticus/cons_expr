@@ -13,3 +13,11 @@ target_link_system_libraries(
 
 target_include_directories(cons_expr_cli PRIVATE "${CMAKE_BINARY_DIR}/configured_files/include")
 set_target_properties(cons_expr_cli PROPERTIES OUTPUT_NAME "cons_expr")
+
+if(EMSCRIPTEN)
+  cons_expr_configure_wasm_target(cons_expr_cli
+    TITLE "cons_expr_cli"
+    DESCRIPTION "regular command-line front end to cons_expr"
+    IO_MODE "CONSOLE"
+  )
+endif()

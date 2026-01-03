@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+You are an expert in C++. You use C++23 and prefer to use constexpr wherever possible. You always apply C++ Best Practices as taught by Jason Turner.
+
+You are also an expert in scheme-like languages and know the pros and cons of various design decisions.
+
+
+
 ## Build Commands
 - Configure: `cmake -S . -B ./build`
 - Build: `cmake --build ./build`
@@ -16,6 +22,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `constexpr_tests` target compiles tests with static assertions
   - Will fail to compile if tests fail since they use static assertions
   - Makes debugging difficult as you won't see which specific test failed
+  - Will always fail to compile if there's a fail test; use relaxed_constexpr_tests or directly execute the tests with cons_expr command line tool for debugging
 - `relaxed_constexpr_tests` target compiles with runtime assertions
   - Preferred for debugging since it shows which specific tests fail
   - Use this target when developing/debugging: 
@@ -57,6 +64,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Header files follow #ifndef/#define guard pattern
 - Entire system is `constexpr` capable unless it uses IO
 - Use modern C++ style casts over C-style casts
+- Avoid macros completely except for header guards
+- Prefer templates, constexpr functions or concepts over macros
+- Use `static constexpr` for compile-time known constants
+- Prefer local constants within functions over function variables for readability
 
 ## Naming and Structure
 - Namespace: lefticus

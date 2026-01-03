@@ -1,19 +1,22 @@
+#include <cstddef>
+#include <exception>
 #include <format>
 #include <string>
 #include <vector>
 
-#include "ftxui/component/captured_mouse.hpp"// for ftxui
 #include "ftxui/component/component.hpp"// for Input, Renderer, ResizableSplitLeft
 #include "ftxui/component/component_base.hpp"// for ComponentBase, Component
 #include "ftxui/component/screen_interactive.hpp"// for ScreenInteractive
 #include "ftxui/dom/elements.hpp"// for operator|, separator, text, Element, flex, vbox, border
-#include "ftxui/dom/table.hpp"// for operator|, separator, text, Element, flex, vbox, border
 
 #include <cons_expr/cons_expr.hpp>
 #include <cons_expr/utility.hpp>
 
 #include <internal_use_only/config.hpp>
 
+static constexpr int InitialSplitWidth = 50;
+static constexpr int GlobalsHeight = 5;
+static constexpr int ValuesHeight = 7;
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
 {
@@ -38,21 +41,20 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
 
   auto update_objects = [&]() {
     entries.clear();
-    for (std::size_t index = 0; auto item : evaluator.values[{ 0, evaluator.values.size() }]) {
+    for (std::size_t index = 0; auto item : evaluator.values[{ .start = 0, .size = evaluator.values.size() }]) {
       entries.push_back(std::format("{}: {}", index, to_string(evaluator, true, item)));
       ++index;
     }
 
     characters.clear();
-    for (std::size_t index = 0; auto item : evaluator.strings[{ 0, evaluator.strings.size() }]) {
+    for (std::size_t index = 0; auto item : evaluator.strings[{ .start = 0, .size = evaluator.strings.size() }]) {
       characters.push_back(std::format("{}: '{}'", index, item));
       ++index;
     }
 
     globals.clear();
-    for (std::size_t index = 0; auto [key, value] : evaluator.global_scope[{ 0, evaluator.global_scope.size() }]) {
+    for (auto [key, value] : evaluator.global_scope[{ .start = 0, .size = evaluator.global_scope.size() }]) {
       globals.push_back(std::format("{}: '{}'", to_string(evaluator, false, key), to_string(evaluator, true, value)));
-      ++index;
     }
   };
 
@@ -66,10 +68,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
 
 
     try {
-      content_2 += to_string(evaluator,
-        true,
-        evaluator.sequence(
-          evaluator.global_scope, std::get<lefticus::cons_expr<>::list_type>(evaluator.parse(content_1).first.value)));
+      content_2 +=
+        to_string(evaluator, true, evaluator.sequence(evaluator.global_scope, evaluator.parse(content_1).first));
     } catch (const std::exception &e) {
       content_2 += std::string("Error: ") + e.what();
     }
@@ -80,7 +80,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
 
 
   auto button = ftxui::Button("Evaluate", do_evaluate);
-  int size = 50;
+  int size = InitialSplitWidth;
   auto resizeable_bits = ftxui::ResizableSplitLeft(textarea_1, output_1, &size);
 
   auto radiobox = ftxui::Menu(&entries, &selected);
@@ -116,10 +116,10 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
     return ftxui::hbox({ characterbox->Render() | ftxui::vscroll_indicator | ftxui::frame,
              ftxui::separator(),
              ftxui::vbox({ globalsbox->Render() | ftxui::vscroll_indicator | ftxui::frame
-                             | ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, 5),
+                             | ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, GlobalsHeight),
                ftxui::separator(),
                radiobox->Render() | ftxui::vscroll_indicator | ftxui::frame
-                 | ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, 7),
+                 | ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, ValuesHeight),
                ftxui::separator(),
                resizeable_bits->Render() | ftxui::flex,
                ftxui::separator(),

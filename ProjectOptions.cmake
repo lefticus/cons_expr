@@ -4,9 +4,31 @@ include(CMakeDependentOption)
 include(CheckCXXCompilerFlag)
 
 
+include(CheckCXXSourceCompiles)
+
+
 macro(cons_expr_supports_sanitizers)
-  if((CMAKE_CXX_COMPILER_ID MATCHES ".*Clang.*" OR CMAKE_CXX_COMPILER_ID MATCHES ".*GNU.*") AND NOT WIN32)
-    set(SUPPORTS_UBSAN ON)
+  # Emscripten doesn't support sanitizers
+  if(EMSCRIPTEN)
+    set(SUPPORTS_UBSAN OFF)
+    set(SUPPORTS_ASAN OFF)
+  elseif((CMAKE_CXX_COMPILER_ID MATCHES ".*Clang.*" OR CMAKE_CXX_COMPILER_ID MATCHES ".*GNU.*") AND NOT WIN32)
+
+    message(STATUS "Sanity checking UndefinedBehaviorSanitizer, it should be supported on this platform")
+    set(TEST_PROGRAM "int main() { return 0; }")
+
+    # Check if UndefinedBehaviorSanitizer works at link time
+    set(CMAKE_REQUIRED_FLAGS "-fsanitize=undefined")
+    set(CMAKE_REQUIRED_LINK_OPTIONS "-fsanitize=undefined")
+    check_cxx_source_compiles("${TEST_PROGRAM}" HAS_UBSAN_LINK_SUPPORT)
+
+    if(HAS_UBSAN_LINK_SUPPORT)
+      message(STATUS "UndefinedBehaviorSanitizer is supported at both compile and link time.")
+      set(SUPPORTS_UBSAN ON)
+    else()
+      message(WARNING "UndefinedBehaviorSanitizer is NOT supported at link time.")
+      set(SUPPORTS_UBSAN OFF)
+    endif()
   else()
     set(SUPPORTS_UBSAN OFF)
   endif()
@@ -14,7 +36,25 @@ macro(cons_expr_supports_sanitizers)
   if((CMAKE_CXX_COMPILER_ID MATCHES ".*Clang.*" OR CMAKE_CXX_COMPILER_ID MATCHES ".*GNU.*") AND WIN32)
     set(SUPPORTS_ASAN OFF)
   else()
-    set(SUPPORTS_ASAN ON)
+    if (NOT WIN32)
+      message(STATUS "Sanity checking AddressSanitizer, it should be supported on this platform")
+      set(TEST_PROGRAM "int main() { return 0; }")
+
+      # Check if AddressSanitizer works at link time
+      set(CMAKE_REQUIRED_FLAGS "-fsanitize=address")
+      set(CMAKE_REQUIRED_LINK_OPTIONS "-fsanitize=address")
+      check_cxx_source_compiles("${TEST_PROGRAM}" HAS_ASAN_LINK_SUPPORT)
+
+      if(HAS_ASAN_LINK_SUPPORT)
+        message(STATUS "AddressSanitizer is supported at both compile and link time.")
+        set(SUPPORTS_ASAN ON)
+      else()
+        message(WARNING "AddressSanitizer is NOT supported at link time.")
+        set(SUPPORTS_ASAN OFF)
+      endif()
+    else()
+      set(SUPPORTS_ASAN ON)
+    endif()
   endif()
 endmacro()
 
@@ -54,8 +94,8 @@ macro(cons_expr_setup_options)
     option(cons_expr_ENABLE_SANITIZER_THREAD "Enable thread sanitizer" OFF)
     option(cons_expr_ENABLE_SANITIZER_MEMORY "Enable memory sanitizer" OFF)
     option(cons_expr_ENABLE_UNITY_BUILD "Enable unity builds" OFF)
-    option(cons_expr_ENABLE_CLANG_TIDY "Enable clang-tidy" OFF)
-    option(cons_expr_ENABLE_CPPCHECK "Enable cpp-check analysis" OFF)
+    option(cons_expr_ENABLE_CLANG_TIDY "Enable clang-tidy" ON)
+    option(cons_expr_ENABLE_CPPCHECK "Enable cpp-check analysis" ON)
     option(cons_expr_ENABLE_PCH "Enable precompiled headers" OFF)
     option(cons_expr_ENABLE_CACHE "Enable ccache" ON)
   endif()
@@ -130,19 +170,22 @@ macro(cons_expr_local_options)
     ""
     "")
 
-  if(cons_expr_ENABLE_USER_LINKER)
-    include(cmake/Linker.cmake)
-    configure_linker(cons_expr_options)
-  endif()
+  # Linker and sanitizers not supported in Emscripten
+  if(NOT EMSCRIPTEN)
+    if(cons_expr_ENABLE_USER_LINKER)
+      include(cmake/Linker.cmake)
+      cons_expr_configure_linker(cons_expr_options)
+    endif()
 
-  include(cmake/Sanitizers.cmake)
-  cons_expr_enable_sanitizers(
-    cons_expr_options
-    ${cons_expr_ENABLE_SANITIZER_ADDRESS}
-    ${cons_expr_ENABLE_SANITIZER_LEAK}
-    ${cons_expr_ENABLE_SANITIZER_UNDEFINED}
-    ${cons_expr_ENABLE_SANITIZER_THREAD}
-    ${cons_expr_ENABLE_SANITIZER_MEMORY})
+    include(cmake/Sanitizers.cmake)
+    cons_expr_enable_sanitizers(
+      cons_expr_options
+      ${cons_expr_ENABLE_SANITIZER_ADDRESS}
+      ${cons_expr_ENABLE_SANITIZER_LEAK}
+      ${cons_expr_ENABLE_SANITIZER_UNDEFINED}
+      ${cons_expr_ENABLE_SANITIZER_THREAD}
+      ${cons_expr_ENABLE_SANITIZER_MEMORY})
+  endif()
 
   set_target_properties(cons_expr_options PROPERTIES UNITY_BUILD ${cons_expr_ENABLE_UNITY_BUILD})
 

@@ -1,22 +1,23 @@
-#include <fmt/format.h>
+#include <cons_expr/cons_expr.hpp>
+#include <cstddef>
+#include <cstdint>
 #include <iterator>
-#include <utility>
+#include <string>
 
-[[nodiscard]] auto sum_values(const uint8_t *Data, size_t Size)
+// Fuzzer that tests the cons_expr parser and evaluator
+extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
-  constexpr auto scale = 1000;
+  const std::string script(data, std::next(data, static_cast<std::ptrdiff_t>(size)));
 
-  int value = 0;
-  for (std::size_t offset = 0; offset < Size; ++offset) {
-    value += static_cast<int>(*std::next(Data, static_cast<long>(offset))) * scale;
-  }
-  return value;
-}
+  // Initialize the cons_expr evaluator
+  lefticus::cons_expr<> evaluator;
 
-// Fuzzer that attempts to invoke undefined behavior for signed integer overflow
-// cppcheck-suppress unusedFunction symbolName=LLVMFuzzerTestOneInput
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size)
-{
-  fmt::print("Value sum: {}, len{}\n", sum_values(Data, Size), Size);
-  return 0;
+  // Try to parse the script
+  auto [parse_result, remaining] = evaluator.parse(script);
+
+  // Evaluate the parsed expression
+  // Don't care about the result, just want to make sure nothing crashes
+  [[maybe_unused]] auto result = evaluator.sequence(evaluator.global_scope, parse_result);
+
+  return 0;// Non-zero return values are reserved for future use
 }

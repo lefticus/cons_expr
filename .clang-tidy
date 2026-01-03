@@ -1,4 +1,7 @@
 ---
+
+# Unfortunately const-correctness seems to be almost completely broken
+# (clang 19)
 Checks: "*,
         -abseil-*,
         -altera-*,
@@ -11,18 +14,29 @@ Checks: "*,
         -readability-else-after-return,
         -readability-static-accessed-through-instance,
         -readability-avoid-const-params-in-decls,
+        -readability-simplify-boolean-expr,
         -cppcoreguidelines-non-private-member-variables-in-classes,
         -misc-non-private-member-variables-in-classes,
+        -misc-const-correctness,
 "
 WarningsAsErrors: ''
-HeaderFilterRegex: ''
+HeaderFilterRegex: '^(src|include)/.*'
 FormatStyle:     none
 
+
+# Command line options
+ExtraArgs: [
+  '-Wno-unknown-warning-option',
+  '-Wno-ignored-optimization-argument',
+  '-Wno-unused-command-line-argument',
+  '-Wno-unknown-argument',
+  '-Wno-gcc-compat'
+]
+
+# Quiet mode is set via command line with --quiet
+# It doesn't have a YAML equivalent
+
 CheckOptions:
-  readability-identifier-length.IgnoredVariableNames: 'x|y|z|id|ch'
-  readability-identifier-length.IgnoredParameterNames: 'x|y|z|id|ch'
-
-
-
-
+  readability-identifier-length.IgnoredVariableNames: 'x|y|z|id|ch|to'
+  readability-identifier-length.IgnoredParameterNames: 'x|y|z|id|ch|to'
 
