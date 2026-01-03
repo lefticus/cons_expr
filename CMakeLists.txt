@@ -26,6 +26,16 @@ include(cmake/PreventInSourceBuilds.cmake)
 include(cmake/Emscripten.cmake)
 include(ProjectOptions.cmake)
 
+if(MSVC)
+  
+elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
+  add_compile_options(-fconstexpr-steps=12712420)
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  
+else()
+  
+  # TODO support Intel compiler
+endif()
 
 cons_expr_setup_options()
 

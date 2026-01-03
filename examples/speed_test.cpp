@@ -1,9 +1,14 @@
 #include <cons_expr/cons_expr.hpp>
+#include <cstdint>
 #include <iostream>
+#include <string_view>
 
+
+
+namespace {
 constexpr long long add(long long x, long long y) { return x + y; }
 
-void display(long long i) { std::cout << i << '\n'; }
+void display(long long value) { std::cout << value << '\n'; }
 
 using cons_expr_type = lefticus::cons_expr<std::uint16_t, char, long long, double>;
 
@@ -20,6 +25,7 @@ auto evaluate(std::string_view input)
 template<typename Result> Result evaluate_to(std::string_view input)
 {
   return std::get<Result>(std::get<cons_expr_type::Atom>(evaluate(input).value));
+}
 }
 
 int main()

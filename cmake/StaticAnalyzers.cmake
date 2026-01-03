@@ -77,6 +77,8 @@ macro(cons_expr_enable_clang_tidy target WARNINGS_AS_ERRORS)
         -extra-arg=-Wno-unused-command-line-argument
         -extra-arg=-Wno-unknown-argument
         -extra-arg=-Wno-gcc-compat
+        -extra-arg=-Wno-gcc-compat
+        -extra-arg=-fconstexpr-steps=12712420
         --quiet
         -p)
     # set standard

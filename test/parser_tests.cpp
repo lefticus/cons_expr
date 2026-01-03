@@ -1,16 +1,28 @@
 #include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_test_macros.hpp>
-#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <cons_expr/cons_expr.hpp>
-#include <cons_expr/utility.hpp>
-#include <internal_use_only/config.hpp>
-#include <iostream>
+#include <cstdint>
 
-#include <cmath>
+#include <string_view>
+#include <variant>
 
 using IntType = int;
 using FloatType = double;
+
+using evaluator_type = lefticus::cons_expr<std::uint16_t, char, IntType, FloatType>;
+
+namespace {
+template<typename CharType> constexpr auto parse(std::basic_string_view<CharType> str)
+{
+  evaluator_type evaluator;
+  const auto list = evaluator.parse(str).first;
+
+  if (list.size != 1) { throw "expected exactly one thing parsed"; } // NOLINT
+
+  return evaluator.values[list[0]];
+}
+}
 
 
 // Basic Tokenization Tests
@@ -21,42 +33,52 @@ TEST_CASE("Basic tokenization", "[parser][tokenize]")
     using Token = lefticus::Token<char>;
 
     // Simple tokens
-    Token token1 = lefticus::next_token(std::string_view("hello"));
-    if (token1.parsed != std::string_view("hello")) return false;
+    Token const token1 = lefticus::next_token(std::string_view("hello"));
+    if (token1.parsed != std::string_view("hello")) { return false;
+}
 
     // Whitespace handling
-    Token token2 = lefticus::next_token(std::string_view("   hello"));
-    if (token2.parsed != std::string_view("hello")) return false;
+    Token const token2 = lefticus::next_token(std::string_view("   hello"));
+    if (token2.parsed != std::string_view("hello")) { return false;
+}
 
-    Token token3 = lefticus::next_token(std::string_view("hello   "));
-    if (token3.parsed != std::string_view("hello")) return false;
+    Token const token3 = lefticus::next_token(std::string_view("hello   "));
+    if (token3.parsed != std::string_view("hello")) { return false;
+}
 
     // Multiple tokens
-    Token token4 = lefticus::next_token(std::string_view("hello world"));
-    if (token4.parsed != std::string_view("hello") || token4.remaining != std::string_view("world")) return false;
+    Token const token4 = lefticus::next_token(std::string_view("hello world"));
+    if (token4.parsed != std::string_view("hello") || token4.remaining != std::string_view("world")) { return false;
+}
 
     // Parentheses
-    Token token5 = lefticus::next_token(std::string_view("(hello)"));
-    if (token5.parsed != std::string_view("(") || token5.remaining != std::string_view("hello)")) return false;
+    Token const token5 = lefticus::next_token(std::string_view("(hello)"));
+    if (token5.parsed != std::string_view("(") || token5.remaining != std::string_view("hello)")) { return false;
+}
 
-    Token token6 = lefticus::next_token(std::string_view(")hello"));
-    if (token6.parsed != std::string_view(")") || token6.remaining != std::string_view("hello")) return false;
+    Token const token6 = lefticus::next_token(std::string_view(")hello"));
+    if (token6.parsed != std::string_view(")") || token6.remaining != std::string_view("hello")) { return false;
+}
 
     // Quote syntax
-    Token token7 = lefticus::next_token(std::string_view("'(hello)"));
-    if (token7.parsed != std::string_view("'") || token7.remaining != std::string_view("(hello)")) return false;
+    Token const token7 = lefticus::next_token(std::string_view("'(hello)"));
+    if (token7.parsed != std::string_view("'") || token7.remaining != std::string_view("(hello)")) { return false;
+}
 
     // Strings
-    Token token8 = lefticus::next_token(std::string_view("\"hello\""));
-    if (token8.parsed != std::string_view("\"hello\"")) return false;
+    Token const token8 = lefticus::next_token(std::string_view("\"hello\""));
+    if (token8.parsed != std::string_view("\"hello\"")) { return false;
+}
 
     // Empty input
-    Token token9 = lefticus::next_token(std::string_view(""));
-    if (!token9.parsed.empty() || !token9.remaining.empty()) return false;
+    Token const token9 = lefticus::next_token(std::string_view(""));
+    if (!token9.parsed.empty() || !token9.remaining.empty()) { return false;
+}
 
     // Comments
-    Token token10 = lefticus::next_token(std::string_view("; comment\nhello"));
-    if (token10.parsed != std::string_view("hello")) return false;
+    Token const token10 = lefticus::next_token(std::string_view("; comment\nhello"));
+    if (token10.parsed != std::string_view("hello")) { return false;
+}
 
     return true;
   };
@@ -116,7 +138,7 @@ TEST_CASE("Token sequence processing", "[parser][token-sequence]")
     // Let's ignore the exact amount of whitespace
     return token6.parsed == std::string_view("(") && (token6.remaining.find("quote") != std::string_view::npos)
            && (token6.remaining.find("hello") != std::string_view::npos)
-           && (token6.remaining.find(")") != std::string_view::npos);
+           && (token6.remaining.find(')') != std::string_view::npos);
   };
 
   // Check all individual assertions
@@ -161,7 +183,7 @@ TEST_CASE("Whitespace handling", "[parser][whitespace]")
     // The returned remaining string likely has normalized whitespace
     // Let's ignore the exact amount of whitespace
     return token5.parsed == std::string_view("(") && (token5.remaining.find("hello") != std::string_view::npos)
-           && (token5.remaining.find(")") != std::string_view::npos);
+           && (token5.remaining.find(')') != std::string_view::npos);
   };
 
   // Only whitespace
@@ -241,8 +263,8 @@ TEST_CASE("String parsing", "[parser][strings]")
 
   // String with escaped quote
   constexpr auto test_string4 = []() {
-    auto token4 = lefticus::next_token(std::string_view("\"hello\\\"world\""));
-    return token4.parsed == std::string_view("\"hello\\\"world\"");
+    auto token4 = lefticus::next_token(std::string_view(R"("hello\"world")"));
+    return token4.parsed == std::string_view(R"("hello\"world")");
   };
 
   // String followed by other tokens
@@ -259,18 +281,6 @@ TEST_CASE("String parsing", "[parser][strings]")
   STATIC_CHECK(test_string5());
 }
 
-using evaluator_type = lefticus::cons_expr<std::uint16_t, char, IntType, FloatType>;
-
-template<typename CharType> constexpr auto parse(std::basic_string_view<CharType> str)
-{
-  evaluator_type evaluator;
-  const auto list = evaluator.parse(str).first;
-
-  if (list.size != 1) throw "expected exactly one thing parsed";
-
-  return evaluator.values[list[0]];
-}
-
 TEST_CASE("String parse failures", "[parser][strings][escapes]")
 {
   STATIC_CHECK(std::holds_alternative<evaluator_type::error_type>(parse(std::string_view(R"("\q")")).value));
@@ -283,40 +293,44 @@ TEST_CASE("String escape characters", "[parser][strings][escapes]")
   // Escaped double quote
   constexpr auto test_escaped_quote = []() {
     lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
-    auto [parsed, _] = evaluator.parse("\"Quote: \\\"Hello\\\"\"");
+    auto [parsed, _] = evaluator.parse(R"("Quote: \"Hello\"")");
 
     // Extract the string content
-    if (parsed.size != 1) return false;
+    if (parsed.size != 1) { return false;
+}
 
     const auto *atom = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[parsed[0]].value);
-    if (atom == nullptr) return false;
+    if (atom == nullptr) { return false;
+}
 
     const auto *string_val = std::get_if<lefticus::cons_expr<>::string_type>(atom);
-    if (string_val == nullptr) return false;
+    if (string_val == nullptr) { return false;
+}
 
     // Check the raw tokenized string includes the escapes
-    auto token = lefticus::next_token(std::string_view("\"Quote: \\\"Hello\\\"\""));
-    if (token.parsed != std::string_view("\"Quote: \\\"Hello\\\"\"")) return false;
+    auto token = lefticus::next_token(std::string_view(R"("Quote: \"Hello\"")"));
+    if (token.parsed != std::string_view(R"("Quote: \"Hello\"")")) { return false;
+}
 
     return true;
   };
 
   // Escaped backslash
   constexpr auto test_escaped_backslash = []() {
-    auto token = lefticus::next_token(std::string_view("\"Backslash: \\\\\""));
-    return token.parsed == std::string_view("\"Backslash: \\\\\"");
+    auto token = lefticus::next_token(std::string_view(R"("Backslash: \\")"));
+    return token.parsed == std::string_view(R"("Backslash: \\")");
   };
 
   // Multiple escape sequences
   constexpr auto test_multiple_escapes = []() {
-    auto token = lefticus::next_token(std::string_view("\"Escapes: \\\\ \\\" \\n \\t \\r\""));
-    return token.parsed == std::string_view("\"Escapes: \\\\ \\\" \\n \\t \\r\"");
+    auto token = lefticus::next_token(std::string_view(R"("Escapes: \\ \" \n \t \r")"));
+    return token.parsed == std::string_view(R"("Escapes: \\ \" \n \t \r")");
   };
 
   // Escape at end of string
   constexpr auto test_escape_at_end = []() {
-    auto token = lefticus::next_token(std::string_view("\"Escape at end: \\\""));
-    return token.parsed == std::string_view("\"Escape at end: \\\"");
+    auto token = lefticus::next_token(std::string_view(R"("Escape at end: \")"));
+    return token.parsed == std::string_view(R"("Escape at end: \")");
   };
 
   // Unterminated string with escape
@@ -327,14 +341,14 @@ TEST_CASE("String escape characters", "[parser][strings][escapes]")
 
   // Common escape sequences: \n \t \r \f \b
   constexpr auto test_common_escapes = []() {
-    auto token = lefticus::next_token(std::string_view("\"Special chars: \\n\\t\\r\\f\\b\""));
-    return token.parsed == std::string_view("\"Special chars: \\n\\t\\r\\f\\b\"");
+    auto token = lefticus::next_token(std::string_view(R"("Special chars: \n\t\r\f\b")"));
+    return token.parsed == std::string_view(R"("Special chars: \n\t\r\f\b")");
   };
 
   // Test handling of consecutive escapes
   constexpr auto test_consecutive_escapes = []() {
-    auto token = lefticus::next_token(std::string_view("\"Double escapes: \\\\\\\"\""));
-    return token.parsed == std::string_view("\"Double escapes: \\\\\\\"\"");
+    auto token = lefticus::next_token(std::string_view(R"("Double escapes: \\\"")"));
+    return token.parsed == std::string_view(R"("Double escapes: \\\"")");
   };
 
   // Check all individual assertions
@@ -353,13 +367,16 @@ TEST_CASE("Number parsing", "[parser][numbers]")
   constexpr auto test_int_parsing = []() {
     // Integer parsing
     auto [success1, value1] = lefticus::parse_number<int>(std::string_view("123"));
-    if (!success1 || value1 != 123) return false;
+    if (!success1 || value1 != 123) { return false;
+}
 
     auto [success2, value2] = lefticus::parse_number<int>(std::string_view("-456"));
-    if (!success2 || value2 != -456) return false;
+    if (!success2 || value2 != -456) { return false;
+}
 
     auto [success3, value3] = lefticus::parse_number<int>(std::string_view("not_a_number"));
-    if (success3) return false;// Should fail
+    if (success3) { return false;// Should fail
+}
 
     return true;
   };
@@ -379,7 +396,8 @@ TEST_CASE("List structure", "[parser][lists]")
 
     // Parse always returns a list containing the parsed expressions
     // For an empty list, we expect a list with one item (which is itself an empty list)
-    if (outer_list.size != 1) return false;
+    if (outer_list.size != 1) { return false;
+}
 
     // Check that the inner element is an empty list
     const auto &inner_elem = evaluator.values[outer_list[0]];
@@ -395,7 +413,8 @@ TEST_CASE("List structure", "[parser][lists]")
     auto [outer_list, _] = evaluator.parse(std::string_view("(a b c)"));
 
     // Outer list should contain one item
-    if (outer_list.size != 1) return false;
+    if (outer_list.size != 1) { return false;
+}
 
     // Inner list should contain three elements (a, b, c)
     const auto &inner_elem = evaluator.values[outer_list[0]];
@@ -411,12 +430,14 @@ TEST_CASE("List structure", "[parser][lists]")
     auto [outer_list, _] = evaluator.parse(std::string_view("(a (b c) d)"));
 
     // Outer list should contain one item
-    if (outer_list.size != 1) return false;
+    if (outer_list.size != 1) { return false;
+}
 
     // Inner list should contain three elements: a, (b c), d
     const auto &inner_elem = evaluator.values[outer_list[0]];
     const auto *inner_list = std::get_if<lefticus::cons_expr<>::list_type>(&inner_elem.value);
-    if (inner_list == nullptr || inner_list->size != 3) return false;
+    if (inner_list == nullptr || inner_list->size != 3) { return false;
+}
 
     // The second element should be a nested list with 2 elements: b, c
     const auto &nested_elem = evaluator.values[(*inner_list)[1]];
@@ -439,23 +460,29 @@ TEST_CASE("Boolean literals", "[parser][booleans]")
 
     // Parse true
     auto [true_expr, _1] = evaluator.parse("true");
-    if (true_expr.size != 1) return false;
+    if (true_expr.size != 1) { return false;
+}
 
     const auto *atom1 = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[true_expr[0]].value);
-    if (atom1 == nullptr) return false;
+    if (atom1 == nullptr) { return false;
+}
 
     const auto *bool_val1 = std::get_if<bool>(atom1);
-    if (bool_val1 == nullptr || !(*bool_val1)) return false;
+    if (bool_val1 == nullptr || !(*bool_val1)) { return false;
+}
 
     // Parse false
     auto [false_expr, _2] = evaluator.parse("false");
-    if (false_expr.size != 1) return false;
+    if (false_expr.size != 1) { return false;
+}
 
     const auto *atom2 = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[false_expr[0]].value);
-    if (atom2 == nullptr) return false;
+    if (atom2 == nullptr) { return false;
+}
 
     const auto *bool_val2 = std::get_if<bool>(atom2);
-    if (bool_val2 == nullptr || (*bool_val2)) return false;
+    if (bool_val2 == nullptr || (*bool_val2)) { return false;
+}
 
     return true;
   };
@@ -473,7 +500,8 @@ TEST_CASE("Multiple expressions", "[parser][multiple]")
     auto [parsed, _] = evaluator.parse(std::string_view("(define x 10)"));
 
     // Outer list should contain one item
-    if (parsed.size != 1) return false;
+    if (parsed.size != 1) { return false;
+}
 
     // Inner list should contain three elements: define, x, 10
     const auto &inner_elem = evaluator.values[parsed[0]];
@@ -495,17 +523,20 @@ TEST_CASE("Complex expressions", "[parser][complex]")
     auto [parsed, _] = evaluator.parse(std::string_view("(lambda (x) (+ x 1))"));
 
     // Outer list should contain one item
-    if (parsed.size != 1) return false;
+    if (parsed.size != 1) { return false;
+}
 
     // Inner list should contain three elements: lambda, (x), (+ x 1)
     const auto &inner_elem = evaluator.values[parsed[0]];
     const auto *inner_list = std::get_if<lefticus::cons_expr<>::list_type>(&inner_elem.value);
-    if (inner_list == nullptr || inner_list->size != 3) return false;
+    if (inner_list == nullptr || inner_list->size != 3) { return false;
+}
 
     // Second element should be a parameter list containing just x
     const auto &params = evaluator.values[(*inner_list)[1]];
     const auto *params_list = std::get_if<lefticus::cons_expr<>::list_type>(&params.value);
-    if (params_list == nullptr || params_list->size != 1) return false;
+    if (params_list == nullptr || params_list->size != 1) { return false;
+}
 
     return true;
   };
@@ -521,16 +552,16 @@ TEST_CASE("String content", "[parser][string-content]")
 
     // Parse a string and check its content
     auto [string_expr, _] = evaluator.parse("\"hello world\"");
-    if (string_expr.size != 1) return false;
+    if (string_expr.size != 1) { return false; }
 
     const auto *atom = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[string_expr[0]].value);
-    if (atom == nullptr) return false;
+    if (atom == nullptr) { return false; }
 
     const auto *string_val = std::get_if<lefticus::cons_expr<>::string_type>(atom);
-    if (string_val == nullptr) return false;
+    if (string_val == nullptr) { return false; }
 
-    auto sv = evaluator.strings.view(*string_val);
-    if (sv != std::string_view("hello world")) return false;
+    auto found_string = evaluator.strings.view(*string_val);
+    if (found_string != std::string_view("hello world")) { return false; }
 
     return true;
   };
@@ -548,17 +579,20 @@ TEST_CASE("Mixed content", "[parser][mixed]")
     auto [mixed_expr, _] = evaluator.parse(std::string_view("(list 123 \"hello\" true 'symbol (nested))"));
 
     // Outer list should contain one item
-    if (mixed_expr.size != 1) return false;
+    if (mixed_expr.size != 1) { return false;
+}
 
     // Inner list should contain six elements: list, 123, "hello", true, 'symbol, (nested)
     const auto &inner_elem = evaluator.values[mixed_expr[0]];
     const auto *inner_list = std::get_if<lefticus::cons_expr<>::list_type>(&inner_elem.value);
-    if (inner_list == nullptr || inner_list->size != 6) return false;
+    if (inner_list == nullptr || inner_list->size != 6) { return false;
+}
 
     // First element should be an identifier "list"
     const auto &first_elem = evaluator.values[(*inner_list)[0]];
     const auto *first_atom = std::get_if<lefticus::cons_expr<>::Atom>(&first_elem.value);
-    if (first_atom == nullptr) return false;
+    if (first_atom == nullptr) { return false;
+}
 
     const auto *id = std::get_if<lefticus::cons_expr<>::identifier_type>(first_atom);
     return id != nullptr;
@@ -573,19 +607,24 @@ TEST_CASE("Special characters", "[parser][special-chars]")
   constexpr auto test_special_chars = []() {
     // Various identifier formats with special characters
     auto token1 = lefticus::next_token(std::string_view("hello-world"));
-    if (token1.parsed != std::string_view("hello-world")) return false;
+    if (token1.parsed != std::string_view("hello-world")) { return false;
+}
 
     auto token2 = lefticus::next_token(std::string_view("symbol+"));
-    if (token2.parsed != std::string_view("symbol+")) return false;
+    if (token2.parsed != std::string_view("symbol+")) { return false;
+}
 
     auto token3 = lefticus::next_token(std::string_view("_special_"));
-    if (token3.parsed != std::string_view("_special_")) return false;
+    if (token3.parsed != std::string_view("_special_")) { return false;
+}
 
     auto token4 = lefticus::next_token(std::string_view("*wild*"));
-    if (token4.parsed != std::string_view("*wild*")) return false;
+    if (token4.parsed != std::string_view("*wild*")) { return false;
+}
 
     auto token5 = lefticus::next_token(std::string_view("symbol?"));
-    if (token5.parsed != std::string_view("symbol?")) return false;
+    if (token5.parsed != std::string_view("symbol?")) { return false;
+}
 
     return true;
   };
@@ -608,24 +647,24 @@ TEMPLATE_TEST_CASE("integral parsing", "[parser][numbers][edge]", int, long, sho
 // Number Parsing Edge Cases
 TEMPLATE_TEST_CASE("Floating point parsing", "[parser][numbers][edge]", float, double, LongDouble)
 {
-  STATIC_CHECK(static_cast<TestType>(123.456l) == lefticus::parse_number<TestType>(std::string_view("123.456")).second);
+  STATIC_CHECK(static_cast<TestType>(123.456L) == lefticus::parse_number<TestType>(std::string_view("123.456")).second);
   STATIC_CHECK(
-    static_cast<TestType>(-789.012l) == lefticus::parse_number<TestType>(std::string_view("-789.012")).second);
-  STATIC_CHECK(static_cast<TestType>(1000.0l) == lefticus::parse_number<TestType>(std::string_view("1e3")).second);
-  STATIC_CHECK(static_cast<TestType>(0.015l) == lefticus::parse_number<TestType>(std::string_view("1.5e-2")).second);
+    static_cast<TestType>(-789.012L) == lefticus::parse_number<TestType>(std::string_view("-789.012")).second);
+  STATIC_CHECK(static_cast<TestType>(1000.0L) == lefticus::parse_number<TestType>(std::string_view("1e3")).second);
+  STATIC_CHECK(static_cast<TestType>(0.015L) == lefticus::parse_number<TestType>(std::string_view("1.5e-2")).second);
 
   STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123.1.")).first == false);
   STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123.1e.")).first == false);
   STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123.1e")).first == false);
   STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123e")).first == false);
-  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123e4")).second == static_cast<TestType>(123e4l));
+  STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123e4")).second == static_cast<TestType>(123e4L));
   STATIC_CHECK(lefticus::parse_number<TestType>(std::string_view("123ex")).first == false);
   STATIC_CHECK(static_cast<TestType>(.123e2l) == lefticus::parse_number<TestType>(std::string_view(".123e2")).second);
-  STATIC_CHECK(static_cast<TestType>(12.3l) == lefticus::parse_number<TestType>(std::string_view(".123e2")).second);
+  STATIC_CHECK(static_cast<TestType>(12.3L) == lefticus::parse_number<TestType>(std::string_view(".123e2")).second);
   STATIC_CHECK(
-    lefticus::parse_number<TestType>(std::string_view("123.456e3")).second == static_cast<TestType>(123456l));
+    lefticus::parse_number<TestType>(std::string_view("123.456e3")).second == static_cast<TestType>(123456L));
   STATIC_CHECK(static_cast<TestType>(.123l) == lefticus::parse_number<TestType>(std::string_view(".123")).second);
-  STATIC_CHECK(static_cast<TestType>(1.l) == lefticus::parse_number<TestType>(std::string_view("1.")).second);
+  STATIC_CHECK(static_cast<TestType>(1.L) == lefticus::parse_number<TestType>(std::string_view("1.")).second);
 }
 // LCOV_EXCL_STOP
 
@@ -660,11 +699,11 @@ TEST_CASE("Missing token parsing edge cases", "[parser][coverage]")
 TEST_CASE("Parser null pointer safety", "[parser][coverage]")
 {
   constexpr auto test_null_safety = []() constexpr {
-    lefticus::cons_expr<> engine;
+    lefticus::cons_expr<> const engine;
 
     // Test null pointer in get_if
     const decltype(engine)::SExpr *null_ptr = nullptr;
-    auto result = engine.get_if<IntType>(null_ptr);
+    const auto *result = engine.get_if<IntType>(null_ptr);
     return result == nullptr;
   };
   STATIC_CHECK(test_null_safety());

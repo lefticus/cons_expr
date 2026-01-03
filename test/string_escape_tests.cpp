@@ -1,13 +1,14 @@
 #include <catch2/catch_test_macros.hpp>
-#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <cons_expr/cons_expr.hpp>
-#include <cons_expr/utility.hpp>
-#include <internal_use_only/config.hpp>
+#include <cstdint>
+#include <string_view>
+#include <variant>
 
 using IntType = int;
 using FloatType = double;
 
+namespace {
 template<typename Result> constexpr Result evaluate_to(std::string_view input)
 {
   lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
@@ -18,6 +19,7 @@ template<typename Result> constexpr bool evaluate_expected(std::string_view inpu
 {
   lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
   return evaluator.evaluate_to<Result>(input).value() == result;
+}
 }
 
 TEST_CASE("String escape processing", "[string][escape]")
@@ -54,11 +56,11 @@ TEST_CASE("String escape error cases", "[string][escape][error]")
   lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
 
   // Test invalid escape sequence
-  auto invalid_escape = evaluator.evaluate("\"hello\\xworld\"");
+  auto invalid_escape = evaluator.evaluate(R"("hello\xworld")");
   REQUIRE(std::holds_alternative<lefticus::Error<std::uint16_t>>(invalid_escape.value));
 
   // Test unterminated escape at end of string
-  auto unterminated_escape = evaluator.evaluate("\"hello\\\"");
+  auto unterminated_escape = evaluator.evaluate(R"("hello\")");
   REQUIRE(std::holds_alternative<lefticus::Error<std::uint16_t>>(unterminated_escape.value));
 }
 

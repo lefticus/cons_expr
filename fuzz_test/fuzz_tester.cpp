@@ -1,14 +1,13 @@
 #include <cons_expr/cons_expr.hpp>
-#include <cons_expr/utility.hpp>
-#include <fmt/format.h>
+#include <cstdint>
+#include <cstddef>
+#include <iterator>
 #include <string>
-#include <string_view>
 
 // Fuzzer that tests the cons_expr parser and evaluator
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
-  // Create a string view from the fuzz data
-  std::string_view script(reinterpret_cast<const char *>(data), size);
+  const std::string script(data, std::next(data, static_cast<std::ptrdiff_t>(size)));
 
   // Initialize the cons_expr evaluator
   lefticus::cons_expr<> evaluator;

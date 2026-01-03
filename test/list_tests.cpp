@@ -1,13 +1,13 @@
 #include <catch2/catch_test_macros.hpp>
-#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <cons_expr/cons_expr.hpp>
-#include <cons_expr/utility.hpp>
-#include <internal_use_only/config.hpp>
+#include <cstdint>
+#include <string_view>
 
 using IntType = int;
 using FloatType = double;
 
+namespace {
 template<typename Result> constexpr Result evaluate_to(std::string_view input)
 {
   lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
@@ -18,6 +18,7 @@ template<typename Result> constexpr bool evaluate_expected(std::string_view inpu
 {
   lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
   return evaluator.evaluate_to<Result>(input).value() == result;
+}
 }
 
 // Basic List Creation Tests

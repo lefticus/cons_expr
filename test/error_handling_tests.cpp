@@ -1,13 +1,14 @@
 #include <catch2/catch_test_macros.hpp>
-#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <cons_expr/cons_expr.hpp>
-#include <cons_expr/utility.hpp>
-#include <internal_use_only/config.hpp>
+#include <cstdint>
+#include <string_view>
+#include <variant>
 
 using IntType = int;
 using FloatType = double;
 
+namespace {
 template<typename Result> constexpr Result evaluate_to(std::string_view input)
 {
   lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
@@ -26,6 +27,7 @@ constexpr bool is_error(std::string_view input)
   lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
   auto result = evaluator.evaluate(input);
   return std::holds_alternative<lefticus::Error<std::uint16_t>>(result.value);
+}
 }
 
 TEST_CASE("Error handling in diverse contexts", "[error]")

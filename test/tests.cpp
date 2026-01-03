@@ -1,11 +1,15 @@
 #include <catch2/catch_test_macros.hpp>
+#include <cstdint>
 #include <iostream>
 
 #include <cons_expr/cons_expr.hpp>
+#include <string_view>
+#include <variant>
 
 template<typename char_type> using cons_expr_type = lefticus::cons_expr<std::uint16_t, char_type>;
 
-void display(cons_expr_type<char>::int_type i) { std::cout << i << '\n'; }
+namespace {
+void display(cons_expr_type<char>::int_type value) { std::cout << value << '\n'; }
 
 auto evaluate(std::basic_string_view<char> input)
 {
@@ -35,6 +39,7 @@ Result evaluate_non_char_to(std::basic_string_view<char_type> input)
 {
   return std::get<Result>(std::get<typename cons_expr_type<char_type>::Atom>(evaluate_non_char(input).value));
 }
+}
 
 TEST_CASE("non-char characters", "[c++ api]") { CHECK(evaluate_non_char_to<int, wchar_t>(L"(+ 1 2 3 4)") == 10); }
 
@@ -55,9 +60,9 @@ TEST_CASE("member functions", "[function]")
 {
   struct Test
   {
-    void set(int i) { m_i = i; }
+    void set(int new_i) { m_i = new_i; }
 
-    int get() const { return m_i; }
+    [[nodiscard]] int get() const { return m_i; }
 
     int m_i{ 0 };
   };

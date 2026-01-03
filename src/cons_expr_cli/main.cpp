@@ -1,7 +1,14 @@
 #include <CLI/CLI.hpp>
+#include <cstdio>
+#include <cstdlib>
+#include <exception>
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <iostream>
+#include <ios>
+#include <optional>
+#include <ostream>
 #include <spdlog/spdlog.h>
 #include <sstream>
 
@@ -9,23 +16,27 @@
 #include <cons_expr/utility.hpp>
 
 #include <internal_use_only/config.hpp>
+#include <string>
+#include <stdexcept>
 
 using cons_expr_type = lefticus::cons_expr<>;
 namespace fs = std::filesystem;
 
-void display(cons_expr_type::int_type i) { std::cout << i << '\n'; }
+namespace {
+void display(cons_expr_type::int_type value) { std::cout << value << '\n'; }
 
 // Read a file into a string
 std::string read_file(const fs::path &path)
 {
   if (!fs::exists(path)) { throw std::runtime_error(std::format("File not found: {}", path.string())); }
 
-  std::ifstream file(path, std::ios::in | std::ios::binary);
+  std::ifstream const file(path, std::ios::in | std::ios::binary);
   if (!file) { throw std::runtime_error(std::format("Failed to open file: {}", path.string())); }
 
   std::stringstream buffer;
   buffer << file.rdbuf();
   return buffer.str();
+}
 }
 
 int main(int argc, const char **argv)
@@ -63,7 +74,7 @@ int main(int argc, const char **argv)
     if (file_path) {
       try {
         std::cout << "Executing script from file: " << *file_path << '\n';
-        std::string file_content = read_file(fs::path(*file_path));
+        std::string const file_content = read_file(fs::path(*file_path));
 
         auto [parse_result, remaining] = evaluator.parse(file_content);
         auto result = evaluator.sequence(evaluator.global_scope, parse_result);

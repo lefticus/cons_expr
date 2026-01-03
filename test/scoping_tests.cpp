@@ -1,13 +1,14 @@
 #include <catch2/catch_test_macros.hpp>
-#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <cons_expr/cons_expr.hpp>
-#include <cons_expr/utility.hpp>
-#include <internal_use_only/config.hpp>
+#include <cstdint>
+#include <string_view>
+#include <variant>
 
 using IntType = int;
 using FloatType = double;
 
+namespace {
 template<typename Result> constexpr Result evaluate_to(std::string_view input)
 {
   lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
@@ -20,6 +21,7 @@ template<typename Result> constexpr bool evaluate_expected(std::string_view inpu
   return evaluator.evaluate_to<Result>(input).value() == result;
 }
 
+
 // Function to check if an evaluation fails with an error
 constexpr bool expect_error(std::string_view input)
 {
@@ -27,6 +29,7 @@ constexpr bool expect_error(std::string_view input)
   auto result = evaluator.evaluate(input);
   // Check if the result is an error type
   return std::holds_alternative<lefticus::cons_expr<>::error_type>(result.value);
+}
 }
 
 // ----- Basic Scoping Tests -----
