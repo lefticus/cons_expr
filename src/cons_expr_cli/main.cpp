@@ -5,8 +5,8 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
-#include <iostream>
 #include <ios>
+#include <iostream>
 #include <optional>
 #include <ostream>
 #include <spdlog/spdlog.h>
@@ -16,8 +16,8 @@
 #include <cons_expr/utility.hpp>
 
 #include <internal_use_only/config.hpp>
-#include <string>
 #include <stdexcept>
+#include <string>
 
 using cons_expr_type = lefticus::cons_expr<>;
 namespace fs = std::filesystem;
@@ -37,7 +37,7 @@ std::string read_file(const fs::path &path)
   buffer << file.rdbuf();
   return buffer.str();
 }
-}
+}// namespace
 
 int main(int argc, const char **argv)
 {

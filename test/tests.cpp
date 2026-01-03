@@ -39,7 +39,7 @@ Result evaluate_non_char_to(std::basic_string_view<char_type> input)
 {
   return std::get<Result>(std::get<typename cons_expr_type<char_type>::Atom>(evaluate_non_char(input).value));
 }
-}
+}// namespace
 
 TEST_CASE("non-char characters", "[c++ api]") { CHECK(evaluate_non_char_to<int, wchar_t>(L"(+ 1 2 3 4)") == 10); }
 

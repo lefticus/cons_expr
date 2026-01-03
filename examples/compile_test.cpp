@@ -2,8 +2,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <format>
-#include <string_view>
 #include <functional>
+#include <string_view>
 
 using cons_expr_type = lefticus::cons_expr<std::uint16_t, char, long long, long double>;
 
@@ -33,7 +33,7 @@ consteval auto make_scripted_function()
 
   return std::bind_front(evaluator.make_callable<long long(long long, long long)>("sum"), evaluator);
 }
-}
+}// namespace
 
 
 int main()
@@ -46,7 +46,7 @@ int main()
     std::puts(std::format("sum({} to {}) = {}", from, to, func(from, to).value()).c_str());
   };
 
-  print_sum(101, 132414); // NOLINT these values are arbitrary
-  print_sum(1, 1222222); // NOLINT
-  print_sum(-10, 10); // NOLINT
+  print_sum(101, 132414);// NOLINT these values are arbitrary
+  print_sum(1, 1222222);// NOLINT
+  print_sum(-10, 10);// NOLINT
 }

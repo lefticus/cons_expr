@@ -19,7 +19,7 @@ template<typename Result> constexpr bool evaluate_expected(std::string_view inpu
   lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
   return evaluator.evaluate_to<Result>(input).value() == result;
 }
-}
+}// namespace
 
 TEST_CASE("Basic type predicates", "[types][predicates]")
 {

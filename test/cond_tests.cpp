@@ -29,7 +29,7 @@ constexpr bool is_error(std::string_view input)
   auto result = evaluator.evaluate(input);
   return std::holds_alternative<lefticus::Error<std::uint16_t>>(result.value);
 }
-}
+}// namespace
 
 TEST_CASE("Cond expression basic usage", "[cond]")
 {

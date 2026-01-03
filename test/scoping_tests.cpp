@@ -30,7 +30,7 @@ constexpr bool expect_error(std::string_view input)
   // Check if the result is an error type
   return std::holds_alternative<lefticus::cons_expr<>::error_type>(result.value);
 }
-}
+}// namespace
 
 // ----- Basic Scoping Tests -----
 

@@ -41,19 +41,19 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] const char *argv[])
 
   auto update_objects = [&]() {
     entries.clear();
-    for (std::size_t index = 0; auto item : evaluator.values[{ .start=0, .size=evaluator.values.size() }]) {
+    for (std::size_t index = 0; auto item : evaluator.values[{ .start = 0, .size = evaluator.values.size() }]) {
       entries.push_back(std::format("{}: {}", index, to_string(evaluator, true, item)));
       ++index;
     }
 
     characters.clear();
-    for (std::size_t index = 0; auto item : evaluator.strings[{ .start=0, .size=evaluator.strings.size() }]) {
+    for (std::size_t index = 0; auto item : evaluator.strings[{ .start = 0, .size = evaluator.strings.size() }]) {
       characters.push_back(std::format("{}: '{}'", index, item));
       ++index;
     }
 
     globals.clear();
-    for (auto [key, value] : evaluator.global_scope[{ .start=0, .size=evaluator.global_scope.size() }]) {
+    for (auto [key, value] : evaluator.global_scope[{ .start = 0, .size = evaluator.global_scope.size() }]) {
       globals.push_back(std::format("{}: '{}'", to_string(evaluator, false, key), to_string(evaluator, true, value)));
     }
   };

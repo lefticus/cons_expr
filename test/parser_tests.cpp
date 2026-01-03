@@ -18,11 +18,11 @@ template<typename CharType> constexpr auto parse(std::basic_string_view<CharType
   evaluator_type evaluator;
   const auto list = evaluator.parse(str).first;
 
-  if (list.size != 1) { throw "expected exactly one thing parsed"; } // NOLINT
+  if (list.size != 1) { throw "expected exactly one thing parsed"; }// NOLINT
 
   return evaluator.values[list[0]];
 }
-}
+}// namespace
 
 
 // Basic Tokenization Tests
@@ -34,51 +34,41 @@ TEST_CASE("Basic tokenization", "[parser][tokenize]")
 
     // Simple tokens
     Token const token1 = lefticus::next_token(std::string_view("hello"));
-    if (token1.parsed != std::string_view("hello")) { return false;
-}
+    if (token1.parsed != std::string_view("hello")) { return false; }
 
     // Whitespace handling
     Token const token2 = lefticus::next_token(std::string_view("   hello"));
-    if (token2.parsed != std::string_view("hello")) { return false;
-}
+    if (token2.parsed != std::string_view("hello")) { return false; }
 
     Token const token3 = lefticus::next_token(std::string_view("hello   "));
-    if (token3.parsed != std::string_view("hello")) { return false;
-}
+    if (token3.parsed != std::string_view("hello")) { return false; }
 
     // Multiple tokens
     Token const token4 = lefticus::next_token(std::string_view("hello world"));
-    if (token4.parsed != std::string_view("hello") || token4.remaining != std::string_view("world")) { return false;
-}
+    if (token4.parsed != std::string_view("hello") || token4.remaining != std::string_view("world")) { return false; }
 
     // Parentheses
     Token const token5 = lefticus::next_token(std::string_view("(hello)"));
-    if (token5.parsed != std::string_view("(") || token5.remaining != std::string_view("hello)")) { return false;
-}
+    if (token5.parsed != std::string_view("(") || token5.remaining != std::string_view("hello)")) { return false; }
 
     Token const token6 = lefticus::next_token(std::string_view(")hello"));
-    if (token6.parsed != std::string_view(")") || token6.remaining != std::string_view("hello")) { return false;
-}
+    if (token6.parsed != std::string_view(")") || token6.remaining != std::string_view("hello")) { return false; }
 
     // Quote syntax
     Token const token7 = lefticus::next_token(std::string_view("'(hello)"));
-    if (token7.parsed != std::string_view("'") || token7.remaining != std::string_view("(hello)")) { return false;
-}
+    if (token7.parsed != std::string_view("'") || token7.remaining != std::string_view("(hello)")) { return false; }
 
     // Strings
     Token const token8 = lefticus::next_token(std::string_view("\"hello\""));
-    if (token8.parsed != std::string_view("\"hello\"")) { return false;
-}
+    if (token8.parsed != std::string_view("\"hello\"")) { return false; }
 
     // Empty input
     Token const token9 = lefticus::next_token(std::string_view(""));
-    if (!token9.parsed.empty() || !token9.remaining.empty()) { return false;
-}
+    if (!token9.parsed.empty() || !token9.remaining.empty()) { return false; }
 
     // Comments
     Token const token10 = lefticus::next_token(std::string_view("; comment\nhello"));
-    if (token10.parsed != std::string_view("hello")) { return false;
-}
+    if (token10.parsed != std::string_view("hello")) { return false; }
 
     return true;
   };
@@ -296,21 +286,17 @@ TEST_CASE("String escape characters", "[parser][strings][escapes]")
     auto [parsed, _] = evaluator.parse(R"("Quote: \"Hello\"")");
 
     // Extract the string content
-    if (parsed.size != 1) { return false;
-}
+    if (parsed.size != 1) { return false; }
 
     const auto *atom = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[parsed[0]].value);
-    if (atom == nullptr) { return false;
-}
+    if (atom == nullptr) { return false; }
 
     const auto *string_val = std::get_if<lefticus::cons_expr<>::string_type>(atom);
-    if (string_val == nullptr) { return false;
-}
+    if (string_val == nullptr) { return false; }
 
     // Check the raw tokenized string includes the escapes
     auto token = lefticus::next_token(std::string_view(R"("Quote: \"Hello\"")"));
-    if (token.parsed != std::string_view(R"("Quote: \"Hello\"")")) { return false;
-}
+    if (token.parsed != std::string_view(R"("Quote: \"Hello\"")")) { return false; }
 
     return true;
   };
@@ -367,16 +353,15 @@ TEST_CASE("Number parsing", "[parser][numbers]")
   constexpr auto test_int_parsing = []() {
     // Integer parsing
     auto [success1, value1] = lefticus::parse_number<int>(std::string_view("123"));
-    if (!success1 || value1 != 123) { return false;
-}
+    if (!success1 || value1 != 123) { return false; }
 
     auto [success2, value2] = lefticus::parse_number<int>(std::string_view("-456"));
-    if (!success2 || value2 != -456) { return false;
-}
+    if (!success2 || value2 != -456) { return false; }
 
     auto [success3, value3] = lefticus::parse_number<int>(std::string_view("not_a_number"));
-    if (success3) { return false;// Should fail
-}
+    if (success3) {
+      return false;// Should fail
+    }
 
     return true;
   };
@@ -396,8 +381,7 @@ TEST_CASE("List structure", "[parser][lists]")
 
     // Parse always returns a list containing the parsed expressions
     // For an empty list, we expect a list with one item (which is itself an empty list)
-    if (outer_list.size != 1) { return false;
-}
+    if (outer_list.size != 1) { return false; }
 
     // Check that the inner element is an empty list
     const auto &inner_elem = evaluator.values[outer_list[0]];
@@ -413,8 +397,7 @@ TEST_CASE("List structure", "[parser][lists]")
     auto [outer_list, _] = evaluator.parse(std::string_view("(a b c)"));
 
     // Outer list should contain one item
-    if (outer_list.size != 1) { return false;
-}
+    if (outer_list.size != 1) { return false; }
 
     // Inner list should contain three elements (a, b, c)
     const auto &inner_elem = evaluator.values[outer_list[0]];
@@ -430,14 +413,12 @@ TEST_CASE("List structure", "[parser][lists]")
     auto [outer_list, _] = evaluator.parse(std::string_view("(a (b c) d)"));
 
     // Outer list should contain one item
-    if (outer_list.size != 1) { return false;
-}
+    if (outer_list.size != 1) { return false; }
 
     // Inner list should contain three elements: a, (b c), d
     const auto &inner_elem = evaluator.values[outer_list[0]];
     const auto *inner_list = std::get_if<lefticus::cons_expr<>::list_type>(&inner_elem.value);
-    if (inner_list == nullptr || inner_list->size != 3) { return false;
-}
+    if (inner_list == nullptr || inner_list->size != 3) { return false; }
 
     // The second element should be a nested list with 2 elements: b, c
     const auto &nested_elem = evaluator.values[(*inner_list)[1]];
@@ -460,29 +441,23 @@ TEST_CASE("Boolean literals", "[parser][booleans]")
 
     // Parse true
     auto [true_expr, _1] = evaluator.parse("true");
-    if (true_expr.size != 1) { return false;
-}
+    if (true_expr.size != 1) { return false; }
 
     const auto *atom1 = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[true_expr[0]].value);
-    if (atom1 == nullptr) { return false;
-}
+    if (atom1 == nullptr) { return false; }
 
     const auto *bool_val1 = std::get_if<bool>(atom1);
-    if (bool_val1 == nullptr || !(*bool_val1)) { return false;
-}
+    if (bool_val1 == nullptr || !(*bool_val1)) { return false; }
 
     // Parse false
     auto [false_expr, _2] = evaluator.parse("false");
-    if (false_expr.size != 1) { return false;
-}
+    if (false_expr.size != 1) { return false; }
 
     const auto *atom2 = std::get_if<lefticus::cons_expr<>::Atom>(&evaluator.values[false_expr[0]].value);
-    if (atom2 == nullptr) { return false;
-}
+    if (atom2 == nullptr) { return false; }
 
     const auto *bool_val2 = std::get_if<bool>(atom2);
-    if (bool_val2 == nullptr || (*bool_val2)) { return false;
-}
+    if (bool_val2 == nullptr || (*bool_val2)) { return false; }
 
     return true;
   };
@@ -500,8 +475,7 @@ TEST_CASE("Multiple expressions", "[parser][multiple]")
     auto [parsed, _] = evaluator.parse(std::string_view("(define x 10)"));
 
     // Outer list should contain one item
-    if (parsed.size != 1) { return false;
-}
+    if (parsed.size != 1) { return false; }
 
     // Inner list should contain three elements: define, x, 10
     const auto &inner_elem = evaluator.values[parsed[0]];
@@ -523,20 +497,17 @@ TEST_CASE("Complex expressions", "[parser][complex]")
     auto [parsed, _] = evaluator.parse(std::string_view("(lambda (x) (+ x 1))"));
 
     // Outer list should contain one item
-    if (parsed.size != 1) { return false;
-}
+    if (parsed.size != 1) { return false; }
 
     // Inner list should contain three elements: lambda, (x), (+ x 1)
     const auto &inner_elem = evaluator.values[parsed[0]];
     const auto *inner_list = std::get_if<lefticus::cons_expr<>::list_type>(&inner_elem.value);
-    if (inner_list == nullptr || inner_list->size != 3) { return false;
-}
+    if (inner_list == nullptr || inner_list->size != 3) { return false; }
 
     // Second element should be a parameter list containing just x
     const auto &params = evaluator.values[(*inner_list)[1]];
     const auto *params_list = std::get_if<lefticus::cons_expr<>::list_type>(&params.value);
-    if (params_list == nullptr || params_list->size != 1) { return false;
-}
+    if (params_list == nullptr || params_list->size != 1) { return false; }
 
     return true;
   };
@@ -579,20 +550,17 @@ TEST_CASE("Mixed content", "[parser][mixed]")
     auto [mixed_expr, _] = evaluator.parse(std::string_view("(list 123 \"hello\" true 'symbol (nested))"));
 
     // Outer list should contain one item
-    if (mixed_expr.size != 1) { return false;
-}
+    if (mixed_expr.size != 1) { return false; }
 
     // Inner list should contain six elements: list, 123, "hello", true, 'symbol, (nested)
     const auto &inner_elem = evaluator.values[mixed_expr[0]];
     const auto *inner_list = std::get_if<lefticus::cons_expr<>::list_type>(&inner_elem.value);
-    if (inner_list == nullptr || inner_list->size != 6) { return false;
-}
+    if (inner_list == nullptr || inner_list->size != 6) { return false; }
 
     // First element should be an identifier "list"
     const auto &first_elem = evaluator.values[(*inner_list)[0]];
     const auto *first_atom = std::get_if<lefticus::cons_expr<>::Atom>(&first_elem.value);
-    if (first_atom == nullptr) { return false;
-}
+    if (first_atom == nullptr) { return false; }
 
     const auto *id = std::get_if<lefticus::cons_expr<>::identifier_type>(first_atom);
     return id != nullptr;
@@ -607,24 +575,19 @@ TEST_CASE("Special characters", "[parser][special-chars]")
   constexpr auto test_special_chars = []() {
     // Various identifier formats with special characters
     auto token1 = lefticus::next_token(std::string_view("hello-world"));
-    if (token1.parsed != std::string_view("hello-world")) { return false;
-}
+    if (token1.parsed != std::string_view("hello-world")) { return false; }
 
     auto token2 = lefticus::next_token(std::string_view("symbol+"));
-    if (token2.parsed != std::string_view("symbol+")) { return false;
-}
+    if (token2.parsed != std::string_view("symbol+")) { return false; }
 
     auto token3 = lefticus::next_token(std::string_view("_special_"));
-    if (token3.parsed != std::string_view("_special_")) { return false;
-}
+    if (token3.parsed != std::string_view("_special_")) { return false; }
 
     auto token4 = lefticus::next_token(std::string_view("*wild*"));
-    if (token4.parsed != std::string_view("*wild*")) { return false;
-}
+    if (token4.parsed != std::string_view("*wild*")) { return false; }
 
     auto token5 = lefticus::next_token(std::string_view("symbol?"));
-    if (token5.parsed != std::string_view("symbol?")) { return false;
-}
+    if (token5.parsed != std::string_view("symbol?")) { return false; }
 
     return true;
   };

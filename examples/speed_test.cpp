@@ -4,7 +4,6 @@
 #include <string_view>
 
 
-
 namespace {
 constexpr long long add(long long x, long long y) { return x + y; }
 
@@ -26,7 +25,7 @@ template<typename Result> Result evaluate_to(std::string_view input)
 {
   return std::get<Result>(std::get<cons_expr_type::Atom>(evaluate(input).value));
 }
-}
+}// namespace
 
 int main()
 {
