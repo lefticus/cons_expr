@@ -36,8 +36,8 @@
 
 **Live Demo:** If you enable GitHub Pages in your project created from this template, you'll have a working example like this:
 
-- Main: [https://cpp-best-practices.github.io/cmake_template/](https://cpp-best-practices.github.io/cmake_template/)
-- Develop: [https://cpp-best-practices.github.io/cmake_template/develop/](https://cpp-best-practices.github.io/cmake_template/develop/)
+- Main: [https://lefticus.github.io/cons_expr/](https://lefticus.github.io/cons_expr/)
+- Develop: [https://lefticus.github.io/cons_expr/develop/](https://lefticus.github.io/cons_expr/develop/)
 
 The `main` branch deploys to the root, `develop` to `/develop/`, and tags to `/tagname/`.
  
