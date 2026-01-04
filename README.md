@@ -15,7 +15,7 @@
    * any value once captured is const
    * any redefinition of a value shadows the previous value
 * Constexpr-capable
-   * `cons_expr::cons_expr` is `constinit` meaning that it is *always* 0-cost to construct a cons_expr interpreter
+   * `cons_expr::cons_expr` is `consteval` meaning that it is *always* 0-cost to construct a cons_expr interpreter
    * Any script can be executed at compile time.
    * Why execute script at compile time?
      * I don't know your other use cases
@@ -32,20 +32,150 @@
 * For C++23
    * Currently only known to work with GCC 13.1.
 
-* WebAssembly build support with automatic GitHub Pages deployment
+## Examples
 
-**Live Demo:** If you enable GitHub Pages in your project created from this template, you'll have a working example like this:
+### Basic Example
 
-- Main: [https://lefticus.github.io/cons_expr/](https://lefticus.github.io/cons_expr/)
-- Develop: [https://lefticus.github.io/cons_expr/develop/](https://lefticus.github.io/cons_expr/develop/)
+It can be as simple as:
 
-The `main` branch deploys to the root, `develop` to `/develop/`, and tags to `/tagname/`.
+```cpp
+#include <cons_expr/cons_expr.hpp>
+#include <print>
+
+void greet(std::string_view name) { std::println("Hello {}!", name); }
+
+int main() {
+  lefticus::cons_expr<> evaluator;
+
+  // add C++ function
+  evaluator.add<greet>("greet");
+
+  // call C++ function from script
+  const auto _ = evaluator.evaluate(R"(
+    (greet "Jason")
+  )");
+}
+```
+
+Play with this in [Compiler Explorer](https://compiler-explorer.com/z/MvvqTdvMK).
+
+### Calling Script Functions from C++
+
+```cpp
+#include <cons_expr/cons_expr.hpp>
+#include <iostream>
+
+int main() {
+  lefticus::cons_expr<> evaluator;
+
+  // you should check this for errors
+  [[maybe_unused]] const auto result = evaluator.evaluate(R"(
+    (define math
+      (lambda (x y) 
+        (- (* x y) (+ x y))
+      )
+    )
+  )");  
+
+  // we can treat script functions as C++ functions
+  auto func = evaluator.make_callable<int (int, int)>("math");
+
+  std::cout << func(evaluator, 5, 4).value();
+
+  // or bind them and make them more natural
+  auto math = std::bind_front(func, std::ref(evaluator));
+
+  std::cout << math(5, 4).value();
+
+  // or bind them *by value* and make them self contained
+  auto math2 = std::bind_front(func, evaluator);
+
+  std::cout << math2(5, 4).value();
+}
+```
+
+Play with this example in [Compiler Explorer](https://compiler-explorer.com/z/WGa54G9Ee).
+
+### More Complete Bi-Directional Example
+
+```cpp
+#include <cmath>
+#include <cons_expr/cons_expr.hpp>
+#include <cons_expr/utility.hpp>
+#include <numbers>
+
+namespace lefticus {
+constexpr double cos(double input) { return std::cos(input); }
+}  // namespace lefticus
+
+int main() {
+  lefticus::cons_expr<> evaluator;
+  // adding a function
+  evaluator.add<lefticus::cos>("cos");
+
+  // adding a lambda, not the + to force it into a 
+  // function pointer
+  evaluator.add<+[](double input) { return std::sin(input); }>("sin");
+
+  // adding a global
+  evaluator.add("pi", std::numbers::pi_v<double>);
+
+  // calling the functions I just added
+  // (floating point isn't exact :D)
+  const auto result = evaluator.evaluate("(+ (cos pi) (sin pi))");
+
+  // if the above had an error then we'd get a pretty-print
+  // of it with this helper function
+  
+  // using the to_string helper from the utility.hpp
+  std::puts(lefticus::to_string(evaluator, true, result).c_str());
+}
+```
+
+Play with this example in [Compiler Explorer](https://compiler-explorer.com/z/dGYbG88YE).
+
+### And Remember: Everything is `constexpr` Capable
+
+```cpp
+#include <https://raw.githubusercontent.com/lefticus/cons_expr/refs/heads/develop/include/cons_expr/cons_expr.hpp>
+
+// the entire system is constexpr capable
+consteval int do_math(int x, int y) {
+  lefticus::cons_expr<> evaluator;
+
+  // you should check this for errors
+  [[maybe_unused]] const auto result = evaluator.evaluate(R"(
+    (define math
+      (lambda (x y) 
+        (- (* x y) (+ x y))
+      )
+    )
+  )");  
+
+  auto func = evaluator.make_callable<int (int, int)>("math");
+  return func(evaluator, x, y).value();
+}
+
+int main() {
+  // doing this in a consteval function above guarantees this is done 
+  // at compile time.
+  return do_math(4, 2);
+}
+```
+
+Play with this example in [Compiler Explorer](https://compiler-explorer.com/z/jr51cYYv7).
+
  
 ## Command Line Inspection Tool
 
 `ccons_expr` can be used to execute scripts and inspect the state of the runtime system live
 
 [![asciicast](https://asciinema.org/a/ZJWpwSjkFqt7Fl750HpeiT3Eg.svg)](https://asciinema.org/a/ZJWpwSjkFqt7Fl750HpeiT3Eg)
+
+## Online Builds To Play With The Syntax
+
+- Main: [https://lefticus.github.io/cons_expr/](https://lefticus.github.io/cons_expr/)
+- Develop: [https://lefticus.github.io/cons_expr/develop/](https://lefticus.github.io/cons_expr/develop/)
 
 
 ## Important Notes
