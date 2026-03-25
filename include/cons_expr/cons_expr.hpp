@@ -849,8 +849,11 @@ struct cons_expr
     // Even atom? can use the generic predicate with Atom
     add(str("atom?"), SExpr{ FunctionPtr{ make_type_predicate<Atom>(), FunctionPtr::Type::other } });
 
-    // Pre-register error message so make_container_error can find it without inserting
-    strings.insert_or_find(str("container overflow"));
+    // Pre-register error messages so make_container_error can find them without inserting
+    strings.insert_or_find(str("strings container overflow"));
+    strings.insert_or_find(str("values container overflow"));
+    strings.insert_or_find(str("scratch container overflow"));
+    strings.insert_or_find(str("scope container overflow"));
   }
 
   [[nodiscard]] constexpr bool has_container_error() const noexcept
@@ -861,7 +864,12 @@ struct cons_expr
 
   [[nodiscard]] constexpr SExpr make_container_error() noexcept
   {
-    return SExpr{ error_type{ strings.insert_or_find(str("container overflow")), empty_indexed_list } };
+    if (strings.error_state) { return SExpr{ error_type{ strings.insert_or_find(str("strings container overflow")), empty_indexed_list } }; }
+    if (values.error_state) { return SExpr{ error_type{ strings.insert_or_find(str("values container overflow")), empty_indexed_list } }; }
+    if (object_scratch.error_state || variables_scratch.error_state || string_scratch.error_state) {
+      return SExpr{ error_type{ strings.insert_or_find(str("scratch container overflow")), empty_indexed_list } };
+    }
+    return SExpr{ error_type{ strings.insert_or_find(str("scope container overflow")), empty_indexed_list } };
   }
 
   [[nodiscard]] constexpr SExpr sequence(LexicalScope &scope, list_type expressions)

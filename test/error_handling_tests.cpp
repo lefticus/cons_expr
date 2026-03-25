@@ -111,7 +111,8 @@ TEST_CASE("Container overflow: values overflow returns error", "[error][overflow
     // Parsing (+ 1 2 3 4 5 6 7 8 9 10 11 12) creates 13 SExprs in a list, overflowing values.
     lefticus::cons_expr<std::uint16_t, char, IntType, FloatType, 64, 1540, 10> engine;
     auto result = engine.evaluate("(+ 1 2 3 4 5 6 7 8 9 10 11 12)");
-    return std::holds_alternative<lefticus::Error<std::uint16_t>>(result.value);
+    const auto *error = std::get_if<lefticus::Error<std::uint16_t>>(&result.value);
+    return error != nullptr && engine.strings[error->expected] == "values container overflow";
   };
   STATIC_CHECK(test());
 }
@@ -124,7 +125,8 @@ TEST_CASE("Container overflow: strings overflow returns error", "[error][overflo
     lefticus::cons_expr<std::uint16_t, char, IntType, FloatType, 64, 256, 279> engine;
     auto result = engine.evaluate(
       "(+ abcdefghijklmnopqrstuvwxy zyxwvutsrqponmlkjihgfedcba mnopqrstuvwxyzabcdefghijk qponmlkjihgfedcbazyxwvuts)");
-    return std::holds_alternative<lefticus::Error<std::uint16_t>>(result.value);
+    const auto *error = std::get_if<lefticus::Error<std::uint16_t>>(&result.value);
+    return error != nullptr && engine.strings[error->expected] == "strings container overflow";
   };
   STATIC_CHECK(test());
 }
@@ -140,7 +142,8 @@ TEST_CASE("Container overflow: object_scratch overflow returns error", "[error][
       "(+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ 1 1"
       ") 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1"
       ") 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1)");
-    return std::holds_alternative<lefticus::Error<std::uint16_t>>(result.value);
+    const auto *error = std::get_if<lefticus::Error<std::uint16_t>>(&result.value);
+    return error != nullptr && engine.strings[error->expected] == "scratch container overflow";
   };
   STATIC_CHECK(test());
 }
