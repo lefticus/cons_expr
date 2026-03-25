@@ -103,3 +103,51 @@ TEST_CASE("Lambda parameter validation", "[error][lambda]")
   // Calling lambda with wrong number of args
   STATIC_CHECK(is_error("((lambda (x y) (+ x y)) 1)"));
 }
+
+TEST_CASE("Container overflow: values overflow returns error", "[error][overflow]")
+{
+  constexpr auto test = []() constexpr {
+    // BuiltInValuesSize=10: constructor uses 0 values, so 10 slots available.
+    // Parsing (+ 1 2 3 4 5 6 7 8 9 10 11 12) creates 13 SExprs in a list, overflowing values.
+    lefticus::cons_expr<std::uint16_t, char, IntType, FloatType, 64, 1540, 10> engine;
+    auto result = engine.evaluate("(+ 1 2 3 4 5 6 7 8 9 10 11 12)");
+    return std::holds_alternative<lefticus::Error<std::uint16_t>>(result.value);
+  };
+  STATIC_CHECK(test());
+}
+
+TEST_CASE("Container overflow: strings overflow returns error", "[error][overflow]")
+{
+  constexpr auto test = []() constexpr {
+    // Constructor uses ~173 chars of strings. Capacity 256 leaves ~83 chars headroom.
+    // 4 unique 25-char identifiers = 100 chars, overflows remaining capacity.
+    lefticus::cons_expr<std::uint16_t, char, IntType, FloatType, 64, 256, 279> engine;
+    auto result = engine.evaluate(
+      "(+ abcdefghijklmnopqrstuvwxy zyxwvutsrqponmlkjihgfedcba mnopqrstuvwxyzabcdefghijk qponmlkjihgfedcbazyxwvuts)");
+    return std::holds_alternative<lefticus::Error<std::uint16_t>>(result.value);
+  };
+  STATIC_CHECK(test());
+}
+
+TEST_CASE("Container overflow: object_scratch overflow returns error", "[error][overflow]")
+{
+  constexpr auto test = []() constexpr {
+    lefticus::cons_expr<> engine;
+    // object_scratch capacity is 32. Each nested parse() call adds entries.
+    // 33+ nesting levels will overflow the scratch.
+    auto result = engine.evaluate(
+      "(+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ "
+      "(+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ 1 1"
+      ") 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1"
+      ") 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1)");
+    return std::holds_alternative<lefticus::Error<std::uint16_t>>(result.value);
+  };
+  STATIC_CHECK(test());
+}
+
+TEST_CASE("Container overflow: normal operations still succeed", "[error][overflow]")
+{
+  // Regression guard: default-capacity engine works fine
+  STATIC_CHECK(evaluate_to<int>("(+ 1 2 3)") == 6);
+  STATIC_CHECK(evaluate_to<bool>("(error? (+ 1 2))") == false);
+}
