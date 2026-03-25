@@ -754,6 +754,7 @@ struct cons_expr
     int quote_depth = 0;
 
     while (!token.parsed.empty()) {
+      if (has_container_error()) { break; }
       bool entered_quote = false;
 
       if (token.parsed == str("(")) {
@@ -793,6 +794,7 @@ struct cons_expr
 
       token = next_token(token.remaining);
     }
+    if (has_container_error()) { return { empty_indexed_list, token }; }
     return { values.insert_or_find(retval), token };
   }
 
@@ -846,12 +848,30 @@ struct cons_expr
 
     // Even atom? can use the generic predicate with Atom
     add(str("atom?"), SExpr{ FunctionPtr{ make_type_predicate<Atom>(), FunctionPtr::Type::other } });
+
+    // Pre-register error message so make_container_error can find it without inserting
+    strings.insert_or_find(str("container overflow"));
+  }
+
+  [[nodiscard]] constexpr bool has_container_error() const noexcept
+  {
+    return strings.error_state || values.error_state || object_scratch.error_state
+           || variables_scratch.error_state || string_scratch.error_state || global_scope.error_state;
+  }
+
+  [[nodiscard]] constexpr SExpr make_container_error() noexcept
+  {
+    return SExpr{ error_type{ strings.insert_or_find(str("container overflow")), empty_indexed_list } };
   }
 
   [[nodiscard]] constexpr SExpr sequence(LexicalScope &scope, list_type expressions)
   {
     auto result = SExpr{ Atom{ std::monostate{} } };
-    std::ranges::for_each(values[expressions], [&, engine = this](auto expr) { result = engine->eval(scope, expr); });
+    for (const auto &expr : values[expressions]) {
+      if (has_container_error()) { return make_container_error(); }
+      result = eval(scope, expr);
+    }
+    if (has_container_error()) { return make_container_error(); }
     return result;
   }
 
@@ -1649,7 +1669,14 @@ struct cons_expr
     return engine.make_error(str("supported types"), params);
   }
 
-  [[nodiscard]] constexpr SExpr evaluate(string_view_type input) { return sequence(global_scope, parse(input).first); }
+  [[nodiscard]] constexpr SExpr evaluate(string_view_type input)
+  {
+    auto [parsed, remaining] = parse(input);
+    if (has_container_error()) { return make_container_error(); }
+    auto result = sequence(global_scope, parsed);
+    if (has_container_error()) { return make_container_error(); }
+    return result;
+  }
 
   template<typename Result> [[nodiscard]] constexpr std::expected<Result, SExpr> evaluate_to(string_view_type input)
   {
