@@ -790,7 +790,7 @@ struct cons_expr
     add(str("quote"), SExpr{ FunctionPtr{ quoter, FunctionPtr::Type::other } });
     add(str("begin"), SExpr{ FunctionPtr{ begin, FunctionPtr::Type::other } });
     add(str("cond"), SExpr{ FunctionPtr{ cond, FunctionPtr::Type::other } });
-    add(str("error?"), SExpr{ FunctionPtr{ error_p, FunctionPtr::Type::other } });
+    add(str("error?"), SExpr{ FunctionPtr{ make_type_predicate<error_type>(), FunctionPtr::Type::other } });
 
     // Type predicates using the generic make_type_predicate function
     // Simple atomic types
@@ -1433,20 +1433,6 @@ struct cons_expr
     }
 
     return SExpr{ Atom{ std::monostate{} } };
-  }
-
-  // error?: Check if the expression is an error
-  [[nodiscard]] static constexpr SExpr error_p(cons_expr &engine, LexicalScope &scope, list_type params)
-  {
-    if (params.size != 1) { return engine.make_error(str("(error? expr)"), params); }
-
-    // Evaluate the expression
-    auto expr = engine.eval(scope, engine.values[params[0]]);
-
-    // Check if it's an error type
-    const bool is_error = std::holds_alternative<error_type>(expr.value);
-
-    return SExpr{ Atom(is_error) };
   }
 
   // Generic type predicate template for any type(s)
