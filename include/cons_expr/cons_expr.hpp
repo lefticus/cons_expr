@@ -819,14 +819,18 @@ struct cons_expr
 
   [[nodiscard]] constexpr bool has_container_error() const noexcept
   {
-    return strings.error_state || values.error_state || object_scratch.error_state
-           || variables_scratch.error_state || string_scratch.error_state || global_scope.error_state;
+    return strings.error_state || values.error_state || object_scratch.error_state || variables_scratch.error_state
+           || string_scratch.error_state || global_scope.error_state;
   }
 
   [[nodiscard]] constexpr SExpr make_container_error() noexcept
   {
-    if (strings.error_state) { return SExpr{ error_type{ strings.insert_or_find(str("strings container overflow")), empty_indexed_list } }; }
-    if (values.error_state) { return SExpr{ error_type{ strings.insert_or_find(str("values container overflow")), empty_indexed_list } }; }
+    if (strings.error_state) {
+      return SExpr{ error_type{ strings.insert_or_find(str("strings container overflow")), empty_indexed_list } };
+    }
+    if (values.error_state) {
+      return SExpr{ error_type{ strings.insert_or_find(str("values container overflow")), empty_indexed_list } };
+    }
     if (object_scratch.error_state || variables_scratch.error_state || string_scratch.error_state) {
       return SExpr{ error_type{ strings.insert_or_find(str("scratch container overflow")), empty_indexed_list } };
     }
@@ -1312,9 +1316,7 @@ struct cons_expr
   // Convert an SExpr from its quoted representation back to evaluable form
   [[nodiscard]] static constexpr SExpr from_quoted(const SExpr &expr)
   {
-    if (const auto *lit = std::get_if<literal_list_type>(&expr.value); lit != nullptr) {
-      return SExpr{ lit->items };
-    }
+    if (const auto *lit = std::get_if<literal_list_type>(&expr.value); lit != nullptr) { return SExpr{ lit->items }; }
     if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
       if (const auto *sym = std::get_if<symbol_type>(atom); sym != nullptr) {
         return SExpr{ Atom{ to_identifier(*sym) } };
