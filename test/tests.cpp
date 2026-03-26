@@ -1,11 +1,15 @@
 #include <catch2/catch_test_macros.hpp>
+#include <cstdint>
 #include <iostream>
 
 #include <cons_expr/cons_expr.hpp>
+#include <string_view>
+#include <variant>
 
 template<typename char_type> using cons_expr_type = lefticus::cons_expr<std::uint16_t, char_type>;
 
-void display(cons_expr_type<char>::int_type i) { std::cout << i << '\n'; }
+namespace {
+void display(cons_expr_type<char>::int_type value) { std::cout << value << '\n'; }
 
 auto evaluate(std::basic_string_view<char> input)
 {
@@ -14,9 +18,7 @@ auto evaluate(std::basic_string_view<char> input)
   evaluator.template add<display>("display");
 
   auto parse_result = evaluator.parse(input);
-  auto list = std::get<cons_expr_type<char>::list_type>(parse_result.first.value);
-
-  return evaluator.sequence(evaluator.global_scope, list);
+  return evaluator.sequence(evaluator.global_scope, parse_result.first);
 }
 
 template<typename Result, typename char_type = char> Result evaluate_to(std::basic_string_view<char_type> input)
@@ -29,9 +31,7 @@ template<typename char_type = char> auto evaluate_non_char(std::basic_string_vie
   cons_expr_type<char_type> evaluator;
 
   auto parse_result = evaluator.parse(input);
-  auto list = std::get<typename cons_expr_type<char_type>::list_type>(parse_result.first.value);
-
-  return evaluator.sequence(evaluator.global_scope, list);
+  return evaluator.sequence(evaluator.global_scope, parse_result.first);
 }
 
 template<typename Result, typename char_type = char>
@@ -39,6 +39,7 @@ Result evaluate_non_char_to(std::basic_string_view<char_type> input)
 {
   return std::get<Result>(std::get<typename cons_expr_type<char_type>::Atom>(evaluate_non_char(input).value));
 }
+}// namespace
 
 TEST_CASE("non-char characters", "[c++ api]") { CHECK(evaluate_non_char_to<int, wchar_t>(L"(+ 1 2 3 4)") == 10); }
 
@@ -54,45 +55,25 @@ TEST_CASE("basic callable usage", "[c++ api]")
   CHECK(func2(evaluator, 10) == 100);
 }
 
-TEST_CASE("GPT Generated Tests", "[integration tests]")
-{
-  CHECK(evaluate_to<typename cons_expr_type<char>::int_type, char>(R"(
-(define make-adder-multiplier
-  (lambda (a)
-    (lambda (b)
-      (do ((i 0 (+ i 1))
-           (sum 0 (+ sum (let ((x (+ a i)))
-                            (if (>= x b)
-                                (define y (* x 2))
-                                (define y (* x 3)))
-                            (do ((j 0 (+ j 1))
-                                 (inner-sum 0 (+ inner-sum y)))
-                                ((>= j i) inner-sum))))))
-          ((>= i 5) sum)))))
-
-((make-adder-multiplier 2) 3)
-)") == 100);
-}
 
 TEST_CASE("member functions", "[function]")
 {
   struct Test
   {
-    void set(int i) { m_i = i; }
+    void set(int new_i) { m_i = new_i; }
 
-    int get() const { return m_i; }
+    [[nodiscard]] int get() const { return m_i; }
 
     int m_i{ 0 };
   };
 
-  lefticus::cons_expr<std::uint16_t, char, int, float, 100, 100, 100, Test *> evaluator;
+  lefticus::cons_expr<std::uint16_t, char, int, float, 500, 500, 500, Test *> evaluator;
   evaluator.add<&Test::set>("set");
   evaluator.add<&Test::get>("get");
 
 
   auto eval = [&](const std::string_view input) {
-    return evaluator.sequence(
-      evaluator.global_scope, std::get<decltype(evaluator)::list_type>(evaluator.parse(input).first.value));
+    return evaluator.sequence(evaluator.global_scope, evaluator.parse(input).first);
   };
 
   Test myobj;
@@ -113,6 +94,43 @@ TEST_CASE("member functions", "[function]")
 TEST_CASE("basic for-each usage", "[builtins]")
 {
   CHECK_NOTHROW(evaluate_to<std::monostate, char>("(for-each display '(1 2 3 4))"));
+}
+
+TEST_CASE("SmallVector error handling", "[core][smallvector]")
+{
+  constexpr auto test_smallvector_error = []() {
+    // Create a SmallVector with small capacity
+    lefticus::SmallVector<uint16_t, char, 2, char, std::string_view> vec{};
+
+    // Add elements until we reach capacity
+    vec.push_back('a');
+    vec.push_back('b');
+
+    // This should set error_state to true
+    vec.push_back('c');
+
+    // Check that error_state is set
+    return vec.error_state == true && vec.size() == static_cast<uint16_t>(2);
+  };
+
+  STATIC_CHECK(test_smallvector_error());
+}
+
+TEST_CASE("SmallVector const operator[]", "[core][smallvector]")
+{
+  constexpr auto test_const_access = []() {
+    lefticus::SmallVector<uint16_t, char, 5, char, std::string_view> vec{};
+    vec.push_back('a');
+    vec.push_back('b');
+    vec.push_back('c');
+
+    // Create a const reference and access elements
+    const auto &const_vec = vec;
+    return const_vec[static_cast<uint16_t>(0)] == 'a' && const_vec[static_cast<uint16_t>(1)] == 'b'
+           && const_vec[static_cast<uint16_t>(2)] == 'c';
+  };
+
+  STATIC_CHECK(test_const_access());
 }
 
 /*

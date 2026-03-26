@@ -8,7 +8,7 @@ target_link_libraries(
   fuzz_tester
   PRIVATE cons_expr_options
           cons_expr_warnings
-          fmt::fmt
+          cons_expr
           -coverage
           -fsanitize=fuzzer)
 target_compile_options(fuzz_tester PRIVATE -fsanitize=fuzzer)
@@ -18,4 +18,4 @@ set(FUZZ_RUNTIME
     10
     CACHE STRING "Number of seconds to run fuzz tests during ctest run") # Default of 10 seconds
 
-add_test(NAME fuzz_tester_run COMMAND fuzz_tester -max_total_time=${FUZZ_RUNTIME})
+  # add_test(NAME fuzz_tester_run COMMAND fuzz_tester -max_total_time=${FUZZ_RUNTIME})

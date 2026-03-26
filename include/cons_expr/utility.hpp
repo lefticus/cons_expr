@@ -11,7 +11,7 @@ template<typename> inline constexpr bool is_cons_expr_v = false;
 template<typename SizeType,
   typename CharType,
   typename IntType,
-  typename FloatType,
+  typename RealType,
   SizeType BuiltInSymbolsSize,
   SizeType BuiltInStringsSize,
   SizeType BuiltInValuesSize,
@@ -19,7 +19,7 @@ template<typename SizeType,
 inline constexpr bool is_cons_expr_v<lefticus::cons_expr<SizeType,
   CharType,
   IntType,
-  FloatType,
+  RealType,
   BuiltInSymbolsSize,
   BuiltInStringsSize,
   BuiltInValuesSize,
@@ -31,7 +31,7 @@ concept ConsExpr = is_cons_expr_v<T>;
 
 template<ConsExpr Eval> std::string to_string(const Eval &, bool annotate, const typename Eval::SExpr &input);
 template<ConsExpr Eval> std::string to_string(const Eval &, bool annotate, const bool input);
-template<ConsExpr Eval> std::string to_string(const Eval &, bool annotate, const typename Eval::float_type input);
+template<ConsExpr Eval> std::string to_string(const Eval &, bool annotate, const typename Eval::real_type input);
 template<ConsExpr Eval> std::string to_string(const Eval &, bool annotate, const typename Eval::int_type input);
 template<ConsExpr Eval> std::string to_string(const Eval &, bool annotate, const typename Eval::Closure &);
 template<ConsExpr Eval> std::string to_string(const Eval &, bool annotate, const std::monostate &);
@@ -71,9 +71,19 @@ template<ConsExpr Eval>
 std::string to_string(const Eval &engine, bool annotate, const typename Eval::identifier_type &id)
 {
   if (annotate) {
-    return std::format("[identifier] {{{}, {}}} {}", id.value.start, id.value.size, engine.strings.view(id.value));
+    return std::format("[identifier] {{{}, {}}} {}", id.start, id.size, engine.strings.view(to_string(id)));
   } else {
-    return std::string{ engine.strings.view(id.value) };
+    return std::string{ engine.strings.view(to_string(id)) };
+  }
+}
+
+
+template<ConsExpr Eval> std::string to_string(const Eval &engine, bool annotate, const typename Eval::symbol_type &id)
+{
+  if (annotate) {
+    return std::format("[symbol] {{{}, {}}} '{}", id.start, id.size, engine.strings.view(to_string(id)));
+  } else {
+    return std::format("'{}", engine.strings.view(to_string(id)));
   }
 }
 
@@ -94,10 +104,10 @@ template<ConsExpr Eval> std::string to_string(const Eval &engine, bool annotate,
   return std::visit([&](const auto &value) { return to_string(engine, annotate, value); }, input);
 }
 
-template<ConsExpr Eval> std::string to_string(const Eval &, bool annotate, const typename Eval::float_type input)
+template<ConsExpr Eval> std::string to_string(const Eval &, bool annotate, const typename Eval::real_type input)
 {
   std::string result;
-  if (annotate) { result = "[floating_point] "; }
+  if (annotate) { result = "[real] "; }
 
   return result + std::format("{}", input);
 }
@@ -144,7 +154,7 @@ template<ConsExpr Eval>
 std::string to_string(const Eval &engine, bool annotate, const typename Eval::string_type &string)
 {
   if (annotate) {
-    return std::format("[identifier] {{{}, {}}} \"{}\"", string.start, string.size, engine.strings.view(string));
+    return std::format("[string] {{{}, {}}} \"{}\"", string.start, string.size, engine.strings.view(string));
   } else {
     return std::format("\"{}\"", engine.strings.view(string));
   }

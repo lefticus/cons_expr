@@ -29,6 +29,20 @@ add_test(NAME cli.has_help COMMAND cons_expr_cli --help)
 add_test(NAME cli.version_matches COMMAND cons_expr_cli --version)
 set_tests_properties(cli.version_matches PROPERTIES PASS_REGULAR_EXPRESSION "${PROJECT_VERSION}")
 
+# Test direct script execution
+add_test(NAME cli.direct_script COMMAND cons_expr_cli --exec "(+ 1 2)")
+set_tests_properties(cli.direct_script PROPERTIES PASS_REGULAR_EXPRESSION "3")
+
+# Test file input handling with a simple script
+add_test(NAME cli.file_input COMMAND cons_expr_cli --file "${CMAKE_CURRENT_SOURCE_DIR}/test_script.scm")
+set_tests_properties(cli.file_input PROPERTIES PASS_REGULAR_EXPRESSION "30")
+
+# Test file input with a non-existent file
+add_test(NAME cli.missing_file COMMAND cons_expr_cli --file "non_existent_file.scm")
+set_tests_properties(cli.missing_file PROPERTIES 
+                     WILL_FAIL TRUE
+                     FAIL_REGULAR_EXPRESSION "File not found")
+
 add_executable(tests tests.cpp)
 target_link_libraries(
   tests
@@ -65,7 +79,17 @@ catch_discover_tests(
   .xml)
 
 # Add a file containing a set of constexpr tests
-add_executable(constexpr_tests constexpr_tests.cpp)
+add_executable(constexpr_tests constexpr_tests.cpp 
+                     list_tests.cpp 
+                     parser_tests.cpp 
+                     recursion_tests.cpp 
+                     scoping_tests.cpp 
+                     type_predicate_tests.cpp
+                     string_escape_tests.cpp
+                     error_handling_tests.cpp
+                     recursion_and_closure_tests.cpp
+                     cond_tests.cpp
+                     list_construction_tests.cpp)
 target_link_libraries(
   constexpr_tests
   PRIVATE cons_expr::cons_expr
@@ -93,7 +117,17 @@ catch_discover_tests(
 
 # Disable the constexpr portion of the test, and build again this allows us to have an executable that we can debug when
 # things go wrong with the constexpr testing
-add_executable(relaxed_constexpr_tests constexpr_tests.cpp)
+add_executable(relaxed_constexpr_tests constexpr_tests.cpp 
+                             list_tests.cpp 
+                             parser_tests.cpp 
+                             recursion_tests.cpp 
+                             scoping_tests.cpp 
+                             type_predicate_tests.cpp
+                             string_escape_tests.cpp
+                             error_handling_tests.cpp
+                             recursion_and_closure_tests.cpp
+                             cond_tests.cpp
+                             list_construction_tests.cpp)
 target_link_libraries(
   relaxed_constexpr_tests
   PRIVATE cons_expr::cons_expr
