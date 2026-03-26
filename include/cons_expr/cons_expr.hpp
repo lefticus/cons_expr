@@ -259,103 +259,64 @@ template<typename T, typename CharType>
   requires std::is_signed_v<T>
 [[nodiscard]] constexpr std::pair<bool, T> parse_number(std::basic_string_view<CharType> input) noexcept
 {
+  using ch = chars<CharType>;
   static constexpr std::pair<bool, T> failure{ false, 0 };
-  if (input == chars<CharType>::str("-")) { return failure; }
 
-  enum struct State : std::uint8_t {
-    Start,
-    IntegerPart,
-    FractionPart,
-    ExponentPart,
-    ExponentStart,
-  };
+  if (input.empty() || input == ch::str("-")) { return failure; }
 
-  State state = State::Start;
-  T value_sign = 1;
-  long long value = 0LL;
-  long long frac = 0LL;
-  long long frac_digits = 0LL;
-  long long exp_sign = 1LL;
-  long long exp = 0LL;
+  auto it = input.begin();
+  const auto end = input.end();
+
+  const T value_sign = (*it == ch::ch('-')) ? (++it, T{ -1 }) : T{ 1 };
 
   constexpr auto pow_10 = [](std::integral auto power) noexcept {
-    auto result = 1ll;
-    for (int iteration = 0; iteration < power; ++iteration) { result *= 10ll; }
+    auto result = 1LL;
+    for (int i = 0; i < power; ++i) { result *= 10LL; }
     return result;
   };
 
-  const auto parse_digit = [](auto &cur_value, auto ch) {
-    if (ch >= chars<CharType>::ch('0') && ch <= chars<CharType>::ch('9')) {
-      cur_value = (cur_value * 10) + ch - chars<CharType>::ch('0');
-      return true;
+  const auto consume_digits = [&](auto &accum) {
+    long long count = 0;
+    while (it != end && *it >= ch::ch('0') && *it <= ch::ch('9')) {
+      accum = accum * 10 + (*it - ch::ch('0'));
+      ++it;
+      ++count;
     }
-    return false;
+    return count;
   };
 
-  for (const auto ch : input) {
-    switch (state) {
-    case State::Start:
-      state = State::IntegerPart;
-      if (ch == chars<CharType>::ch('-')) {
-        value_sign = -1;
-      } else if (ch == chars<CharType>::ch('.')) {
-        state = State::FractionPart;
-      } else if (!parse_digit(value, ch)) {
-        return failure;
-      }
-      break;
-    case State::IntegerPart:
-      if (ch == chars<CharType>::ch('.')) {
-        state = State::FractionPart;
-      } else if (ch == chars<CharType>::ch('e') || ch == chars<CharType>::ch('E')) {
-        state = State::ExponentStart;
-      } else if (!parse_digit(value, ch)) {
-        return failure;
-      }
-      break;
-    case State::FractionPart:
-      if (parse_digit(frac, ch)) {
-        ++frac_digits;
-      } else if (ch == chars<CharType>::ch('e') || ch == chars<CharType>::ch('E')) {
-        state = State::ExponentStart;
-      } else {
-        return failure;
-      }
-      break;
-    case State::ExponentStart:
-      if (ch == chars<CharType>::ch('-')) {
-        exp_sign = -1;
-      } else if (!parse_digit(exp, ch)) {
-        return failure;
-      }
-      state = State::ExponentPart;
-      break;
-    case State::ExponentPart:
-      if (!parse_digit(exp, ch)) { return failure; }
-    }
-  }
+  long long value = 0;
+  const auto int_digits = consume_digits(value);
 
   if constexpr (std::is_integral_v<T>) {
-    if (state != State::IntegerPart) { return failure; }
-
+    if (it != end || int_digits == 0) { return failure; }
     return { true, value_sign * static_cast<T>(value) };
   } else {
-    if (state == State::Start || state == State::ExponentStart) { return failure; }
+    long long frac = 0, frac_digits = 0;
+    if (it != end && *it == ch::ch('.')) {
+      ++it;
+      frac_digits = consume_digits(frac);
+    }
 
-    const auto integral_part = static_cast<T>(value);
-    const auto floating_point_part = static_cast<T>(frac) / static_cast<T>(pow_10(frac_digits));
-    const auto signed_shifted_number = (integral_part + floating_point_part) * value_sign;
-    const auto shift = exp_sign * exp;
+    if (int_digits == 0 && frac_digits == 0) { return failure; }
 
-    const auto number = [&]() {
-      if (shift < 0) {
-        return signed_shifted_number / static_cast<T>(pow_10(-shift));
-      } else {
-        return signed_shifted_number * static_cast<T>(pow_10(shift));
+    long long exp = 0, exp_sign = 1;
+    if (it != end && (*it == ch::ch('e') || *it == ch::ch('E'))) {
+      ++it;
+      if (it != end && *it == ch::ch('-')) {
+        exp_sign = -1;
+        ++it;
       }
-    }();
+      if (consume_digits(exp) == 0) { return failure; }
+    }
 
-    return { true, number };
+    if (it != end) { return failure; }
+
+    const auto number =
+      (static_cast<T>(value) + static_cast<T>(frac) / static_cast<T>(pow_10(frac_digits))) * value_sign;
+    const auto shift = exp_sign * exp;
+    if (shift < 0) { return { true, number / static_cast<T>(pow_10(-shift)) }; }
+    return { true, number * static_cast<T>(pow_10(shift)) };
   }
 }
 
@@ -754,6 +715,7 @@ struct cons_expr
     int quote_depth = 0;
 
     while (!token.parsed.empty()) {
+      if (has_container_error()) { break; }
       bool entered_quote = false;
 
       if (token.parsed == str("(")) {
@@ -793,6 +755,7 @@ struct cons_expr
 
       token = next_token(token.remaining);
     }
+    if (has_container_error()) { return { empty_indexed_list, token }; }
     return { values.insert_or_find(retval), token };
   }
 
@@ -827,7 +790,7 @@ struct cons_expr
     add(str("quote"), SExpr{ FunctionPtr{ quoter, FunctionPtr::Type::other } });
     add(str("begin"), SExpr{ FunctionPtr{ begin, FunctionPtr::Type::other } });
     add(str("cond"), SExpr{ FunctionPtr{ cond, FunctionPtr::Type::other } });
-    add(str("error?"), SExpr{ FunctionPtr{ error_p, FunctionPtr::Type::other } });
+    add(str("error?"), SExpr{ FunctionPtr{ make_type_predicate<error_type>(), FunctionPtr::Type::other } });
 
     // Type predicates using the generic make_type_predicate function
     // Simple atomic types
@@ -846,12 +809,42 @@ struct cons_expr
 
     // Even atom? can use the generic predicate with Atom
     add(str("atom?"), SExpr{ FunctionPtr{ make_type_predicate<Atom>(), FunctionPtr::Type::other } });
+
+    // Pre-register error messages so make_container_error can find them without inserting
+    strings.insert_or_find(str("strings container overflow"));
+    strings.insert_or_find(str("values container overflow"));
+    strings.insert_or_find(str("scratch container overflow"));
+    strings.insert_or_find(str("scope container overflow"));
+  }
+
+  [[nodiscard]] constexpr bool has_container_error() const noexcept
+  {
+    return strings.error_state || values.error_state || object_scratch.error_state || variables_scratch.error_state
+           || string_scratch.error_state || global_scope.error_state;
+  }
+
+  [[nodiscard]] constexpr SExpr make_container_error() noexcept
+  {
+    if (strings.error_state) {
+      return SExpr{ error_type{ strings.insert_or_find(str("strings container overflow")), empty_indexed_list } };
+    }
+    if (values.error_state) {
+      return SExpr{ error_type{ strings.insert_or_find(str("values container overflow")), empty_indexed_list } };
+    }
+    if (object_scratch.error_state || variables_scratch.error_state || string_scratch.error_state) {
+      return SExpr{ error_type{ strings.insert_or_find(str("scratch container overflow")), empty_indexed_list } };
+    }
+    return SExpr{ error_type{ strings.insert_or_find(str("scope container overflow")), empty_indexed_list } };
   }
 
   [[nodiscard]] constexpr SExpr sequence(LexicalScope &scope, list_type expressions)
   {
     auto result = SExpr{ Atom{ std::monostate{} } };
-    std::ranges::for_each(values[expressions], [&, engine = this](auto expr) { result = engine->eval(scope, expr); });
+    for (const auto &expr : values[expressions]) {
+      if (has_container_error()) { return make_container_error(); }
+      result = eval(scope, expr);
+    }
+    if (has_container_error()) { return make_container_error(); }
     return result;
   }
 
@@ -1288,23 +1281,7 @@ struct cons_expr
     const auto &[front, list] = *evaled_params;
 
     Scratch result{ engine.object_scratch };
-
-    if (const auto *list_front = std::get_if<literal_list_type>(&front.value); list_front != nullptr) {
-      // First element is a list, add it as a nested list
-      result.push_back(SExpr{ list_front->items });
-    } else if (const auto *atom = std::get_if<Atom>(&front.value); atom != nullptr) {
-      if (const auto *identifier_front = std::get_if<symbol_type>(atom); identifier_front != nullptr) {
-        // Convert symbol to identifier when adding to result list
-        // Note: should maybe fix this so quoted lists are always lists of symbols?
-        result.push_back(SExpr{ Atom{ to_identifier(*identifier_front) } });
-      } else {
-        // Regular atom, keep as-is
-        result.push_back(front);
-      }
-    } else {
-      // Any other expression type
-      result.push_back(front);
-    }
+    result.push_back(from_quoted(front));
 
     // Add the remaining elements from the second list
     for (const auto &value : engine.values[list.items]) { result.push_back(value); }
@@ -1320,6 +1297,32 @@ struct cons_expr
   {
     if (obj) { return callable(*obj); }
     return obj.error();
+  }
+
+  // Convert an SExpr to its quoted representation (list_type→literal_list_type, identifier→symbol)
+  [[nodiscard]] static constexpr SExpr to_quoted(const SExpr &expr)
+  {
+    if (const auto *list = std::get_if<list_type>(&expr.value); list != nullptr) {
+      return SExpr{ literal_list_type{ *list } };
+    }
+    if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
+      if (const auto *id = std::get_if<identifier_type>(atom); id != nullptr) {
+        return SExpr{ Atom{ symbol_type{ to_symbol(*id) } } };
+      }
+    }
+    return expr;
+  }
+
+  // Convert an SExpr from its quoted representation back to evaluable form
+  [[nodiscard]] static constexpr SExpr from_quoted(const SExpr &expr)
+  {
+    if (const auto *lit = std::get_if<literal_list_type>(&expr.value); lit != nullptr) { return SExpr{ lit->items }; }
+    if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
+      if (const auto *sym = std::get_if<symbol_type>(atom); sym != nullptr) {
+        return SExpr{ Atom{ to_identifier(*sym) } };
+      }
+    }
+    return expr;
   }
 
   // (cdr '(1 2 3)) -> '(2 3)
@@ -1344,24 +1347,8 @@ struct cons_expr
   {
     return error_or_else(
       engine.eval_to<literal_list_type>(scope, params, str("(car Non-Empty-LiteralList)")), [&](const auto &list) {
-        // Check if list is empty
         if (list.items.size == 0) { return engine.make_error(str("car: cannot take car of empty list"), params); }
-
-        // Get the first element of the list
-        const auto &elem = engine.values[list.items.front()];
-
-        // If the element is a list_type, return it as a literal_list_type
-        if (const auto *nested_list = std::get_if<list_type>(&elem.value); nested_list != nullptr) {
-          return SExpr{ literal_list_type{ *nested_list } };
-        }
-
-        if (const auto *atom = std::get_if<Atom>(&elem.value); atom != nullptr) {
-          if (const auto *identifier = std::get_if<identifier_type>(atom); identifier != nullptr) {
-            return SExpr{ Atom{ symbol_type{ to_symbol(*identifier) } } };
-          }
-        }
-
-        return elem;
+        return to_quoted(engine.values[list.items.front()]);
       });
   }
 
@@ -1450,20 +1437,6 @@ struct cons_expr
     return SExpr{ Atom{ std::monostate{} } };
   }
 
-  // error?: Check if the expression is an error
-  [[nodiscard]] static constexpr SExpr error_p(cons_expr &engine, LexicalScope &scope, list_type params)
-  {
-    if (params.size != 1) { return engine.make_error(str("(error? expr)"), params); }
-
-    // Evaluate the expression
-    auto expr = engine.eval(scope, engine.values[params[0]]);
-
-    // Check if it's an error type
-    const bool is_error = std::holds_alternative<error_type>(expr.value);
-
-    return SExpr{ Atom(is_error) };
-  }
-
   // Generic type predicate template for any type(s)
   template<typename... Types> [[nodiscard]] static constexpr function_ptr make_type_predicate()
   {
@@ -1483,24 +1456,12 @@ struct cons_expr
   [[nodiscard]] static constexpr SExpr quote(cons_expr &engine, list_type params)
   {
     if (params.size != 1) { return engine.make_error(str("(quote expr)"), params); }
-
     const auto &expr = engine.values[params[0]];
-
-    // If it's a list, convert it to a literal list
-    if (const auto *list = std::get_if<list_type>(&expr.value); list != nullptr) {
-      // Special case for empty lists - use a canonical empty list with start index 0
-      if (list->size == 0) { return SExpr{ literal_list_type{ empty_indexed_list } }; }
-      return SExpr{ literal_list_type{ *list } };
+    // Special case: empty lists use canonical empty_indexed_list
+    if (const auto *list = std::get_if<list_type>(&expr.value); list != nullptr && list->size == 0) {
+      return SExpr{ literal_list_type{ empty_indexed_list } };
     }
-    // If it's an identifier, convert it to a symbol
-    else if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
-      if (const auto *id = std::get_if<identifier_type>(atom); id != nullptr) {
-        return SExpr{ Atom{ symbol_type{ to_symbol(*id) } } };
-      }
-    }
-
-    // Otherwise return as is
-    return expr;
+    return to_quoted(expr);
   }
 
   [[nodiscard]] static constexpr SExpr quoter(cons_expr &engine, LexicalScope &, list_type params)
@@ -1649,7 +1610,14 @@ struct cons_expr
     return engine.make_error(str("supported types"), params);
   }
 
-  [[nodiscard]] constexpr SExpr evaluate(string_view_type input) { return sequence(global_scope, parse(input).first); }
+  [[nodiscard]] constexpr SExpr evaluate(string_view_type input)
+  {
+    auto [parsed, remaining] = parse(input);
+    if (has_container_error()) { return make_container_error(); }
+    auto result = sequence(global_scope, parsed);
+    if (has_container_error()) { return make_container_error(); }
+    return result;
+  }
 
   template<typename Result> [[nodiscard]] constexpr std::expected<Result, SExpr> evaluate_to(string_view_type input)
   {

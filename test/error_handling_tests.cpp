@@ -81,6 +81,62 @@ TEST_CASE("Error propagation in nested expressions", "[error][propagation]")
 {
   // Error in argument evaluation should propagate
   STATIC_CHECK(is_error("(+ (undefined-var) 5)"));
+
+  // Deeply nested error propagation
+  STATIC_CHECK(is_error("(+ 1 (+ 2 (+ 3 (car '()))))"));
+
+  // Error in if branch expressions
+  STATIC_CHECK(is_error("(if true (car '()) 0)"));
+  STATIC_CHECK(is_error("(if false 0 (car '()))"));
+
+  // Error in let binding value
+  STATIC_CHECK(is_error("(let ((x (car '()))) x)"));
+
+  // Error in let body
+  STATIC_CHECK(is_error("(let ((x 1)) (car '()))"));
+
+  // define stores error as value — using the defined name propagates it
+  STATIC_CHECK(is_error("(begin (define foo (car '())) (+ foo 1))"));
+
+  // Error in cond result expression
+  STATIC_CHECK(is_error("(cond (true (car '())) (else 0))"));
+
+  // Error in begin
+  STATIC_CHECK(is_error("(begin 1 2 (car '()))"));
+
+  // Error from eval
+  STATIC_CHECK(is_error("(eval '(undefined-var))"));
+
+  // for-each discards callback results, so errors don't propagate (by design)
+}
+
+TEST_CASE("Error with wrong argument counts for special forms", "[error][args]")
+{
+  // error? with wrong arg count
+  STATIC_CHECK(is_error("(error?)"));
+  STATIC_CHECK(is_error("(error? 1 2)"));
+
+  // quote with wrong arg count
+  STATIC_CHECK(is_error("(quote)"));
+  STATIC_CHECK(is_error("(quote 1 2)"));
+
+  // if with wrong arg count
+  STATIC_CHECK(is_error("(if true 1)"));
+  STATIC_CHECK(is_error("(if true 1 2 3)"));
+
+  // cons with wrong arg count
+  STATIC_CHECK(is_error("(cons 1)"));
+  STATIC_CHECK(is_error("(cons 1 2 3)"));
+}
+
+TEST_CASE("evaluate_to returns error through std::expected", "[error][expected]")
+{
+  constexpr auto test = []() constexpr {
+    lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
+    auto result = evaluator.evaluate_to<int>("(car '())");
+    return !result.has_value();
+  };
+  STATIC_CHECK(test());
 }
 
 TEST_CASE("Error handling in get_list and get_list_range", "[error][helper]")
@@ -102,4 +158,55 @@ TEST_CASE("Lambda parameter validation", "[error][lambda]")
 
   // Calling lambda with wrong number of args
   STATIC_CHECK(is_error("((lambda (x y) (+ x y)) 1)"));
+}
+
+TEST_CASE("Container overflow: values overflow returns error", "[error][overflow]")
+{
+  constexpr auto test = []() constexpr {
+    // BuiltInValuesSize=10: constructor uses 0 values, so 10 slots available.
+    // Parsing (+ 1 2 3 4 5 6 7 8 9 10 11 12) creates 13 SExprs in a list, overflowing values.
+    lefticus::cons_expr<std::uint16_t, char, IntType, FloatType, 64, 1540, 10> engine;
+    auto result = engine.evaluate("(+ 1 2 3 4 5 6 7 8 9 10 11 12)");
+    const auto *error = std::get_if<lefticus::Error<std::uint16_t>>(&result.value);
+    return error != nullptr && engine.strings[error->expected] == "values container overflow";
+  };
+  STATIC_CHECK(test());
+}
+
+TEST_CASE("Container overflow: strings overflow returns error", "[error][overflow]")
+{
+  constexpr auto test = []() constexpr {
+    // Constructor uses ~173 chars of strings. Capacity 256 leaves ~83 chars headroom.
+    // 4 unique 25-char identifiers = 100 chars, overflows remaining capacity.
+    lefticus::cons_expr<std::uint16_t, char, IntType, FloatType, 64, 256, 279> engine;
+    auto result = engine.evaluate(
+      "(+ abcdefghijklmnopqrstuvwxy zyxwvutsrqponmlkjihgfedcba mnopqrstuvwxyzabcdefghijk qponmlkjihgfedcbazyxwvuts)");
+    const auto *error = std::get_if<lefticus::Error<std::uint16_t>>(&result.value);
+    return error != nullptr && engine.strings[error->expected] == "strings container overflow";
+  };
+  STATIC_CHECK(test());
+}
+
+TEST_CASE("Container overflow: object_scratch overflow returns error", "[error][overflow]")
+{
+  constexpr auto test = []() constexpr {
+    lefticus::cons_expr<> engine;
+    // object_scratch capacity is 32. Each nested parse() call adds entries.
+    // 33+ nesting levels will overflow the scratch.
+    auto result = engine.evaluate(
+      "(+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ "
+      "(+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ (+ 1 1"
+      ") 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1"
+      ") 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1) 1)");
+    const auto *error = std::get_if<lefticus::Error<std::uint16_t>>(&result.value);
+    return error != nullptr && engine.strings[error->expected] == "scratch container overflow";
+  };
+  STATIC_CHECK(test());
+}
+
+TEST_CASE("Container overflow: normal operations still succeed", "[error][overflow]")
+{
+  // Regression guard: default-capacity engine works fine
+  STATIC_CHECK(evaluate_to<int>("(+ 1 2 3)") == 6);
+  STATIC_CHECK(evaluate_to<bool>("(error? (+ 1 2))") == false);
 }
