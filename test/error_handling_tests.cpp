@@ -81,6 +81,62 @@ TEST_CASE("Error propagation in nested expressions", "[error][propagation]")
 {
   // Error in argument evaluation should propagate
   STATIC_CHECK(is_error("(+ (undefined-var) 5)"));
+
+  // Deeply nested error propagation
+  STATIC_CHECK(is_error("(+ 1 (+ 2 (+ 3 (car '()))))"));
+
+  // Error in if branch expressions
+  STATIC_CHECK(is_error("(if true (car '()) 0)"));
+  STATIC_CHECK(is_error("(if false 0 (car '()))"));
+
+  // Error in let binding value
+  STATIC_CHECK(is_error("(let ((x (car '()))) x)"));
+
+  // Error in let body
+  STATIC_CHECK(is_error("(let ((x 1)) (car '()))"));
+
+  // define stores error as value — using the defined name propagates it
+  STATIC_CHECK(is_error("(begin (define foo (car '())) (+ foo 1))"));
+
+  // Error in cond result expression
+  STATIC_CHECK(is_error("(cond (true (car '())) (else 0))"));
+
+  // Error in begin
+  STATIC_CHECK(is_error("(begin 1 2 (car '()))"));
+
+  // Error from eval
+  STATIC_CHECK(is_error("(eval '(undefined-var))"));
+
+  // for-each discards callback results, so errors don't propagate (by design)
+}
+
+TEST_CASE("Error with wrong argument counts for special forms", "[error][args]")
+{
+  // error? with wrong arg count
+  STATIC_CHECK(is_error("(error?)"));
+  STATIC_CHECK(is_error("(error? 1 2)"));
+
+  // quote with wrong arg count
+  STATIC_CHECK(is_error("(quote)"));
+  STATIC_CHECK(is_error("(quote 1 2)"));
+
+  // if with wrong arg count
+  STATIC_CHECK(is_error("(if true 1)"));
+  STATIC_CHECK(is_error("(if true 1 2 3)"));
+
+  // cons with wrong arg count
+  STATIC_CHECK(is_error("(cons 1)"));
+  STATIC_CHECK(is_error("(cons 1 2 3)"));
+}
+
+TEST_CASE("evaluate_to returns error through std::expected", "[error][expected]")
+{
+  constexpr auto test = []() constexpr {
+    lefticus::cons_expr<std::uint16_t, char, IntType, FloatType> evaluator;
+    auto result = evaluator.evaluate_to<int>("(car '())");
+    return !result.has_value();
+  };
+  STATIC_CHECK(test());
 }
 
 TEST_CASE("Error handling in get_list and get_list_range", "[error][helper]")
