@@ -17,7 +17,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Set the project name and language
 project(
   cons_expr
-  VERSION 0.0.1
+  VERSION 1.0.0
   DESCRIPTION ""
   HOMEPAGE_URL "https://github.com/lefticus/cons_expr"
   LANGUAGES CXX C)

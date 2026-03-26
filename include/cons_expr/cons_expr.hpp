@@ -113,9 +113,9 @@ SOFTWARE.
 
 namespace lefticus {
 
-inline constexpr int cons_expr_version_major{ 0 };
+inline constexpr int cons_expr_version_major{ 1 };
 inline constexpr int cons_expr_version_minor{ 0 };
-inline constexpr int cons_expr_version_patch{ 1 };
+inline constexpr int cons_expr_version_patch{ 0 };
 inline constexpr int cons_expr_version_tweak{};
 
 
