@@ -259,103 +259,64 @@ template<typename T, typename CharType>
   requires std::is_signed_v<T>
 [[nodiscard]] constexpr std::pair<bool, T> parse_number(std::basic_string_view<CharType> input) noexcept
 {
+  using ch = chars<CharType>;
   static constexpr std::pair<bool, T> failure{ false, 0 };
-  if (input == chars<CharType>::str("-")) { return failure; }
 
-  enum struct State : std::uint8_t {
-    Start,
-    IntegerPart,
-    FractionPart,
-    ExponentPart,
-    ExponentStart,
-  };
+  if (input.empty() || input == ch::str("-")) { return failure; }
 
-  State state = State::Start;
-  T value_sign = 1;
-  long long value = 0LL;
-  long long frac = 0LL;
-  long long frac_digits = 0LL;
-  long long exp_sign = 1LL;
-  long long exp = 0LL;
+  auto it = input.begin();
+  const auto end = input.end();
+
+  const T value_sign = (*it == ch::ch('-')) ? (++it, T{ -1 }) : T{ 1 };
 
   constexpr auto pow_10 = [](std::integral auto power) noexcept {
-    auto result = 1ll;
-    for (int iteration = 0; iteration < power; ++iteration) { result *= 10ll; }
+    auto result = 1LL;
+    for (int i = 0; i < power; ++i) { result *= 10LL; }
     return result;
   };
 
-  const auto parse_digit = [](auto &cur_value, auto ch) {
-    if (ch >= chars<CharType>::ch('0') && ch <= chars<CharType>::ch('9')) {
-      cur_value = (cur_value * 10) + ch - chars<CharType>::ch('0');
-      return true;
+  const auto consume_digits = [&](auto &accum) {
+    long long count = 0;
+    while (it != end && *it >= ch::ch('0') && *it <= ch::ch('9')) {
+      accum = accum * 10 + (*it - ch::ch('0'));
+      ++it;
+      ++count;
     }
-    return false;
+    return count;
   };
 
-  for (const auto ch : input) {
-    switch (state) {
-    case State::Start:
-      state = State::IntegerPart;
-      if (ch == chars<CharType>::ch('-')) {
-        value_sign = -1;
-      } else if (ch == chars<CharType>::ch('.')) {
-        state = State::FractionPart;
-      } else if (!parse_digit(value, ch)) {
-        return failure;
-      }
-      break;
-    case State::IntegerPart:
-      if (ch == chars<CharType>::ch('.')) {
-        state = State::FractionPart;
-      } else if (ch == chars<CharType>::ch('e') || ch == chars<CharType>::ch('E')) {
-        state = State::ExponentStart;
-      } else if (!parse_digit(value, ch)) {
-        return failure;
-      }
-      break;
-    case State::FractionPart:
-      if (parse_digit(frac, ch)) {
-        ++frac_digits;
-      } else if (ch == chars<CharType>::ch('e') || ch == chars<CharType>::ch('E')) {
-        state = State::ExponentStart;
-      } else {
-        return failure;
-      }
-      break;
-    case State::ExponentStart:
-      if (ch == chars<CharType>::ch('-')) {
-        exp_sign = -1;
-      } else if (!parse_digit(exp, ch)) {
-        return failure;
-      }
-      state = State::ExponentPart;
-      break;
-    case State::ExponentPart:
-      if (!parse_digit(exp, ch)) { return failure; }
-    }
-  }
+  long long value = 0;
+  const auto int_digits = consume_digits(value);
 
   if constexpr (std::is_integral_v<T>) {
-    if (state != State::IntegerPart) { return failure; }
-
+    if (it != end || int_digits == 0) { return failure; }
     return { true, value_sign * static_cast<T>(value) };
   } else {
-    if (state == State::Start || state == State::ExponentStart) { return failure; }
+    long long frac = 0, frac_digits = 0;
+    if (it != end && *it == ch::ch('.')) {
+      ++it;
+      frac_digits = consume_digits(frac);
+    }
 
-    const auto integral_part = static_cast<T>(value);
-    const auto floating_point_part = static_cast<T>(frac) / static_cast<T>(pow_10(frac_digits));
-    const auto signed_shifted_number = (integral_part + floating_point_part) * value_sign;
-    const auto shift = exp_sign * exp;
+    if (int_digits == 0 && frac_digits == 0) { return failure; }
 
-    const auto number = [&]() {
-      if (shift < 0) {
-        return signed_shifted_number / static_cast<T>(pow_10(-shift));
-      } else {
-        return signed_shifted_number * static_cast<T>(pow_10(shift));
+    long long exp = 0, exp_sign = 1;
+    if (it != end && (*it == ch::ch('e') || *it == ch::ch('E'))) {
+      ++it;
+      if (it != end && *it == ch::ch('-')) {
+        exp_sign = -1;
+        ++it;
       }
-    }();
+      if (consume_digits(exp) == 0) { return failure; }
+    }
 
-    return { true, number };
+    if (it != end) { return failure; }
+
+    const auto number =
+      (static_cast<T>(value) + static_cast<T>(frac) / static_cast<T>(pow_10(frac_digits))) * value_sign;
+    const auto shift = exp_sign * exp;
+    if (shift < 0) { return { true, number / static_cast<T>(pow_10(-shift)) }; }
+    return { true, number * static_cast<T>(pow_10(shift)) };
   }
 }
 
