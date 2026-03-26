@@ -1277,23 +1277,7 @@ struct cons_expr
     const auto &[front, list] = *evaled_params;
 
     Scratch result{ engine.object_scratch };
-
-    if (const auto *list_front = std::get_if<literal_list_type>(&front.value); list_front != nullptr) {
-      // First element is a list, add it as a nested list
-      result.push_back(SExpr{ list_front->items });
-    } else if (const auto *atom = std::get_if<Atom>(&front.value); atom != nullptr) {
-      if (const auto *identifier_front = std::get_if<symbol_type>(atom); identifier_front != nullptr) {
-        // Convert symbol to identifier when adding to result list
-        // Note: should maybe fix this so quoted lists are always lists of symbols?
-        result.push_back(SExpr{ Atom{ to_identifier(*identifier_front) } });
-      } else {
-        // Regular atom, keep as-is
-        result.push_back(front);
-      }
-    } else {
-      // Any other expression type
-      result.push_back(front);
-    }
+    result.push_back(from_quoted(front));
 
     // Add the remaining elements from the second list
     for (const auto &value : engine.values[list.items]) { result.push_back(value); }
@@ -1309,6 +1293,34 @@ struct cons_expr
   {
     if (obj) { return callable(*obj); }
     return obj.error();
+  }
+
+  // Convert an SExpr to its quoted representation (list_type→literal_list_type, identifier→symbol)
+  [[nodiscard]] static constexpr SExpr to_quoted(const SExpr &expr)
+  {
+    if (const auto *list = std::get_if<list_type>(&expr.value); list != nullptr) {
+      return SExpr{ literal_list_type{ *list } };
+    }
+    if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
+      if (const auto *id = std::get_if<identifier_type>(atom); id != nullptr) {
+        return SExpr{ Atom{ symbol_type{ to_symbol(*id) } } };
+      }
+    }
+    return expr;
+  }
+
+  // Convert an SExpr from its quoted representation back to evaluable form
+  [[nodiscard]] static constexpr SExpr from_quoted(const SExpr &expr)
+  {
+    if (const auto *lit = std::get_if<literal_list_type>(&expr.value); lit != nullptr) {
+      return SExpr{ lit->items };
+    }
+    if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
+      if (const auto *sym = std::get_if<symbol_type>(atom); sym != nullptr) {
+        return SExpr{ Atom{ to_identifier(*sym) } };
+      }
+    }
+    return expr;
   }
 
   // (cdr '(1 2 3)) -> '(2 3)
@@ -1333,24 +1345,8 @@ struct cons_expr
   {
     return error_or_else(
       engine.eval_to<literal_list_type>(scope, params, str("(car Non-Empty-LiteralList)")), [&](const auto &list) {
-        // Check if list is empty
         if (list.items.size == 0) { return engine.make_error(str("car: cannot take car of empty list"), params); }
-
-        // Get the first element of the list
-        const auto &elem = engine.values[list.items.front()];
-
-        // If the element is a list_type, return it as a literal_list_type
-        if (const auto *nested_list = std::get_if<list_type>(&elem.value); nested_list != nullptr) {
-          return SExpr{ literal_list_type{ *nested_list } };
-        }
-
-        if (const auto *atom = std::get_if<Atom>(&elem.value); atom != nullptr) {
-          if (const auto *identifier = std::get_if<identifier_type>(atom); identifier != nullptr) {
-            return SExpr{ Atom{ symbol_type{ to_symbol(*identifier) } } };
-          }
-        }
-
-        return elem;
+        return to_quoted(engine.values[list.items.front()]);
       });
   }
 
@@ -1472,24 +1468,12 @@ struct cons_expr
   [[nodiscard]] static constexpr SExpr quote(cons_expr &engine, list_type params)
   {
     if (params.size != 1) { return engine.make_error(str("(quote expr)"), params); }
-
     const auto &expr = engine.values[params[0]];
-
-    // If it's a list, convert it to a literal list
-    if (const auto *list = std::get_if<list_type>(&expr.value); list != nullptr) {
-      // Special case for empty lists - use a canonical empty list with start index 0
-      if (list->size == 0) { return SExpr{ literal_list_type{ empty_indexed_list } }; }
-      return SExpr{ literal_list_type{ *list } };
+    // Special case: empty lists use canonical empty_indexed_list
+    if (const auto *list = std::get_if<list_type>(&expr.value); list != nullptr && list->size == 0) {
+      return SExpr{ literal_list_type{ empty_indexed_list } };
     }
-    // If it's an identifier, convert it to a symbol
-    else if (const auto *atom = std::get_if<Atom>(&expr.value); atom != nullptr) {
-      if (const auto *id = std::get_if<identifier_type>(atom); id != nullptr) {
-        return SExpr{ Atom{ symbol_type{ to_symbol(*id) } } };
-      }
-    }
-
-    // Otherwise return as is
-    return expr;
+    return to_quoted(expr);
   }
 
   [[nodiscard]] static constexpr SExpr quoter(cons_expr &engine, LexicalScope &, list_type params)
